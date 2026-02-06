@@ -38,10 +38,6 @@ export const PreviewCard = () => {
         </View>
       ))}
 
-      <View style={styles.brightnessBar}>
-        <View style={[styles.brightnessFill, {width: `${brightness}%`}]} />
-        <Text style={styles.brightnessText}>Brightness {brightness}%</Text>
-      </View>
     </View>
   );
 };
@@ -75,22 +71,4 @@ const styles = StyleSheet.create({
   lineText: {color: colors.text, fontWeight: '700', fontSize: 13},
   destination: {flex: 1, color: colors.text, fontSize: 15, fontWeight: '600'},
   minutes: {color: colors.success, fontWeight: '700'},
-  brightnessBar: {
-    marginTop: spacing.md,
-    height: 10,
-    backgroundColor: '#0C0C0C',
-    borderRadius: 10,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: colors.border,
-    justifyContent: 'center',
-  },
-  brightnessFill: {height: '100%', backgroundColor: colors.accent},
-  brightnessText: {
-    position: 'absolute',
-    alignSelf: 'center',
-    color: colors.textMuted,
-    fontSize: 12,
-    fontWeight: '600',
-  },
 });

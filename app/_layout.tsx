@@ -17,6 +17,10 @@ export default function RootLayout() {
             contentStyle: {backgroundColor: colors.background},
           }}>
           <Stack.Screen name="index" />
+          <Stack.Screen name="dashboard" />
+          <Stack.Screen name="paired-online" />
+          <Stack.Screen name="setup-intro" />
+          <Stack.Screen name="reconnect-help" />
           <Stack.Screen name="edit-stations" />
           <Stack.Screen name="change-layout" />
           <Stack.Screen name="switch-preset" />

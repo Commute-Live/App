@@ -3,6 +3,7 @@ import React, {createContext, useContext, useMemo, useReducer} from 'react';
 type LayoutTheme = 'mono' | 'metro' | 'bold';
 type Behavior = 'stationary' | 'scroll' | 'rotate';
 type Density = 'large' | 'compact';
+type DeviceStatus = 'unknown' | 'notPaired' | 'pairedOffline' | 'pairedOnline';
 
 type Action =
   | {type: 'addStation'; station: string}
@@ -13,7 +14,9 @@ type Action =
   | {type: 'setPreset'; preset: string}
   | {type: 'applyPreset'; preset: Preset}
   | {type: 'setBrightness'; value: number}
-  | {type: 'toggleAutoDim'; value: boolean};
+  | {type: 'toggleAutoDim'; value: boolean}
+  | {type: 'setDeviceStatus'; status: DeviceStatus}
+  | {type: 'setDeviceId'; deviceId: string | null};
 
 export interface Preset {
   name: string;
@@ -33,6 +36,8 @@ interface AppState {
   brightness: number;
   autoDim: boolean;
   arrivals: {line: string; destination: string; minutes: number}[];
+  deviceStatus: DeviceStatus;
+  deviceId: string | null;
 }
 
 const defaultArrivals = [
@@ -50,6 +55,8 @@ const initialState: AppState = {
   brightness: 70,
   autoDim: true,
   arrivals: defaultArrivals,
+  deviceStatus: 'unknown',
+  deviceId: null,
 };
 
 function reducer(state: AppState, action: Action): AppState {
@@ -80,6 +87,10 @@ function reducer(state: AppState, action: Action): AppState {
       return {...state, brightness: Math.max(0, Math.min(100, Math.round(action.value)))};
     case 'toggleAutoDim':
       return {...state, autoDim: action.value};
+    case 'setDeviceStatus':
+      return {...state, deviceStatus: action.status};
+    case 'setDeviceId':
+      return {...state, deviceId: action.deviceId};
     default:
       return state;
   }
@@ -96,6 +107,8 @@ const AppStateContext = createContext<{
   applyPreset: (preset: Preset) => void;
   setBrightness: (value: number) => void;
   toggleAutoDim: (value: boolean) => void;
+  setDeviceStatus: (status: DeviceStatus) => void;
+  setDeviceId: (deviceId: string | null) => void;
 } | null>(null);
 
 export const AppStateProvider = ({children}: {children: React.ReactNode}) => {
@@ -113,6 +126,8 @@ export const AppStateProvider = ({children}: {children: React.ReactNode}) => {
       applyPreset: (preset: Preset) => dispatch({type: 'applyPreset', preset}),
       setBrightness: (value: number) => dispatch({type: 'setBrightness', value}),
       toggleAutoDim: (value: boolean) => dispatch({type: 'toggleAutoDim', value}),
+      setDeviceStatus: (status: DeviceStatus) => dispatch({type: 'setDeviceStatus', status}),
+      setDeviceId: (deviceId: string | null) => dispatch({type: 'setDeviceId', deviceId}),
     }),
     [state],
   );
