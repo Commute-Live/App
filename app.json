@@ -14,21 +14,22 @@
       "backgroundColor": "#ffffff"
     },
     "ios": {
-      "supportsTablet": true,
-      "bundleIdentifier": "com.anonymous.commutelivefresh",
       "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false,
-        "NSLocalNetworkUsageDescription": "Commute Live needs local network access to reach your device setup page.",
         "NSAppTransportSecurity": {
-          "NSAllowsArbitraryLoadsInWebContent": true,
+          "NSAllowsArbitraryLoads": true,
           "NSExceptionDomains": {
-            "192.168.4.1": {
+            "localhost": {
+              "NSExceptionAllowsInsecureHTTPLoads": true,
+              "NSIncludesSubdomains": true
+            },
+            "129.161.86.73": {
               "NSExceptionAllowsInsecureHTTPLoads": true,
               "NSIncludesSubdomains": false
             }
           }
         }
-      }
+      },
+      "bundleIdentifier": "com.anonymous.commutelivefresh"
     },
     "android": {
       "adaptiveIcon": {
