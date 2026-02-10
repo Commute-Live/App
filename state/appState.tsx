@@ -16,7 +16,8 @@ type Action =
   | {type: 'setBrightness'; value: number}
   | {type: 'toggleAutoDim'; value: boolean}
   | {type: 'setDeviceStatus'; status: DeviceStatus}
-  | {type: 'setDeviceId'; deviceId: string | null};
+  | {type: 'setDeviceId'; deviceId: string | null}
+  | {type: 'setUserId'; userId: string | null};
 
 export interface Preset {
   name: string;
@@ -38,6 +39,7 @@ interface AppState {
   arrivals: {line: string; destination: string; minutes: number}[];
   deviceStatus: DeviceStatus;
   deviceId: string | null;
+  userId: string | null;
 }
 
 const defaultArrivals = [
@@ -57,6 +59,7 @@ const initialState: AppState = {
   arrivals: defaultArrivals,
   deviceStatus: 'unknown',
   deviceId: null,
+  userId: null,
 };
 
 function reducer(state: AppState, action: Action): AppState {
@@ -91,6 +94,8 @@ function reducer(state: AppState, action: Action): AppState {
       return {...state, deviceStatus: action.status};
     case 'setDeviceId':
       return {...state, deviceId: action.deviceId};
+    case 'setUserId':
+      return {...state, userId: action.userId};
     default:
       return state;
   }
@@ -109,14 +114,14 @@ const AppStateContext = createContext<{
   toggleAutoDim: (value: boolean) => void;
   setDeviceStatus: (status: DeviceStatus) => void;
   setDeviceId: (deviceId: string | null) => void;
+  setUserId: (userId: string | null) => void;
 } | null>(null);
 
 export const AppStateProvider = ({children}: {children: React.ReactNode}) => {
   const [state, dispatch] = useReducer(reducer, initialState);
 
-  const value = useMemo(
+  const actions = useMemo(
     () => ({
-      state,
       addStation: (station: string) => dispatch({type: 'addStation', station}),
       removeStation: (station: string) => dispatch({type: 'removeStation', station}),
       setTheme: (theme: LayoutTheme) => dispatch({type: 'setTheme', theme}),
@@ -128,9 +133,12 @@ export const AppStateProvider = ({children}: {children: React.ReactNode}) => {
       toggleAutoDim: (value: boolean) => dispatch({type: 'toggleAutoDim', value}),
       setDeviceStatus: (status: DeviceStatus) => dispatch({type: 'setDeviceStatus', status}),
       setDeviceId: (deviceId: string | null) => dispatch({type: 'setDeviceId', deviceId}),
+      setUserId: (userId: string | null) => dispatch({type: 'setUserId', userId}),
     }),
-    [state],
+    [],
   );
+
+  const value = useMemo(() => ({state, ...actions}), [state, actions]);
 
   return <AppStateContext.Provider value={value}>{children}</AppStateContext.Provider>;
 };

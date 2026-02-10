@@ -4,6 +4,7 @@ import {SafeAreaView} from 'react-native-safe-area-context';
 import {useRouter} from 'expo-router';
 import {ScreenHeader} from '../../../components/ScreenHeader';
 import {colors, spacing, radii} from '../../../theme';
+import {useAppState} from '../../../state/appState';
 
 const TIMEZONES = [
   {label: 'Eastern (EST)', value: 'America/New_York'},
@@ -16,6 +17,7 @@ const TIMEZONES = [
 
 export default function SignUpScreen() {
   const router = useRouter();
+  const {setUserId} = useAppState();
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -92,7 +94,13 @@ export default function SignUpScreen() {
           ) : null}
         </View>
 
-        <Pressable style={styles.primaryButton} onPress={() => router.push('/register-device')}>
+        <Pressable
+          style={styles.primaryButton}
+          onPress={() => {
+            setUserId('e5c7fe1a-5bdf-41d6-99b0-d32ca5fe2dca');
+            router.push('/register-device');
+          }}
+        >
           <Text style={styles.primaryText}>Create account</Text>
         </Pressable>
       </ScrollView>

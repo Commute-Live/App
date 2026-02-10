@@ -1,5 +1,5 @@
 import React, {useEffect, useState} from 'react';
-import {Pressable, ScrollView, StyleSheet, Text, TextInput, View} from 'react-native';
+import {Pressable, ScrollView, StyleSheet, Text, TextInput, View, ActivityIndicator} from 'react-native';
 import {SafeAreaView} from 'react-native-safe-area-context';
 import {Ionicons} from '@expo/vector-icons';
 import {useRouter} from 'expo-router';
@@ -8,20 +8,17 @@ import {useAppState} from '../../../state/appState';
 
 export default function SetupIntroScreen() {
   const router = useRouter();
-  const {setDeviceStatus, setDeviceId} = useAppState();
+  const {state, setDeviceStatus, setDeviceId} = useAppState();
   const setupSsid = 'Commute-Live-Setup-xxx';
   const statusUrl = 'http://192.168.4.1/status';
-  const [selectedNetwork, setSelectedNetwork] = useState('CommuteLive-Home');
+  const [ssid, setSsid] = useState('');
   const [wifiUsername, setWifiUsername] = useState('');
   const [wifiPassword, setWifiPassword] = useState('');
-  const networks = [
-    {name: 'CommuteLive-Home', secure: true, signal: 3},
-    {name: 'CommuteLive-Guest', secure: true, signal: 2},
-    {name: 'MyHomeWiFi', secure: true, signal: 3},
-    {name: 'Apartment-5G', secure: false, signal: 2},
-    {name: 'Cafe-WiFi', secure: false, signal: 1},
-  ];
-  const canConnect = selectedNetwork.length > 0 && wifiPassword.trim().length > 0;
+  const canConnect = ssid.length > 0 && wifiPassword.trim().length > 0;
+  const [connectStatus, setConnectStatus] = useState<'idle' | 'connecting' | 'success' | 'error'>('idle');
+  const [errorMsg, setErrorMsg] = useState('');
+  const [apiResponse, setApiResponse] = useState<string | null>(null);
+  const isConnecting = connectStatus === 'connecting';
 
   useEffect(() => {
     setDeviceStatus('notPaired');
@@ -45,114 +42,81 @@ export default function SetupIntroScreen() {
     };
 
     loadStatus();
-  }, [setDeviceId, setDeviceStatus, statusUrl]);
+  }, [statusUrl]);
+
+  const handleConnect = async () => {
+    setConnectStatus('connecting');
+    setErrorMsg('');
+    setApiResponse(null);
+    try {
+        const response = await fetch('http://192.168.4.1/connect', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: `ssid=${encodeURIComponent(ssid)}&password=${encodeURIComponent(wifiPassword)}&user=${encodeURIComponent(wifiUsername)}`,
+        });
+      const text = await response.text();
+      setApiResponse(text);
+      let data;
+      try {
+        data = JSON.parse(text);
+      } catch {
+        data = {};
+      }
+      if (!response.ok || data.error) {
+        setConnectStatus('error');
+        const rawError = String(data.error || 'Unknown error');
+        if (rawError === 'No Eligible WiFi networks found') {
+          setErrorMsg('No eligible Wi‑Fi networks found. Make sure the device can see your network.');
+        } else if (rawError === 'Failed to connect to WiFi bc of credentials') {
+          setErrorMsg('Wrong Wi‑Fi password. Please try again.');
+        } else if (rawError === 'Target WiFi network not found') {
+          setErrorMsg('Your Wi‑Fi network was not found. Check the SSID and try again.');
+        } else if (rawError === 'credentials wrong') {
+          setErrorMsg('Wrong Wi‑Fi password or SSID. Please try again.');
+        } else if (rawError === 'Missing SSID') {
+          setErrorMsg('Please enter a Wi‑Fi SSID.');
+        } else {
+          setErrorMsg(rawError);
+        }
+      } else {
+        setConnectStatus('success');
+      }
+    } catch (e) {
+      setConnectStatus('error');
+      setErrorMsg('Network error');
+    }
+  };
 
   return (
     <SafeAreaView style={styles.container} edges={['top', 'left', 'right', 'bottom']}>
       <View style={styles.body}>
+        {isConnecting ? (
+          <View style={styles.loadingOverlay} pointerEvents="auto">
+            <View style={styles.loadingCard}>
+              <ActivityIndicator size="large" color={colors.accent} />
+              <Text style={styles.loadingText}>Connecting to Wi-Fi...</Text>
+            </View>
+          </View>
+        ) : null}
         <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
           <Text style={styles.heading}>Register your device</Text>
           <Text style={styles.subheading}>Complete registration below.</Text>
-
-          <View style={[styles.card, styles.cardSuccess]}>
-            <View style={styles.row}>
-              <View style={[styles.statusIcon, styles.statusIconSuccess]}>
-                <Ionicons name="checkmark" size={20} color={colors.background} />
-              </View>
-              <View style={styles.textWrap}>
-                <Text style={styles.cardTitle}>Connected to “{setupSsid}”</Text>
-              </View>
-            </View>
-          </View>
-
-          <View style={styles.divider} />
-
-          {/* Device portal (disabled for now)
-          {canShowPortal ? (
-            <View style={styles.portalWrap}>
-              <View style={styles.portalHeader}>
-                <Text style={styles.portalTitle}>Device Portal</Text>
-                <Text style={styles.portalUrl}>{portalUrl}</Text>
-              </View>
-              <WebView
-                source={{uri: portalUrl}}
-                originWhitelist={['*']}
-                onError={() => setPortalError(true)}
-                onHttpError={() => setPortalError(true)}
-                style={styles.webView}
-              />
-              {portalError ? (
-                <Text style={styles.portalError}>
-                  Unable to load the portal. Confirm you’re connected to “{setupSsid}”.
-                </Text>
-              ) : null}
-            </View>
-          ) : null}
-          */}
-
           <View style={styles.section}>
-            <View style={styles.sectionHeaderRow}>
-              <Text style={styles.sectionHeader}>Choose a Wi‑Fi network</Text>
-              <Pressable style={styles.scanButton}>
-                <Ionicons name="refresh" size={14} color={colors.textMuted} />
-                <Text style={styles.scanText}>Scan</Text>
-              </Pressable>
-            </View>
-            <View style={styles.networkList}>
-              <View style={styles.listHeader}>
-                <Text style={styles.listHeaderText}>Networks</Text>
-              </View>
-              <ScrollView style={styles.networkScroll} nestedScrollEnabled>
-                {networks.map(network => (
-                  <Pressable
-                    key={network.name}
-                    style={({pressed}) => [
-                      styles.networkRow,
-                      selectedNetwork === network.name && styles.networkRowSelected,
-                      pressed && styles.pressed,
-                    ]}
-                    onPress={() => setSelectedNetwork(network.name)}>
-                    <View style={styles.networkLeft}>
-                      {selectedNetwork === network.name ? (
-                        <Ionicons name="checkmark" size={16} color={colors.accent} />
-                      ) : (
-                        <View style={styles.checkPlaceholder} />
-                      )}
-                      <Text style={styles.networkName}>{network.name}</Text>
-                    </View>
-                    <View style={styles.networkRight}>
-                      {network.secure ? (
-                        <Ionicons name="lock-closed" size={12} color={colors.textMuted} />
-                      ) : null}
-                      <Ionicons
-                        name={
-                          network.signal >= 3
-                            ? 'wifi'
-                            : network.signal === 2
-                              ? 'wifi'
-                              : 'wifi-outline'
-                        }
-                        size={14}
-                        color={colors.textMuted}
-                      />
-                      <Ionicons
-                        name="information-circle-outline"
-                        size={16}
-                        color={colors.textMuted}
-                      />
-                    </View>
-                  </Pressable>
-                ))}
-              </ScrollView>
-            </View>
-          </View>
-
-          <View style={styles.section}>
-            <View style={styles.selectedRow}>
-              <Text style={styles.selectedLabel}>Selected network</Text>
-              <Text style={styles.selectedValue}>{selectedNetwork}</Text>
+            <View style={styles.deviceIdCard}>
+              <Text style={styles.deviceIdLabel}>Device ID</Text>
+              <Text style={styles.deviceIdValue}>{state.deviceId || 'Not available yet'}</Text>
+              <Text style={styles.deviceIdLabel}>User ID</Text>
+              <Text style={styles.deviceIdValue}>{state.userId || 'Not available yet'}</Text>
             </View>
             <Text style={styles.sectionTitle}>Wi‑Fi credentials</Text>
+            <TextInput
+              value={ssid}
+              onChangeText={setSsid}
+              placeholder="Wi-Fi SSID"
+              placeholderTextColor={colors.textMuted}
+              autoCapitalize="none"
+              style={styles.input}
+            />
             <TextInput
               value={wifiUsername}
               onChangeText={setWifiUsername}
@@ -169,18 +133,34 @@ export default function SetupIntroScreen() {
               secureTextEntry
               style={styles.input}
             />
+            <Pressable
+              style={[styles.primaryButton, !canConnect && styles.primaryButtonDisabled]}
+              disabled={!canConnect || isConnecting}
+              onPress={handleConnect}
+            >
+              {isConnecting ? (
+                <ActivityIndicator color={colors.background} />
+              ) : (
+                <Text style={[styles.primaryText, !canConnect && styles.primaryTextDisabled]}>
+                  Connect to Wi‑Fi
+                </Text>
+              )}
+            </Pressable>
+            {connectStatus === 'error' && <Text style={{ color: 'red', marginTop: 8 }}>{errorMsg}</Text>}
+            {connectStatus === 'success' && <Text style={{ color: 'green', marginTop: 8 }}>Connected!</Text>}
+            {apiResponse && (
+              <Text style={{ color: colors.textMuted, marginTop: 8, fontSize: 12 }} selectable>
+                API Response: {apiResponse}
+              </Text>
+            )}
           </View>
         </ScrollView>
-
         <View style={styles.footer}>
           <Pressable
-            style={[styles.primaryButton, !canConnect && styles.primaryButtonDisabled]}
-            disabled={!canConnect}>
-            <Text style={[styles.primaryText, !canConnect && styles.primaryTextDisabled]}>
-              Connect to Wi‑Fi
-            </Text>
-          </Pressable>
-          <Pressable style={styles.finishLink} onPress={() => router.push('/dashboard')}>
+            style={styles.finishLink}
+            disabled={isConnecting}
+            onPress={() => router.push('/dashboard')}
+          >
             <Text style={styles.finishText}>Finish setup</Text>
           </Pressable>
         </View>
@@ -321,6 +301,16 @@ const styles = StyleSheet.create({
     color: colors.text,
     marginBottom: spacing.sm,
   },
+  deviceIdCard: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radii.md,
+    padding: spacing.md,
+    backgroundColor: colors.card,
+    marginBottom: spacing.md,
+  },
+  deviceIdLabel: {color: colors.textMuted, fontSize: 12, fontWeight: '700'},
+  deviceIdValue: {color: colors.text, fontWeight: '800', marginTop: 4},
   primaryButton: {
     backgroundColor: colors.accent,
     paddingVertical: spacing.md,
@@ -337,4 +327,22 @@ const styles = StyleSheet.create({
   },
   finishLink: {alignItems: 'center', marginTop: spacing.md},
   finishText: {color: colors.textMuted, fontWeight: '700', fontSize: 13},
+  loadingOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0, 0, 0, 0.55)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 10,
+  },
+  loadingCard: {
+    backgroundColor: colors.card,
+    borderColor: colors.border,
+    borderWidth: 1,
+    borderRadius: radii.lg,
+    paddingVertical: spacing.lg,
+    paddingHorizontal: spacing.xl,
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  loadingText: {color: colors.text, fontWeight: '700'},
 });

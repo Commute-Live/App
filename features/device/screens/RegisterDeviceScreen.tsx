@@ -4,9 +4,11 @@ import {SafeAreaView} from 'react-native-safe-area-context';
 import {useRouter} from 'expo-router';
 import {ScreenHeader} from '../../../components/ScreenHeader';
 import {colors, spacing, radii} from '../../../theme';
+import {useAppState} from '../../../state/appState';
 
 export default function RegisterDeviceScreen() {
   const router = useRouter();
+  const {state, setDeviceId} = useAppState();
   const [status, setStatus] = useState<'checking' | 'connected' | 'disconnected'>('checking');
 
   const checkConnection = useCallback(async () => {
@@ -14,7 +16,7 @@ export default function RegisterDeviceScreen() {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 4000);
     try {
-      const response = await fetch('http://192.168.4.1/status', {
+      const response = await fetch('http://192.168.4.1/heartbeat', {
         method: 'GET',
         signal: controller.signal,
       });
@@ -33,6 +35,24 @@ export default function RegisterDeviceScreen() {
   useEffect(() => {
     checkConnection();
   }, [checkConnection]);
+
+  useEffect(() => {
+    if (status !== 'connected') return;
+    if (state.deviceId) return;
+    const fetchDeviceInfo = async () => {
+      try {
+        const response = await fetch('http://192.168.4.1/device-info', {method: 'GET'});
+        if (!response.ok) return;
+        const data = await response.json();
+        if (data?.deviceId) {
+          setDeviceId(String(data.deviceId));
+        }
+      } catch {
+        // ignore
+      }
+    };
+    fetchDeviceInfo();
+  }, [status, state.deviceId, setDeviceId]);
 
   return (
     <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
@@ -96,8 +116,22 @@ export default function RegisterDeviceScreen() {
           </Text>
         </View>
 
-        <Pressable style={styles.primaryButton} onPress={() => router.push('/setup-intro')}>
-          <Text style={styles.primaryText}>Register your device</Text>
+        <Pressable
+          style={[
+            styles.primaryButton,
+            status !== 'connected' && styles.primaryButtonDisabled,
+          ]}
+          disabled={status !== 'connected'}
+          onPress={() => router.push('/setup-intro')}
+        >
+          <Text
+            style={[
+              styles.primaryText,
+              status !== 'connected' && styles.primaryTextDisabled,
+            ]}
+          >
+            Register your device
+          </Text>
         </Pressable>
 
         <Pressable style={styles.secondaryButton} onPress={() => router.back()}>
@@ -175,6 +209,8 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   primaryText: {color: colors.background, fontWeight: '800', fontSize: 15},
+  primaryButtonDisabled: {backgroundColor: colors.border},
+  primaryTextDisabled: {color: colors.textMuted},
   secondaryButton: {
     borderColor: colors.border,
     borderWidth: 1,

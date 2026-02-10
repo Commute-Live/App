@@ -10,8 +10,10 @@ const fallbackDevice = {id: 'commutelive-001', name: 'Commute Live Display'};
 
 export default function PairedOnlineScreen() {
   const [open, setOpen] = useState(false);
+  const [linkStatus, setLinkStatus] = useState<'idle' | 'linking' | 'linked' | 'error'>('idle');
+  const [linkMessage, setLinkMessage] = useState('');
   const {
-    state: {deviceId},
+    state: {deviceId, userId},
   } = useAppState();
   const devices = [
     {
@@ -24,6 +26,40 @@ export default function PairedOnlineScreen() {
   useEffect(() => {
     setSelected(devices[0]);
   }, [deviceId]);
+
+  useEffect(() => {
+    if (!deviceId || !userId) return;
+    if (linkStatus !== 'idle') return;
+    const linkDevice = async () => {
+      setLinkStatus('linking');
+      setLinkMessage('');
+      try {
+        const response = await fetch('https://api.commutelive.com/user/device/link', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({userId, deviceId}),
+        });
+        const text = await response.text();
+        let data: any = null;
+        try {
+          data = JSON.parse(text);
+        } catch {
+          data = null;
+        }
+        if (!response.ok) {
+          setLinkStatus('error');
+          setLinkMessage(data?.error || text || 'Link failed.');
+          return;
+        }
+        setLinkStatus('linked');
+        setLinkMessage(data?.message || 'Device linked successfully.');
+      } catch {
+        setLinkStatus('error');
+        setLinkMessage('Network error.');
+      }
+    };
+    linkDevice();
+  }, [deviceId, userId, linkStatus]);
 
   return (
     <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
@@ -47,6 +83,23 @@ export default function PairedOnlineScreen() {
 
         <View style={styles.previewWrap}>
           <PreviewCard />
+        </View>
+
+        <View style={styles.infoCard}>
+          <Text style={styles.infoLabel}>Device ID</Text>
+          <Text style={styles.infoValue}>{deviceId || 'Not available yet'}</Text>
+          <Text style={styles.infoLabel}>User ID</Text>
+          <Text style={styles.infoValue}>{userId || 'Not available yet'}</Text>
+          <Text style={styles.linkStatus}>
+            {linkStatus === 'linking'
+              ? 'Linking device...'
+              : linkStatus === 'linked'
+                ? 'Device linked'
+                : linkStatus === 'error'
+                  ? 'Device link failed'
+                  : ''}
+          </Text>
+          {linkMessage ? <Text style={styles.linkMessage}>{linkMessage}</Text> : null}
         </View>
 
         {open ? (
@@ -113,6 +166,18 @@ const styles = StyleSheet.create({
   },
   topSpacer: {height: spacing.xl},
   previewWrap: {marginTop: spacing.md},
+  infoCard: {
+    marginTop: spacing.md,
+    backgroundColor: colors.card,
+    borderColor: colors.border,
+    borderWidth: 1,
+    borderRadius: radii.lg,
+    padding: spacing.md,
+  },
+  infoLabel: {color: colors.textMuted, fontSize: 12, fontWeight: '700'},
+  infoValue: {color: colors.text, fontWeight: '800', marginTop: 4, marginBottom: spacing.sm},
+  linkStatus: {color: colors.textMuted, fontSize: 12, fontWeight: '700'},
+  linkMessage: {color: colors.textMuted, fontSize: 12, marginTop: 4},
   dropdownItem: {
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
