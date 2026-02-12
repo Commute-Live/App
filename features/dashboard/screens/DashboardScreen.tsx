@@ -8,6 +8,7 @@ import {useSelectedDevice} from '../../../hooks/useSelectedDevice';
 
 const API_BASE = 'https://api.commutelive.com';
 const DEFAULT_STOP_ID = '725N';
+const DEFAULT_STOP_NAME = 'Times Sq-42 St';
 const MAX_SELECTED_LINES = 2;
 type StopOption = {stopId: string; stop: string; direction: 'N' | 'S' | ''};
 
@@ -22,7 +23,7 @@ export default function DashboardScreen() {
   const selectedDevice = useSelectedDevice();
   const [selectedLines, setSelectedLines] = useState<string[]>(['E', 'A']);
   const [stopId, setStopId] = useState(DEFAULT_STOP_ID);
-  const [stopName, setStopName] = useState('');
+  const [stopName, setStopName] = useState(DEFAULT_STOP_NAME);
   const [stopQuery, setStopQuery] = useState('');
   const [stopOptions, setStopOptions] = useState<StopOption[]>([]);
   const [stopDropdownOpen, setStopDropdownOpen] = useState(false);
@@ -54,7 +55,6 @@ export default function DashboardScreen() {
         if (!cancelled && firstStopId.length > 0) {
           const normalized = firstStopId.toUpperCase();
           setStopId(normalized);
-          setStopQuery(normalized);
         }
         if (!cancelled && (firstDirection === 'N' || firstDirection === 'S') && firstStopId.length > 0) {
           setStopId(prev => {
@@ -160,7 +160,7 @@ export default function DashboardScreen() {
   const chooseStop = useCallback((option: StopOption) => {
     setStopId(option.stopId.toUpperCase());
     setStopName(option.stop);
-    setStopQuery(`${option.stop} (${option.stopId})`);
+    setStopQuery('');
     setStopOptions([]);
     setStopDropdownOpen(false);
     setStopError('');
@@ -268,27 +268,29 @@ export default function DashboardScreen() {
           </View>
 
           <View style={styles.linePickerCard}>
-            <Text style={styles.linePickerTitle}>Pick Stop + Lines</Text>
-            <Text style={styles.linePickerSubtitle}>Search and select a stop, then select up to 2 lines.</Text>
+            <Text style={styles.linePickerTitle}>Pick Station</Text>
 
-            <Text style={styles.formLabel}>Stop</Text>
-            <TextInput
-              value={stopQuery}
-              onChangeText={text => {
-                setStopQuery(text);
-                setStopId('');
-                setStopName('');
-                setStopDropdownOpen(true);
+            <Pressable
+              style={styles.stationSelector}
+              onPress={() => {
+                setStopDropdownOpen(prev => !prev);
                 setStopError('');
-              }}
-              onFocus={() => setStopDropdownOpen(true)}
-              style={styles.input}
-              placeholder="Search stop (e.g. Port Authority or A27N)"
-              placeholderTextColor={colors.textMuted}
-            />
-            <Pressable style={styles.dropdownToggle} onPress={() => setStopDropdownOpen(prev => !prev)}>
-              <Text style={styles.dropdownToggleText}>{stopDropdownOpen ? 'Hide stops' : 'Show all stops'}</Text>
+              }}>
+              <Text style={styles.stationSelectorText}>
+                {stopName} ({stopId})
+              </Text>
+              <Text style={styles.stationSelectorCaret}>{stopDropdownOpen ? '▲' : '▼'}</Text>
             </Pressable>
+
+            {stopDropdownOpen && (
+              <TextInput
+                value={stopQuery}
+                onChangeText={text => setStopQuery(text)}
+                style={styles.input}
+                placeholder="Search station..."
+                placeholderTextColor={colors.textMuted}
+              />
+            )}
             {isLoadingStops && <Text style={styles.hintText}>Searching stops...</Text>}
             {stopDropdownOpen && !isLoadingStops && stopOptions.length > 0 && (
               <View style={styles.stopList}>
@@ -306,9 +308,7 @@ export default function DashboardScreen() {
             )}
             {!!stopError && <Text style={styles.errorText}>{stopError}</Text>}
 
-            <Text style={styles.destFixed}>
-              Stop ID: {stopId || '--'} {stopName ? `| ${stopName}` : ''} | Direction: {derivedDirection}
-            </Text>
+            <Text style={styles.linePickerTitle}>Pick Trains</Text>
             <Text style={styles.destFixed}>Selected lines: {selectedLines.join(', ') || 'None'}</Text>
 
             <Text style={styles.formLabel}>Available lines for this stop</Text>
@@ -373,7 +373,21 @@ const styles = StyleSheet.create({
     marginBottom: spacing.sm,
   },
   linePickerTitle: {color: colors.text, fontSize: 14, fontWeight: '800'},
-  linePickerSubtitle: {color: colors.textMuted, fontSize: 11, marginTop: 2, marginBottom: spacing.sm},
+  stationSelector: {
+    borderColor: colors.border,
+    borderWidth: 1,
+    borderRadius: radii.md,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.sm,
+    backgroundColor: colors.surface,
+    marginTop: spacing.sm,
+    marginBottom: spacing.sm,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  stationSelectorText: {color: colors.text, fontSize: 12, fontWeight: '700', flexShrink: 1},
+  stationSelectorCaret: {color: colors.textMuted, fontSize: 10, marginLeft: spacing.xs},
   formLabel: {color: colors.textMuted, fontSize: 11, marginBottom: 4},
   input: {
     borderColor: colors.border,
@@ -385,8 +399,6 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
     marginBottom: spacing.xs,
   },
-  dropdownToggle: {alignSelf: 'flex-start', marginBottom: spacing.sm},
-  dropdownToggleText: {color: colors.accent, fontSize: 11, fontWeight: '700'},
   hintText: {color: colors.textMuted, fontSize: 11, marginBottom: spacing.xs},
   errorText: {color: colors.warning, fontSize: 11, marginBottom: spacing.xs},
   stopList: {
