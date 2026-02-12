@@ -25,6 +25,7 @@ export default function DashboardScreen() {
   const [stopName, setStopName] = useState('');
   const [stopQuery, setStopQuery] = useState('');
   const [stopOptions, setStopOptions] = useState<StopOption[]>([]);
+  const [stopDropdownOpen, setStopDropdownOpen] = useState(false);
   const [isLoadingStops, setIsLoadingStops] = useState(false);
   const [availableLines, setAvailableLines] = useState<string[]>([]);
   const [isLoadingLines, setIsLoadingLines] = useState(false);
@@ -79,15 +80,15 @@ export default function DashboardScreen() {
   useEffect(() => {
     let cancelled = false;
     const q = stopQuery.trim();
-    if (q.length < 2) {
-      setStopOptions([]);
+    if (!stopDropdownOpen) {
       return;
     }
 
     const run = async () => {
       setIsLoadingStops(true);
       try {
-        const response = await fetch(`${API_BASE}/stops?q=${encodeURIComponent(q)}&limit=12`);
+        const queryPart = q.length > 0 ? `&q=${encodeURIComponent(q)}` : '';
+        const response = await fetch(`${API_BASE}/stops?limit=1000${queryPart}`);
         if (!response.ok) return;
         const data = await response.json();
         if (!cancelled) {
@@ -106,7 +107,7 @@ export default function DashboardScreen() {
       cancelled = true;
       clearTimeout(t);
     };
-  }, [stopQuery]);
+  }, [stopQuery, stopDropdownOpen]);
 
   useEffect(() => {
     let cancelled = false;
@@ -161,6 +162,7 @@ export default function DashboardScreen() {
     setStopName(option.stop);
     setStopQuery(`${option.stop} (${option.stopId})`);
     setStopOptions([]);
+    setStopDropdownOpen(false);
     setStopError('');
     setStatusText('');
   }, []);
@@ -274,23 +276,32 @@ export default function DashboardScreen() {
               value={stopQuery}
               onChangeText={text => {
                 setStopQuery(text);
+                setStopId('');
+                setStopName('');
+                setStopDropdownOpen(true);
                 setStopError('');
               }}
+              onFocus={() => setStopDropdownOpen(true)}
               style={styles.input}
               placeholder="Search stop (e.g. Port Authority or A27N)"
               placeholderTextColor={colors.textMuted}
             />
+            <Pressable style={styles.dropdownToggle} onPress={() => setStopDropdownOpen(prev => !prev)}>
+              <Text style={styles.dropdownToggleText}>{stopDropdownOpen ? 'Hide stops' : 'Show all stops'}</Text>
+            </Pressable>
             {isLoadingStops && <Text style={styles.hintText}>Searching stops...</Text>}
-            {!isLoadingStops && stopOptions.length > 0 && (
+            {stopDropdownOpen && !isLoadingStops && stopOptions.length > 0 && (
               <View style={styles.stopList}>
-                {stopOptions.map(option => (
-                  <Pressable key={option.stopId} style={styles.stopItem} onPress={() => chooseStop(option)}>
-                    <Text style={styles.stopItemTitle}>{option.stop}</Text>
-                    <Text style={styles.stopItemSubtitle}>
-                      {option.stopId} {option.direction ? `(${option.direction})` : ''}
-                    </Text>
-                  </Pressable>
-                ))}
+                <ScrollView style={styles.stopListScroll} nestedScrollEnabled>
+                  {stopOptions.map(option => (
+                    <Pressable key={option.stopId} style={styles.stopItem} onPress={() => chooseStop(option)}>
+                      <Text style={styles.stopItemTitle}>{option.stop}</Text>
+                      <Text style={styles.stopItemSubtitle}>
+                        {option.stopId} {option.direction ? `(${option.direction})` : ''}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </ScrollView>
               </View>
             )}
             {!!stopError && <Text style={styles.errorText}>{stopError}</Text>}
@@ -372,8 +383,10 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.xs,
     color: colors.text,
     backgroundColor: colors.surface,
-    marginBottom: spacing.sm,
+    marginBottom: spacing.xs,
   },
+  dropdownToggle: {alignSelf: 'flex-start', marginBottom: spacing.sm},
+  dropdownToggleText: {color: colors.accent, fontSize: 11, fontWeight: '700'},
   hintText: {color: colors.textMuted, fontSize: 11, marginBottom: spacing.xs},
   errorText: {color: colors.warning, fontSize: 11, marginBottom: spacing.xs},
   stopList: {
@@ -383,6 +396,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     marginBottom: spacing.sm,
   },
+  stopListScroll: {maxHeight: 260},
   stopItem: {
     borderBottomColor: colors.border,
     borderBottomWidth: 1,
