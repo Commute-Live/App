@@ -1,7 +1,6 @@
 import React, {useCallback, useEffect, useMemo, useState} from 'react';
-import {Pressable, ScrollView, StyleSheet, Text, TextInput, View} from 'react-native';
+import {Pressable, ScrollView, StyleSheet, Text, View} from 'react-native';
 import {SafeAreaView} from 'react-native-safe-area-context';
-import {PreviewCard} from '../../../components/PreviewCard';
 import {BottomNav, BottomNavItem} from '../../../components/BottomNav';
 import {colors, spacing, radii} from '../../../theme';
 import {useSelectedDevice} from '../../../hooks/useSelectedDevice';
@@ -24,7 +23,7 @@ export default function DashboardScreen() {
   const [selectedLines, setSelectedLines] = useState<string[]>(['E', 'A']);
   const [stopId, setStopId] = useState(DEFAULT_STOP_ID);
   const [stopName, setStopName] = useState(DEFAULT_STOP_NAME);
-  const [stopQuery, setStopQuery] = useState('');
+  const [allStops, setAllStops] = useState<StopOption[]>([]);
   const [stopOptions, setStopOptions] = useState<StopOption[]>([]);
   const [stopDropdownOpen, setStopDropdownOpen] = useState(false);
   const [isLoadingStops, setIsLoadingStops] = useState(false);
@@ -79,35 +78,44 @@ export default function DashboardScreen() {
 
   useEffect(() => {
     let cancelled = false;
-    const q = stopQuery.trim();
     if (!stopDropdownOpen) {
       return;
     }
 
     const run = async () => {
+      if (allStops.length > 0) {
+        return;
+      }
       setIsLoadingStops(true);
       try {
-        const queryPart = q.length > 0 ? `&q=${encodeURIComponent(q)}` : '';
-        const response = await fetch(`${API_BASE}/stops?limit=1000${queryPart}`);
+        const response = await fetch(`${API_BASE}/stops?limit=1000`);
         if (!response.ok) return;
         const data = await response.json();
         if (!cancelled) {
-          const options = Array.isArray(data?.stops) ? data.stops : [];
-          setStopOptions(options);
+          const options = Array.isArray(data?.stops) ? data.stops as StopOption[] : [];
+          setAllStops(options);
         }
       } catch {
-        if (!cancelled) setStopOptions([]);
+        if (!cancelled) setAllStops([]);
       } finally {
         if (!cancelled) setIsLoadingStops(false);
       }
     };
 
-    const t = setTimeout(run, 250);
+    void run();
+
     return () => {
       cancelled = true;
-      clearTimeout(t);
     };
-  }, [stopQuery, stopDropdownOpen]);
+  }, [stopDropdownOpen, allStops.length]);
+
+  useEffect(() => {
+    if (!stopDropdownOpen) {
+      setStopOptions([]);
+      return;
+    }
+    setStopOptions(allStops);
+  }, [allStops, stopDropdownOpen]);
 
   useEffect(() => {
     let cancelled = false;
@@ -160,7 +168,6 @@ export default function DashboardScreen() {
   const chooseStop = useCallback((option: StopOption) => {
     setStopId(option.stopId.toUpperCase());
     setStopName(option.stop);
-    setStopQuery('');
     setStopOptions([]);
     setStopDropdownOpen(false);
     setStopError('');
@@ -250,7 +257,7 @@ export default function DashboardScreen() {
           <View style={styles.deviceHeaderCard}>
             <View style={styles.headerRow}>
               <View>
-                <Text style={styles.heading}>{selectedDevice.name}</Text>
+                <Text style={styles.heading}>Your Device</Text>
                 <Text style={styles.subheading}>Device ID: {selectedDevice.id}</Text>
               </View>
               <View style={styles.statusChip}>
@@ -267,11 +274,15 @@ export default function DashboardScreen() {
             </View>
           </View>
 
-          <View style={styles.linePickerCard}>
-            <Text style={styles.linePickerTitle}>Pick Station</Text>
+          <View style={styles.sectionCard}>
+            <Text style={styles.sectionTitle}>Pick Station</Text>
 
             <Pressable
-              style={styles.stationSelector}
+              style={({pressed}) => [
+                styles.stationSelector,
+                stopDropdownOpen && styles.stationSelectorOpen,
+                pressed && styles.stationSelectorPressed,
+              ]}
               onPress={() => {
                 setStopDropdownOpen(prev => !prev);
                 setStopError('');
@@ -282,36 +293,39 @@ export default function DashboardScreen() {
               <Text style={styles.stationSelectorCaret}>{stopDropdownOpen ? '▲' : '▼'}</Text>
             </Pressable>
 
-            {stopDropdownOpen && (
-              <TextInput
-                value={stopQuery}
-                onChangeText={text => setStopQuery(text)}
-                style={styles.input}
-                placeholder="Search station..."
-                placeholderTextColor={colors.textMuted}
-              />
-            )}
             {isLoadingStops && <Text style={styles.hintText}>Searching stops...</Text>}
             {stopDropdownOpen && !isLoadingStops && stopOptions.length > 0 && (
               <View style={styles.stopList}>
                 <ScrollView style={styles.stopListScroll} nestedScrollEnabled>
-                  {stopOptions.map(option => (
-                    <Pressable key={option.stopId} style={styles.stopItem} onPress={() => chooseStop(option)}>
-                      <Text style={styles.stopItemTitle}>{option.stop}</Text>
-                      <Text style={styles.stopItemSubtitle}>
-                        {option.stopId} {option.direction ? `(${option.direction})` : ''}
-                      </Text>
-                    </Pressable>
-                  ))}
+                  {stopOptions.map(option => {
+                    const isSelected = option.stopId.toUpperCase() === stopId.toUpperCase();
+                    return (
+                      <Pressable
+                        key={option.stopId}
+                        style={({pressed}) => [
+                          styles.stopItem,
+                          isSelected && styles.stopItemSelected,
+                          pressed && styles.stopItemPressed,
+                        ]}
+                        onPress={() => chooseStop(option)}>
+                        <Text style={styles.stopItemTitle}>{option.stop}</Text>
+                        <Text style={styles.stopItemSubtitle}>
+                          {option.stopId} {option.direction ? `(${option.direction})` : ''}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
                 </ScrollView>
               </View>
             )}
             {!!stopError && <Text style={styles.errorText}>{stopError}</Text>}
+          </View>
 
-            <Text style={styles.linePickerTitle}>Pick Trains</Text>
-            <Text style={styles.destFixed}>Selected lines: {selectedLines.join(', ') || 'None'}</Text>
+          <View style={styles.sectionCard}>
+            <Text style={styles.sectionTitle}>Pick Trains</Text>
+            <Text style={styles.hintText}>Select up to 2 lines for {stopId}.</Text>
+            <Text style={styles.destFixed}>Selected: {selectedLines.join(', ') || 'None'}</Text>
 
-            <Text style={styles.formLabel}>Available lines for this stop</Text>
             {isLoadingLines && <Text style={styles.hintText}>Loading lines...</Text>}
             {!isLoadingLines && availableLines.length === 0 && (
               <Text style={styles.hintText}>No lines found for this stop yet.</Text>
@@ -322,8 +336,6 @@ export default function DashboardScreen() {
             </Pressable>
             {!!statusText && <Text style={styles.statusNote}>{statusText}</Text>}
           </View>
-
-          <PreviewCard />
         </ScrollView>
 
         <BottomNav items={navItems} />
@@ -364,15 +376,15 @@ const styles = StyleSheet.create({
   statusDotOnline: {backgroundColor: colors.success},
   statusDotOffline: {backgroundColor: colors.warning},
   statusText: {color: colors.text, fontSize: 10, fontWeight: '700'},
-  linePickerCard: {
+  sectionCard: {
     backgroundColor: colors.card,
     borderColor: colors.border,
     borderWidth: 1,
     borderRadius: radii.lg,
-    padding: spacing.sm,
+    padding: spacing.md,
     marginBottom: spacing.sm,
   },
-  linePickerTitle: {color: colors.text, fontSize: 14, fontWeight: '800'},
+  sectionTitle: {color: colors.text, fontSize: 16, fontWeight: '800', marginBottom: spacing.sm},
   stationSelector: {
     borderColor: colors.border,
     borderWidth: 1,
@@ -386,19 +398,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
   },
+  stationSelectorOpen: {
+    borderColor: colors.accent,
+    backgroundColor: colors.accentMuted,
+  },
+  stationSelectorPressed: {opacity: 0.9},
   stationSelectorText: {color: colors.text, fontSize: 12, fontWeight: '700', flexShrink: 1},
   stationSelectorCaret: {color: colors.textMuted, fontSize: 10, marginLeft: spacing.xs},
-  formLabel: {color: colors.textMuted, fontSize: 11, marginBottom: 4},
-  input: {
-    borderColor: colors.border,
-    borderWidth: 1,
-    borderRadius: radii.md,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
-    color: colors.text,
-    backgroundColor: colors.surface,
-    marginBottom: spacing.xs,
-  },
   hintText: {color: colors.textMuted, fontSize: 11, marginBottom: spacing.xs},
   errorText: {color: colors.warning, fontSize: 11, marginBottom: spacing.xs},
   stopList: {
@@ -416,6 +422,11 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.xs,
     paddingHorizontal: spacing.sm,
   },
+  stopItemSelected: {
+    backgroundColor: colors.accentMuted,
+    borderBottomColor: colors.accent,
+  },
+  stopItemPressed: {opacity: 0.85},
   stopItemTitle: {color: colors.text, fontSize: 12, fontWeight: '700'},
   stopItemSubtitle: {color: colors.textMuted, fontSize: 11},
   directionChip: {
