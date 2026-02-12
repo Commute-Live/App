@@ -1,5 +1,5 @@
 import React, {useCallback, useEffect, useMemo, useState} from 'react';
-import {Pressable, ScrollView, StyleSheet, Text, View} from 'react-native';
+import {Pressable, ScrollView, StyleSheet, Text, TextInput, View} from 'react-native';
 import {SafeAreaView} from 'react-native-safe-area-context';
 import {PreviewCard} from '../../../components/PreviewCard';
 import {BottomNav, BottomNavItem} from '../../../components/BottomNav';
@@ -8,9 +8,8 @@ import {useSelectedDevice} from '../../../hooks/useSelectedDevice';
 
 const API_BASE = 'https://api.commutelive.com';
 const NYC_LINES = ['1', '2', '3', '4', '5', '6', '7', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'J', 'L', 'M', 'N', 'Q', 'R', 'W', 'Z'];
-const HARDCODED_STOP_ID = '725N';
-const HARDCODED_DIRECTION: 'N' = 'N';
-const HARDCODED_DESTINATION_LABEL = 'Times Sq-42 St (N)';
+const DEFAULT_STOP_ID = '725N';
+const MAX_SELECTED_LINES = 2;
 
 const navItems: BottomNavItem[] = [
   {key: 'stations', label: 'Stations', icon: 'train-outline', route: '/edit-stations'},
@@ -21,7 +20,9 @@ const navItems: BottomNavItem[] = [
 
 export default function DashboardScreen() {
   const selectedDevice = useSelectedDevice();
-  const [selectedLine, setSelectedLine] = useState('7');
+  const [selectedLines, setSelectedLines] = useState<string[]>(['E', 'A']);
+  const [stopId, setStopId] = useState(DEFAULT_STOP_ID);
+  const [direction, setDirection] = useState<'N' | 'S'>('N');
   const [isSaving, setIsSaving] = useState(false);
   const [statusText, setStatusText] = useState('');
 
@@ -32,9 +33,24 @@ export default function DashboardScreen() {
         const response = await fetch(`${API_BASE}/device/${selectedDevice.id}/config`);
         if (!response.ok) return;
         const data = await response.json();
-        const firstLine = data?.config?.lines?.[0]?.line;
-        if (!cancelled && typeof firstLine === 'string' && firstLine.length > 0) {
-          setSelectedLine(firstLine.toUpperCase());
+        const configuredLines = Array.isArray(data?.config?.lines)
+          ? data.config.lines
+              .map((line: any) => (typeof line?.line === 'string' ? line.line.toUpperCase() : ''))
+              .filter((line: string) => line.length > 0)
+          : [];
+        const firstStopId = typeof data?.config?.lines?.[0]?.stop === 'string' ? data.config.lines[0].stop : '';
+        const firstDirection = typeof data?.config?.lines?.[0]?.direction === 'string'
+          ? data.config.lines[0].direction.toUpperCase()
+          : '';
+
+        if (!cancelled && configuredLines.length > 0) {
+          setSelectedLines(configuredLines.slice(0, MAX_SELECTED_LINES));
+        }
+        if (!cancelled && firstStopId.length > 0) {
+          setStopId(firstStopId);
+        }
+        if (!cancelled && (firstDirection === 'N' || firstDirection === 'S')) {
+          setDirection(firstDirection);
         }
       } catch {
         // Ignore network/read errors; keep default line.
@@ -50,25 +66,47 @@ export default function DashboardScreen() {
     };
   }, [selectedDevice.id]);
 
-  const saveLine = useCallback(
-    async (line: string) => {
+  const toggleLine = useCallback((line: string) => {
+    setStatusText('');
+    setSelectedLines(prev => {
+      if (prev.includes(line)) {
+        return prev.filter(item => item !== line);
+      }
+      if (prev.length >= MAX_SELECTED_LINES) {
+        return [...prev.slice(1), line];
+      }
+      return [...prev, line];
+    });
+  }, []);
+
+  const saveConfig = useCallback(
+    async () => {
       if (!selectedDevice.id) return;
-      setSelectedLine(line);
       setIsSaving(true);
       setStatusText('');
+      if (selectedLines.length === 0) {
+        setStatusText('Select at least one line');
+        setIsSaving(false);
+        return;
+      }
+
+      const normalizedStopId = stopId.trim().toUpperCase();
+      if (!normalizedStopId.length) {
+        setStatusText('Enter a stop ID');
+        setIsSaving(false);
+        return;
+      }
       try {
         const configResponse = await fetch(`${API_BASE}/device/${selectedDevice.id}/config`, {
           method: 'POST',
           headers: {'Content-Type': 'application/json'},
           body: JSON.stringify({
-            lines: [
-              {
+            lines: selectedLines.map(line => ({
                 provider: 'mta',
                 line,
-                stop: HARDCODED_STOP_ID,
-                direction: HARDCODED_DIRECTION,
-              },
-            ],
+                stop: normalizedStopId,
+                direction,
+              })),
           }),
         });
         if (!configResponse.ok) {
@@ -77,14 +115,14 @@ export default function DashboardScreen() {
         }
 
         await fetch(`${API_BASE}/refresh/device/${selectedDevice.id}`, {method: 'POST'});
-        setStatusText(`Updated ${line} -> ${HARDCODED_DESTINATION_LABEL}`);
+        setStatusText(`Updated ${selectedLines.join(', ')} at ${normalizedStopId} ${direction}`);
       } catch {
         setStatusText('Network error');
       } finally {
         setIsSaving(false);
       }
     },
-    [selectedDevice.id],
+    [selectedDevice.id, selectedLines, stopId, direction],
   );
 
   const lineButtons = useMemo(
@@ -92,15 +130,15 @@ export default function DashboardScreen() {
       NYC_LINES.map(line => (
         <Pressable
           key={line}
-          style={[styles.lineChip, selectedLine === line && styles.lineChipActive]}
-          onPress={() => saveLine(line)}
+          style={[styles.lineChip, selectedLines.includes(line) && styles.lineChipActive]}
+          onPress={() => toggleLine(line)}
           disabled={isSaving}>
-          <Text style={[styles.lineChipText, selectedLine === line && styles.lineChipTextActive]}>
+          <Text style={[styles.lineChipText, selectedLines.includes(line) && styles.lineChipTextActive]}>
             {line}
           </Text>
         </Pressable>
       )),
-    [selectedLine, saveLine, isSaving],
+    [selectedLines, toggleLine, isSaving],
   );
 
   return (
@@ -128,11 +166,39 @@ export default function DashboardScreen() {
           </View>
 
           <View style={styles.linePickerCard}>
-            <Text style={styles.linePickerTitle}>Pick Subway Line</Text>
-            <Text style={styles.linePickerSubtitle}>Tap any line to send update to this device.</Text>
-            <Text style={styles.destFixed}>Destination: {HARDCODED_DESTINATION_LABEL}</Text>
+            <Text style={styles.linePickerTitle}>Pick Stop + Lines</Text>
+            <Text style={styles.linePickerSubtitle}>Select up to 2 lines. Example: E + A at 725N.</Text>
+
+            <Text style={styles.formLabel}>Stop ID</Text>
+            <TextInput
+              value={stopId}
+              onChangeText={setStopId}
+              autoCapitalize="characters"
+              style={styles.input}
+              placeholder="e.g. 725N"
+              placeholderTextColor={colors.textMuted}
+            />
+
+            <Text style={styles.formLabel}>Direction</Text>
+            <View style={styles.directionRow}>
+              <Pressable
+                onPress={() => setDirection('N')}
+                style={[styles.directionChip, direction === 'N' && styles.directionChipActive]}>
+                <Text style={[styles.directionChipText, direction === 'N' && styles.directionChipTextActive]}>Northbound</Text>
+              </Pressable>
+              <Pressable
+                onPress={() => setDirection('S')}
+                style={[styles.directionChip, direction === 'S' && styles.directionChipActive]}>
+                <Text style={[styles.directionChipText, direction === 'S' && styles.directionChipTextActive]}>Southbound</Text>
+              </Pressable>
+            </View>
+
+            <Text style={styles.destFixed}>Selected lines: {selectedLines.join(', ') || 'None'}</Text>
 
             <View style={styles.lineGrid}>{lineButtons}</View>
+            <Pressable style={styles.saveButton} onPress={saveConfig} disabled={isSaving}>
+              <Text style={styles.saveButtonText}>{isSaving ? 'Saving...' : 'Save to Device'}</Text>
+            </Pressable>
             {!!statusText && <Text style={styles.statusNote}>{statusText}</Text>}
           </View>
 
@@ -187,6 +253,29 @@ const styles = StyleSheet.create({
   },
   linePickerTitle: {color: colors.text, fontSize: 14, fontWeight: '800'},
   linePickerSubtitle: {color: colors.textMuted, fontSize: 11, marginTop: 2, marginBottom: spacing.sm},
+  formLabel: {color: colors.textMuted, fontSize: 11, marginBottom: 4},
+  input: {
+    borderColor: colors.border,
+    borderWidth: 1,
+    borderRadius: radii.md,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    color: colors.text,
+    backgroundColor: colors.surface,
+    marginBottom: spacing.sm,
+  },
+  directionRow: {flexDirection: 'row', gap: spacing.xs, marginBottom: spacing.sm},
+  directionChip: {
+    borderColor: colors.border,
+    borderWidth: 1,
+    borderRadius: radii.md,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    backgroundColor: colors.surface,
+  },
+  directionChipActive: {borderColor: colors.accent, backgroundColor: colors.accentMuted},
+  directionChipText: {color: colors.text, fontSize: 11, fontWeight: '700'},
+  directionChipTextActive: {color: colors.accent},
   destFixed: {color: colors.textMuted, fontSize: 12, marginBottom: spacing.sm},
   lineGrid: {flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs},
   lineChip: {
@@ -203,5 +292,13 @@ const styles = StyleSheet.create({
   },
   lineChipText: {color: colors.text, fontSize: 12, fontWeight: '700'},
   lineChipTextActive: {color: colors.accent},
+  saveButton: {
+    marginTop: spacing.sm,
+    backgroundColor: colors.accent,
+    borderRadius: radii.md,
+    paddingVertical: spacing.sm,
+    alignItems: 'center',
+  },
+  saveButtonText: {color: colors.background, fontSize: 12, fontWeight: '800'},
   statusNote: {color: colors.textMuted, fontSize: 11, marginTop: spacing.sm},
 });
