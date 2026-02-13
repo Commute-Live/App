@@ -4,7 +4,7 @@ services:
       context: .
       dockerfile: Dockerfile
     container_name: commute-live-app
-    command: npm run start -- --tunnel --clear
+    command: npm run start:expo -- --tunnel --clear
     environment:
       EXPO_NO_TELEMETRY: "1"
       CHOKIDAR_USEPOLLING: "true"

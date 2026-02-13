@@ -16,4 +16,4 @@ EXPOSE 19001
 EXPOSE 19002
 EXPOSE 19006
 
-CMD ["npm", "run", "start", "--", "--tunnel", "--clear"]
+CMD ["npm", "run", "start:expo", "--", "--tunnel", "--clear"]
