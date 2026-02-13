@@ -1,0 +1,17 @@
+Commute Live App - How to Run
+
+Local (without Docker):
+1. cd App
+2. npm install
+3. npm start
+4. Scan the QR code in Expo Go
+
+Docker (recommended for consistency):
+1. cd App
+2. npm run docker:start
+3. Wait for Expo to boot
+4. Scan the QR code from terminal logs (or open http://localhost:19002)
+
+Useful commands:
+- npm run docker:stop    Stop containers
+- npm run docker:reset   Rebuild cleanly
