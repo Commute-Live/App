@@ -8,8 +8,25 @@ import {useSelectedDevice} from '../../../hooks/useSelectedDevice';
 const API_BASE = 'https://api.commutelive.com';
 const DEFAULT_STOP_ID = '725N';
 const DEFAULT_STOP_NAME = 'Times Sq-42 St';
+const CTA_DEFAULT_STOP_ID = '40380';
+const CTA_DEFAULT_STOP_NAME = 'Clark/Lake';
 const MAX_SELECTED_LINES = 2;
 type StopOption = {stopId: string; stop: string; direction: 'N' | 'S' | ''};
+type ProviderOption = {id: 'mta-subway' | 'cta-subway'; label: string};
+
+const providerOptions: ProviderOption[] = [
+  {id: 'mta-subway', label: 'NYC Subway'},
+  {id: 'cta-subway', label: 'Chicago Subway'},
+];
+
+const CTA_LINES = ['RED', 'BLUE', 'BRN', 'G', 'ORG', 'P', 'PINK', 'Y'];
+const CTA_STOPS: StopOption[] = [
+  {stopId: '40380', stop: 'Clark/Lake', direction: ''},
+  {stopId: '41400', stop: 'Roosevelt', direction: ''},
+  {stopId: '40900', stop: 'Howard', direction: ''},
+  {stopId: '40890', stop: "O'Hare", direction: ''},
+  {stopId: '40450', stop: '95th/Dan Ryan', direction: ''},
+];
 
 const navItems: BottomNavItem[] = [
   {key: 'stations', label: 'Stations', icon: 'train-outline', route: '/edit-stations'},
@@ -20,6 +37,7 @@ const navItems: BottomNavItem[] = [
 
 export default function DashboardScreen() {
   const selectedDevice = useSelectedDevice();
+  const [selectedProvider, setSelectedProvider] = useState<ProviderOption['id']>('mta-subway');
   const [selectedLines, setSelectedLines] = useState<string[]>(['E', 'A']);
   const [stopId, setStopId] = useState(DEFAULT_STOP_ID);
   const [stopName, setStopName] = useState(DEFAULT_STOP_NAME);
@@ -47,6 +65,11 @@ export default function DashboardScreen() {
           : [];
         const firstStopId = typeof data?.config?.lines?.[0]?.stop === 'string' ? data.config.lines[0].stop : '';
         const firstDirection = typeof data?.config?.lines?.[0]?.direction === 'string' ? data.config.lines[0].direction.toUpperCase() : '';
+        const firstProvider = typeof data?.config?.lines?.[0]?.provider === 'string' ? data.config.lines[0].provider : '';
+
+        if (!cancelled && (firstProvider === 'mta-subway' || firstProvider === 'cta-subway')) {
+          setSelectedProvider(firstProvider);
+        }
 
         if (!cancelled && configuredLines.length > 0) {
           setSelectedLines(configuredLines.slice(0, MAX_SELECTED_LINES));
@@ -55,7 +78,12 @@ export default function DashboardScreen() {
           const normalized = firstStopId.toUpperCase();
           setStopId(normalized);
         }
-        if (!cancelled && (firstDirection === 'N' || firstDirection === 'S') && firstStopId.length > 0) {
+        if (
+          !cancelled &&
+          firstProvider !== 'cta-subway' &&
+          (firstDirection === 'N' || firstDirection === 'S') &&
+          firstStopId.length > 0
+        ) {
           setStopId(prev => {
             const base = prev.length ? prev : firstStopId.toUpperCase();
             if (base.endsWith('N') || base.endsWith('S')) return base;
@@ -77,6 +105,22 @@ export default function DashboardScreen() {
   }, [selectedDevice.id]);
 
   useEffect(() => {
+    if (selectedProvider === 'cta-subway') {
+      setAllStops(CTA_STOPS);
+      setStopOptions(stopDropdownOpen ? CTA_STOPS : []);
+      setAvailableLines(CTA_LINES);
+      setSelectedLines(prev => {
+        const filtered = prev.filter(line => CTA_LINES.includes(line));
+        if (filtered.length > 0) return filtered.slice(0, MAX_SELECTED_LINES);
+        return CTA_LINES.slice(0, MAX_SELECTED_LINES);
+      });
+      if (!stopId || stopId.endsWith('N') || stopId.endsWith('S')) {
+        setStopId(CTA_DEFAULT_STOP_ID);
+        setStopName(CTA_DEFAULT_STOP_NAME);
+      }
+      return;
+    }
+
     let cancelled = false;
     if (!stopDropdownOpen) {
       return;
@@ -107,17 +151,31 @@ export default function DashboardScreen() {
     return () => {
       cancelled = true;
     };
-  }, [stopDropdownOpen, allStops.length]);
+  }, [selectedProvider, stopDropdownOpen, allStops.length, stopId]);
 
   useEffect(() => {
     if (!stopDropdownOpen) {
       setStopOptions([]);
       return;
     }
+    if (selectedProvider === 'cta-subway') {
+      setStopOptions(CTA_STOPS);
+      return;
+    }
     setStopOptions(allStops);
-  }, [allStops, stopDropdownOpen]);
+  }, [selectedProvider, allStops, stopDropdownOpen]);
 
   useEffect(() => {
+    if (selectedProvider === 'cta-subway') {
+      setAvailableLines(CTA_LINES);
+      setSelectedLines(prev => {
+        const filtered = prev.filter(line => CTA_LINES.includes(line));
+        if (filtered.length > 0) return filtered.slice(0, MAX_SELECTED_LINES);
+        return CTA_LINES.slice(0, MAX_SELECTED_LINES);
+      });
+      return;
+    }
+
     let cancelled = false;
     const normalizedStopId = stopId.trim().toUpperCase();
     if (!normalizedStopId) {
@@ -161,7 +219,7 @@ export default function DashboardScreen() {
     return () => {
       cancelled = true;
     };
-  }, [stopId]);
+  }, [selectedProvider, stopId]);
 
   const derivedDirection: 'N' | 'S' = stopId.toUpperCase().endsWith('S') ? 'S' : 'N';
 
@@ -206,15 +264,16 @@ export default function DashboardScreen() {
         return;
       }
       try {
+        const directionToSave = selectedProvider === 'cta-subway' ? undefined : derivedDirection;
         const configResponse = await fetch(`${API_BASE}/device/${selectedDevice.id}/config`, {
           method: 'POST',
           headers: {'Content-Type': 'application/json'},
           body: JSON.stringify({
             lines: selectedLines.map(line => ({
-                provider: 'mta-subway',
+                provider: selectedProvider,
                 line,
                 stop: normalizedStopId,
-                direction: derivedDirection,
+                direction: directionToSave,
               })),
           }),
         });
@@ -231,7 +290,7 @@ export default function DashboardScreen() {
         setIsSaving(false);
       }
     },
-    [selectedDevice.id, selectedLines, stopId, derivedDirection],
+    [selectedDevice.id, selectedLines, stopId, derivedDirection, selectedProvider],
   );
 
   const lineButtons = useMemo(
@@ -271,6 +330,41 @@ export default function DashboardScreen() {
                 />
                 <Text style={styles.statusText}>{selectedDevice.status}</Text>
               </View>
+            </View>
+          </View>
+
+          <View style={styles.sectionCard}>
+            <Text style={styles.sectionTitle}>Pick Provider</Text>
+            <View style={styles.providerRow}>
+              {providerOptions.map(option => (
+                <Pressable
+                  key={option.id}
+                  style={[
+                    styles.providerChip,
+                    selectedProvider === option.id && styles.providerChipActive,
+                  ]}
+                  onPress={() => {
+                    setSelectedProvider(option.id);
+                    setStatusText('');
+                    setStopError('');
+                    setStopDropdownOpen(false);
+                    if (option.id === 'mta-subway') {
+                      setStopId(DEFAULT_STOP_ID);
+                      setStopName(DEFAULT_STOP_NAME);
+                    } else {
+                      setStopId(CTA_DEFAULT_STOP_ID);
+                      setStopName(CTA_DEFAULT_STOP_NAME);
+                    }
+                  }}>
+                  <Text
+                    style={[
+                      styles.providerChipText,
+                      selectedProvider === option.id && styles.providerChipTextActive,
+                    ]}>
+                    {option.label}
+                  </Text>
+                </Pressable>
+              ))}
             </View>
           </View>
 
@@ -438,6 +532,21 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
   },
   destFixed: {color: colors.textMuted, fontSize: 12, marginBottom: spacing.sm},
+  providerRow: {flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs},
+  providerChip: {
+    borderColor: colors.border,
+    borderWidth: 1,
+    borderRadius: radii.md,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    backgroundColor: colors.surface,
+  },
+  providerChipActive: {
+    borderColor: colors.accent,
+    backgroundColor: colors.accentMuted,
+  },
+  providerChipText: {color: colors.text, fontSize: 12, fontWeight: '700'},
+  providerChipTextActive: {color: colors.accent},
   lineGrid: {flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs},
   lineChip: {
     borderColor: colors.border,
