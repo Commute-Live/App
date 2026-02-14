@@ -8,175 +8,101 @@ const CTA_DEFAULT_STOP_NAME = 'Clark/Lake';
 const MAX_SELECTED_LINES = 2;
 
 type StopOption = {stopId: string; stop: string; direction: ''};
+type RouteOption = {id: string; label: string};
 
 type Props = {
   deviceId: string;
 };
 
-const CTA_STOPS: StopOption[] = [
-  {stopId: '40380', stop: 'Clark/Lake', direction: ''},
-  {stopId: '41400', stop: 'Roosevelt', direction: ''},
-  {stopId: '40900', stop: 'Howard', direction: ''},
-  {stopId: '40890', stop: "O'Hare", direction: ''},
-  {stopId: '40450', stop: '95th/Dan Ryan', direction: ''},
-  {stopId: '41220', stop: 'Fullerton', direction: ''},
-  {stopId: '41320', stop: 'Belmont', direction: ''},
-  {stopId: '40360', stop: 'Southport', direction: ''},
-  {stopId: '40660', stop: 'Armitage', direction: ''},
-  {stopId: '40530', stop: 'Diversey', direction: ''},
-  {stopId: '40080', stop: 'Sheridan', direction: ''},
-  {stopId: '40540', stop: 'Wilson', direction: ''},
-  {stopId: '40050', stop: 'Davis', direction: ''},
-  {stopId: '40690', stop: 'Dempster', direction: ''},
-  {stopId: '41050', stop: 'Linden', direction: ''},
-  {stopId: '40710', stop: 'Chicago (Brown/Purple)', direction: ''},
-  {stopId: '41410', stop: 'Chicago (Blue)', direction: ''},
-  {stopId: '41450', stop: 'Chicago (Red)', direction: ''},
-  {stopId: '40790', stop: 'Monroe (Blue)', direction: ''},
-  {stopId: '41090', stop: 'Monroe (Red)', direction: ''},
-  {stopId: '40070', stop: 'Jackson (Blue)', direction: ''},
-  {stopId: '40560', stop: 'Jackson (Red)', direction: ''},
-  {stopId: '40400', stop: 'Noyes', direction: ''},
-  {stopId: '40270', stop: 'Main', direction: ''},
-  {stopId: '40840', stop: 'South Boulevard', direction: ''},
-  {stopId: '41250', stop: 'Central (Purple)', direction: ''},
-  {stopId: '40100', stop: 'Morse', direction: ''},
-  {stopId: '41190', stop: 'Jarvis', direction: ''},
-  {stopId: '40880', stop: 'Thorndale', direction: ''},
-  {stopId: '40760', stop: 'Granville', direction: ''},
-  {stopId: '41380', stop: 'Bryn Mawr', direction: ''},
-  {stopId: '41200', stop: 'Argyle', direction: ''},
-  {stopId: '41420', stop: 'Addison (Red)', direction: ''},
-  {stopId: '41300', stop: 'Loyola', direction: ''},
-  {stopId: '40770', stop: 'Lawrence', direction: ''},
-  {stopId: '40040', stop: 'Quincy/Wells', direction: ''},
-  {stopId: '40260', stop: 'State/Lake', direction: ''},
-  {stopId: '40680', stop: 'Adams/Wabash', direction: ''},
-  {stopId: '41700', stop: 'Washington/Wabash', direction: ''},
-  {stopId: '40850', stop: 'Harold Washington Library-State/Van Buren', direction: ''},
-  {stopId: '40160', stop: 'LaSalle/Van Buren', direction: ''},
-  {stopId: '40730', stop: 'Washington/Wells', direction: ''},
-  {stopId: '40460', stop: 'Merchandise Mart', direction: ''},
-  {stopId: '41180', stop: 'Kedzie (Brown)', direction: ''},
-  {stopId: '40870', stop: 'Francisco', direction: ''},
-  {stopId: '41010', stop: 'Rockwell', direction: ''},
-  {stopId: '41310', stop: 'Paulina', direction: ''},
-  {stopId: '40090', stop: 'Damen (Brown)', direction: ''},
-  {stopId: '41480', stop: 'Western (Brown)', direction: ''},
-  {stopId: '41440', stop: 'Addison (Brown)', direction: ''},
-  {stopId: '41500', stop: 'Montrose (Brown)', direction: ''},
-  {stopId: '41460', stop: 'Irving Park (Brown)', direction: ''},
-  {stopId: '41290', stop: 'Kimball', direction: ''},
-  {stopId: '40230', stop: 'Cumberland', direction: ''},
-  {stopId: '40820', stop: 'Rosemont', direction: ''},
-  {stopId: '41280', stop: 'Jefferson Park', direction: ''},
-  {stopId: '40550', stop: 'Irving Park (Blue)', direction: ''},
-  {stopId: '41330', stop: 'Montrose (Blue)', direction: ''},
-  {stopId: '40970', stop: 'Cicero (Blue)', direction: ''},
-  {stopId: '40920', stop: 'Pulaski (Blue)', direction: ''},
-  {stopId: '40250', stop: 'Kedzie-Homan', direction: ''},
-  {stopId: '40590', stop: 'Damen (Blue)', direction: ''},
-  {stopId: '40350', stop: 'UIC-Halsted', direction: ''},
-  {stopId: '40470', stop: 'Racine', direction: ''},
-  {stopId: '40430', stop: 'Clinton (Blue)', direction: ''},
-  {stopId: '40370', stop: 'Washington (Blue)', direction: ''},
-  {stopId: '40320', stop: 'Division', direction: ''},
-  {stopId: '41020', stop: 'Logan Square', direction: ''},
-  {stopId: '40670', stop: "Western (Blue - O'Hare)", direction: ''},
-  {stopId: '40570', stop: 'California (Blue)', direction: ''},
-  {stopId: '40060', stop: 'Belmont (Blue)', direction: ''},
-  {stopId: '41240', stop: 'Addison (Blue)', direction: ''},
-  {stopId: '40390', stop: 'Forest Park', direction: ''},
-  {stopId: '40180', stop: 'Oak Park (Blue)', direction: ''},
-  {stopId: '40010', stop: 'Austin (Blue)', direction: ''},
-  {stopId: '40330', stop: 'Grand (Red)', direction: ''},
-  {stopId: '41660', stop: 'Lake (Red)', direction: ''},
-  {stopId: '40630', stop: 'Clark/Division', direction: ''},
-  {stopId: '40650', stop: 'North/Clybourn', direction: ''},
-  {stopId: '41230', stop: '47th (Red)', direction: ''},
-  {stopId: '40990', stop: '69th (Red)', direction: ''},
-  {stopId: '40240', stop: '79th (Red)', direction: ''},
-  {stopId: '41430', stop: '87th (Red)', direction: ''},
-  {stopId: '41170', stop: 'Garfield (Red)', direction: ''},
-  {stopId: '40910', stop: '63rd (Red)', direction: ''},
-  {stopId: '40190', stop: 'Sox-35th', direction: ''},
-  {stopId: '41000', stop: 'Cermak-Chinatown', direction: ''},
-  {stopId: '41490', stop: 'Harrison', direction: ''},
-  {stopId: '41350', stop: 'Oak Park (Green)', direction: ''},
-  {stopId: '41260', stop: 'Austin (Green)', direction: ''},
-  {stopId: '40700', stop: 'Laramie', direction: ''},
-  {stopId: '40480', stop: 'Cicero (Green)', direction: ''},
-  {stopId: '41070', stop: 'Kedzie (Green)', direction: ''},
-  {stopId: '41360', stop: 'California (Green)', direction: ''},
-  {stopId: '40170', stop: 'Ashland (Green/Pink)', direction: ''},
-  {stopId: '41160', stop: 'Clinton (Green/Pink)', direction: ''},
-  {stopId: '41510', stop: 'Morgan', direction: ''},
-  {stopId: '41710', stop: 'Damen (Green)', direction: ''},
-  {stopId: '41690', stop: 'Cermak-McCormick Place', direction: ''},
-  {stopId: '41120', stop: '35th-Bronzeville-IIT', direction: ''},
-  {stopId: '41270', stop: '43rd', direction: ''},
-  {stopId: '41080', stop: '47th (Green)', direction: ''},
-  {stopId: '40130', stop: '51st', direction: ''},
-  {stopId: '41140', stop: 'King Drive', direction: ''},
-  {stopId: '40300', stop: 'Indiana', direction: ''},
-  {stopId: '40290', stop: 'Ashland/63rd', direction: ''},
-  {stopId: '40720', stop: 'Cottage Grove', direction: ''},
-  {stopId: '40120', stop: '35th/Archer', direction: ''},
-  {stopId: '41060', stop: 'Ashland (Orange)', direction: ''},
-  {stopId: '41130', stop: 'Halsted (Orange)', direction: ''},
-  {stopId: '41150', stop: 'Kedzie (Orange)', direction: ''},
-  {stopId: '40960', stop: 'Pulaski (Orange)', direction: ''},
-  {stopId: '40310', stop: 'Western (Orange)', direction: ''},
-  {stopId: '40930', stop: 'Midway', direction: ''},
-  {stopId: '40580', stop: '54th/Cermak', direction: ''},
-  {stopId: '40420', stop: 'Cicero (Pink)', direction: ''},
-  {stopId: '41040', stop: 'Kedzie (Pink)', direction: ''},
-  {stopId: '40600', stop: 'Kostner', direction: ''},
-  {stopId: '40780', stop: 'Central Park', direction: ''},
-  {stopId: '40440', stop: 'California (Pink)', direction: ''},
-  {stopId: '40210', stop: 'Damen (Pink)', direction: ''},
-  {stopId: '41030', stop: 'Polk', direction: ''},
-  {stopId: '40830', stop: '18th', direction: ''},
-  {stopId: '40740', stop: 'Western (Pink)', direction: ''},
-  {stopId: '40140', stop: 'Dempster-Skokie', direction: ''},
-  {stopId: '41680', stop: 'Oakton-Skokie', direction: ''},
-];
-
-const CTA_LINES_BY_STOP: Record<string, string[]> = {
-  '40380': ['RED', 'BLUE', 'BRN', 'G', 'ORG', 'P', 'PINK'],
-  '41400': ['RED', 'G', 'ORG'],
-  '40900': ['RED', 'P', 'Y'],
-  '40890': ['BLUE'],
-  '40450': ['RED'],
-};
-
-const getCtaLinesForStop = (stopId: string) => CTA_LINES_BY_STOP[stopId] ?? ['RED', 'BLUE'];
-
 export default function ChicagoSubwayConfig({deviceId}: Props) {
+  const [stops, setStops] = useState<StopOption[]>([]);
   const [selectedLines, setSelectedLines] = useState<string[]>(['BLUE']);
   const [stopId, setStopId] = useState(CTA_DEFAULT_STOP_ID);
   const [stopName, setStopName] = useState(CTA_DEFAULT_STOP_NAME);
-  const [availableLines, setAvailableLines] = useState<string[]>(getCtaLinesForStop(CTA_DEFAULT_STOP_ID));
+  const [availableLines, setAvailableLines] = useState<string[]>(['RED', 'BLUE']);
   const [isSaving, setIsSaving] = useState(false);
   const [statusText, setStatusText] = useState('');
   const [stopQuery, setStopQuery] = useState('');
 
   const filteredStops = useMemo(() => {
     const q = stopQuery.trim().toLowerCase();
-    if (!q) return CTA_STOPS;
-    return CTA_STOPS.filter(
-      option =>
-        option.stop.toLowerCase().includes(q) ||
-        option.stopId.toLowerCase().includes(q),
-    );
-  }, [stopQuery]);
+    if (!q) return stops;
+    return stops.filter(option => option.stop.toLowerCase().includes(q) || option.stopId.toLowerCase().includes(q));
+  }, [stops, stopQuery]);
 
   useEffect(() => {
     let cancelled = false;
+
+    const loadOptions = async () => {
+      try {
+        const [stopsResponse, routesResponse] = await Promise.all([
+          fetch(`${API_BASE}/providers/chicago/stops/subway?limit=1000`),
+          fetch(`${API_BASE}/providers/chicago/routes/subway?limit=100`),
+        ]);
+
+        if (cancelled) return;
+
+        if (stopsResponse.ok) {
+          const data = await stopsResponse.json();
+          const nextStops: StopOption[] = Array.isArray(data?.stops)
+            ? data.stops
+                .map((item: any) => ({
+                  stopId: typeof item?.stopId === 'string' ? item.stopId : '',
+                  stop: typeof item?.stop === 'string' ? item.stop : '',
+                  direction: '',
+                }))
+                .filter((item: StopOption) => item.stopId.length > 0 && item.stop.length > 0)
+            : [];
+
+          setStops(nextStops);
+          const hasCurrentStop = nextStops.some((item: StopOption) => item.stopId.toUpperCase() === stopId.toUpperCase());
+          if (!hasCurrentStop && nextStops.length > 0) {
+            setStopId(nextStops[0].stopId);
+            setStopName(nextStops[0].stop);
+          }
+        }
+
+        if (routesResponse.ok) {
+          const data = await routesResponse.json();
+          const routes: RouteOption[] = Array.isArray(data?.routes)
+            ? data.routes
+                .map((item: any) => ({
+                  id: typeof item?.id === 'string' ? item.id.toUpperCase() : '',
+                  label: typeof item?.label === 'string' ? item.label : '',
+                }))
+                .filter((item: RouteOption) => item.id.length > 0)
+            : [];
+
+          const nextLines = routes.map(route => route.id);
+          if (nextLines.length > 0) {
+            setAvailableLines(nextLines);
+            setSelectedLines(prev => {
+              const filtered = prev.filter(line => nextLines.includes(line));
+              if (filtered.length > 0) return filtered.slice(0, MAX_SELECTED_LINES);
+              return nextLines.slice(0, MAX_SELECTED_LINES);
+            });
+          }
+        }
+      } catch {
+        // Keep defaults if options endpoint fails.
+      }
+    };
+
+    void loadOptions();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
     const loadConfig = async () => {
       try {
         const response = await fetch(`${API_BASE}/device/${deviceId}/config`);
         if (!response.ok) return;
+
         const data = await response.json();
         const firstProvider = typeof data?.config?.lines?.[0]?.provider === 'string' ? data.config.lines[0].provider : '';
         if (firstProvider !== 'cta-subway') return;
@@ -190,15 +116,8 @@ export default function ChicagoSubwayConfig({deviceId}: Props) {
 
         if (!cancelled && firstStopId.length > 0) {
           setStopId(firstStopId);
-          const foundStop = CTA_STOPS.find(s => s.stopId === firstStopId);
+          const foundStop = stops.find(s => s.stopId.toUpperCase() === firstStopId);
           setStopName(foundStop?.stop ?? firstStopId);
-          const stopLines = getCtaLinesForStop(firstStopId);
-          setAvailableLines(stopLines);
-          if (configuredLines.length > 0) {
-            const filtered = configuredLines.filter((line: string) => stopLines.includes(line));
-            setSelectedLines((filtered.length > 0 ? filtered : stopLines).slice(0, MAX_SELECTED_LINES));
-          }
-          return;
         }
 
         if (!cancelled && configuredLines.length > 0) {
@@ -218,18 +137,18 @@ export default function ChicagoSubwayConfig({deviceId}: Props) {
     };
   }, [deviceId]);
 
+  useEffect(() => {
+    if (stops.length === 0) return;
+    const found = stops.find(s => s.stopId.toUpperCase() === stopId.toUpperCase());
+    if (found) {
+      setStopName(found.stop);
+    }
+  }, [stopId, stops]);
+
   const chooseStop = useCallback((option: StopOption) => {
     setStopId(option.stopId);
     setStopName(option.stop);
     setStatusText('');
-
-    const stopLines = getCtaLinesForStop(option.stopId);
-    setAvailableLines(stopLines);
-    setSelectedLines(prev => {
-      const filtered = prev.filter(line => stopLines.includes(line));
-      if (filtered.length > 0) return filtered.slice(0, MAX_SELECTED_LINES);
-      return stopLines.slice(0, MAX_SELECTED_LINES);
-    });
   }, []);
 
   const toggleLine = useCallback((line: string) => {
@@ -301,7 +220,7 @@ export default function ChicagoSubwayConfig({deviceId}: Props) {
     <>
       <View style={styles.sectionCard}>
         <Text style={styles.sectionTitle}>Chicago Station</Text>
-        <Text style={styles.hintText}>Choose a CTA station (full list):</Text>
+        <Text style={styles.hintText}>Choose a CTA station (from GTFS data):</Text>
         <TextInput
           value={stopQuery}
           onChangeText={setStopQuery}
@@ -316,11 +235,7 @@ export default function ChicagoSubwayConfig({deviceId}: Props) {
               return (
                 <Pressable
                   key={option.stopId}
-                  style={({pressed}) => [
-                    styles.stopItem,
-                    isSelected && styles.stopItemSelected,
-                    pressed && styles.stopItemPressed,
-                  ]}
+                  style={({pressed}) => [styles.stopItem, isSelected && styles.stopItemSelected, pressed && styles.stopItemPressed]}
                   onPress={() => chooseStop(option)}>
                   <Text style={styles.stopItemTitle}>{option.stop}</Text>
                   <Text style={styles.stopItemSubtitle}>{option.stopId}</Text>
@@ -336,7 +251,7 @@ export default function ChicagoSubwayConfig({deviceId}: Props) {
         <Text style={styles.hintText}>Select up to 2 lines for {stopId}.</Text>
         <Text style={styles.destFixed}>Selected: {selectedLines.join(', ') || 'None'}</Text>
 
-        {availableLines.length === 0 && <Text style={styles.hintText}>No lines configured for this station.</Text>}
+        {availableLines.length === 0 && <Text style={styles.hintText}>No lines available.</Text>}
         <View style={styles.lineGrid}>{lineButtons}</View>
 
         <Pressable style={styles.saveButton} onPress={saveConfig} disabled={isSaving}>
