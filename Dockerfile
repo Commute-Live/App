@@ -3,6 +3,7 @@ FROM node:20.19.0-bookworm-slim
 WORKDIR /usr/src/app
 
 ENV EXPO_NO_TELEMETRY=1
+ENV CI=false
 
 COPY package.json package-lock.json ./
 RUN npm ci

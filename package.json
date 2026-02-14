@@ -3,14 +3,14 @@
   "main": "expo-router/entry",
   "version": "1.0.0",
   "scripts": {
-    "start": "npm run docker:start",
+    "start": "expo start --go",
     "android": "expo run:android",
     "ios": "expo run:ios",
     "web": "expo start --web",
     "docker:start": "docker compose up --build",
     "docker:stop": "docker compose down",
     "docker:reset": "docker compose down -v && docker compose up --build",
-    "start:expo": "expo start"
+    "start:expo": "expo start --go"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.3",

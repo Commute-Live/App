@@ -7,6 +7,7 @@ services:
     command: npm run start:expo -- --tunnel --clear
     environment:
       EXPO_NO_TELEMETRY: "1"
+      CI: "false"
       CHOKIDAR_USEPOLLING: "true"
       WATCHPACK_POLLING: "true"
     ports:
