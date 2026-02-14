@@ -17,7 +17,8 @@ type Action =
   | {type: 'toggleAutoDim'; value: boolean}
   | {type: 'setDeviceStatus'; status: DeviceStatus}
   | {type: 'setDeviceId'; deviceId: string | null}
-  | {type: 'setUserId'; userId: string | null};
+  | {type: 'setUserId'; userId: string | null}
+  | {type: 'clearAuth'};
 
 export interface Preset {
   name: string;
@@ -96,6 +97,8 @@ function reducer(state: AppState, action: Action): AppState {
       return {...state, deviceId: action.deviceId};
     case 'setUserId':
       return {...state, userId: action.userId};
+    case 'clearAuth':
+      return {...state, userId: null, deviceId: null, deviceStatus: 'unknown'};
     default:
       return state;
   }
@@ -115,6 +118,7 @@ const AppStateContext = createContext<{
   setDeviceStatus: (status: DeviceStatus) => void;
   setDeviceId: (deviceId: string | null) => void;
   setUserId: (userId: string | null) => void;
+  clearAuth: () => void;
 } | null>(null);
 
 export const AppStateProvider = ({children}: {children: React.ReactNode}) => {
@@ -134,6 +138,7 @@ export const AppStateProvider = ({children}: {children: React.ReactNode}) => {
       setDeviceStatus: (status: DeviceStatus) => dispatch({type: 'setDeviceStatus', status}),
       setDeviceId: (deviceId: string | null) => dispatch({type: 'setDeviceId', deviceId}),
       setUserId: (userId: string | null) => dispatch({type: 'setUserId', userId}),
+      clearAuth: () => dispatch({type: 'clearAuth'}),
     }),
     [],
   );
