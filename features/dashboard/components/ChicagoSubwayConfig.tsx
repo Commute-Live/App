@@ -8,7 +8,6 @@ const CTA_DEFAULT_STOP_NAME = 'Clark/Lake';
 const MAX_SELECTED_LINES = 2;
 
 type StopOption = {stopId: string; stop: string; direction: ''};
-type RouteOption = {id: string; label: string};
 
 type Props = {
   deviceId: string;
@@ -35,10 +34,7 @@ export default function ChicagoSubwayConfig({deviceId}: Props) {
 
     const loadOptions = async () => {
       try {
-        const [stopsResponse, routesResponse] = await Promise.all([
-          fetch(`${API_BASE}/providers/chicago/stops/subway?limit=1000`),
-          fetch(`${API_BASE}/providers/chicago/routes/subway?limit=100`),
-        ]);
+        const stopsResponse = await fetch(`${API_BASE}/providers/chicago/stops/subway?limit=1000`);
 
         if (cancelled) return;
 
@@ -59,28 +55,6 @@ export default function ChicagoSubwayConfig({deviceId}: Props) {
           if (!hasCurrentStop && nextStops.length > 0) {
             setStopId(nextStops[0].stopId);
             setStopName(nextStops[0].stop);
-          }
-        }
-
-        if (routesResponse.ok) {
-          const data = await routesResponse.json();
-          const routes: RouteOption[] = Array.isArray(data?.routes)
-            ? data.routes
-                .map((item: any) => ({
-                  id: typeof item?.id === 'string' ? item.id.toUpperCase() : '',
-                  label: typeof item?.label === 'string' ? item.label : '',
-                }))
-                .filter((item: RouteOption) => item.id.length > 0)
-            : [];
-
-          const nextLines = routes.map(route => route.id);
-          if (nextLines.length > 0) {
-            setAvailableLines(nextLines);
-            setSelectedLines(prev => {
-              const filtered = prev.filter(line => nextLines.includes(line));
-              if (filtered.length > 0) return filtered.slice(0, MAX_SELECTED_LINES);
-              return nextLines.slice(0, MAX_SELECTED_LINES);
-            });
           }
         }
       } catch {
@@ -144,6 +118,48 @@ export default function ChicagoSubwayConfig({deviceId}: Props) {
       setStopName(found.stop);
     }
   }, [stopId, stops]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadLinesForStop = async () => {
+      if (!stopId) return;
+      try {
+        const response = await fetch(`${API_BASE}/providers/chicago/stops/${encodeURIComponent(stopId)}/lines`);
+        if (!response.ok) {
+          if (!cancelled) {
+            setAvailableLines([]);
+          }
+          return;
+        }
+
+        const data = await response.json();
+        const nextLines = Array.isArray(data?.lines)
+          ? data.lines
+              .map((line: unknown) => (typeof line === 'string' ? line.toUpperCase() : ''))
+              .filter((line: string) => line.length > 0)
+          : [];
+
+        if (cancelled) return;
+        setAvailableLines(nextLines);
+        setSelectedLines(prev => {
+          const filtered = prev.filter(line => nextLines.includes(line));
+          if (filtered.length > 0) return filtered.slice(0, MAX_SELECTED_LINES);
+          return nextLines.slice(0, MAX_SELECTED_LINES);
+        });
+      } catch {
+        if (!cancelled) {
+          setAvailableLines([]);
+        }
+      }
+    };
+
+    void loadLinesForStop();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [stopId]);
 
   const chooseStop = useCallback((option: StopOption) => {
     setStopId(option.stopId);
