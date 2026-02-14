@@ -18,7 +18,8 @@ export default function ChicagoSubwayConfig({deviceId}: Props) {
   const [selectedLines, setSelectedLines] = useState<string[]>(['BLUE']);
   const [stopId, setStopId] = useState(CTA_DEFAULT_STOP_ID);
   const [stopName, setStopName] = useState(CTA_DEFAULT_STOP_NAME);
-  const [availableLines, setAvailableLines] = useState<string[]>(['RED', 'BLUE']);
+  const [availableLines, setAvailableLines] = useState<string[]>([]);
+  const [isLoadingLines, setIsLoadingLines] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [statusText, setStatusText] = useState('');
   const [stopQuery, setStopQuery] = useState('');
@@ -124,11 +125,17 @@ export default function ChicagoSubwayConfig({deviceId}: Props) {
 
     const loadLinesForStop = async () => {
       if (!stopId) return;
+      if (!cancelled) {
+        setIsLoadingLines(true);
+        setAvailableLines([]);
+      }
       try {
         const response = await fetch(`${API_BASE}/providers/chicago/stops/${encodeURIComponent(stopId)}/lines`);
         if (!response.ok) {
           if (!cancelled) {
             setAvailableLines([]);
+            setSelectedLines([]);
+            setIsLoadingLines(false);
           }
           return;
         }
@@ -147,9 +154,12 @@ export default function ChicagoSubwayConfig({deviceId}: Props) {
           if (filtered.length > 0) return filtered.slice(0, MAX_SELECTED_LINES);
           return nextLines.slice(0, MAX_SELECTED_LINES);
         });
+        setIsLoadingLines(false);
       } catch {
         if (!cancelled) {
           setAvailableLines([]);
+          setSelectedLines([]);
+          setIsLoadingLines(false);
         }
       }
     };
@@ -225,11 +235,11 @@ export default function ChicagoSubwayConfig({deviceId}: Props) {
           key={line}
           style={[styles.lineChip, selectedLines.includes(line) && styles.lineChipActive]}
           onPress={() => toggleLine(line)}
-          disabled={isSaving}>
+          disabled={isSaving || isLoadingLines}>
           <Text style={[styles.lineChipText, selectedLines.includes(line) && styles.lineChipTextActive]}>{line}</Text>
         </Pressable>
       )),
-    [availableLines, selectedLines, toggleLine, isSaving],
+    [availableLines, selectedLines, toggleLine, isSaving, isLoadingLines],
   );
 
   return (
@@ -267,10 +277,11 @@ export default function ChicagoSubwayConfig({deviceId}: Props) {
         <Text style={styles.hintText}>Select up to 2 lines for {stopId}.</Text>
         <Text style={styles.destFixed}>Selected: {selectedLines.join(', ') || 'None'}</Text>
 
-        {availableLines.length === 0 && <Text style={styles.hintText}>No lines available.</Text>}
+        {isLoadingLines && <Text style={styles.hintText}>Loading lines...</Text>}
+        {!isLoadingLines && availableLines.length === 0 && <Text style={styles.hintText}>No lines available.</Text>}
         <View style={styles.lineGrid}>{lineButtons}</View>
 
-        <Pressable style={styles.saveButton} onPress={saveConfig} disabled={isSaving}>
+        <Pressable style={styles.saveButton} onPress={saveConfig} disabled={isSaving || isLoadingLines}>
           <Text style={styles.saveButtonText}>{isSaving ? 'Saving...' : 'Save to Device'}</Text>
         </Pressable>
 

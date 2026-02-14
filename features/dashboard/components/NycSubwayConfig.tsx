@@ -194,6 +194,7 @@ export default function NycSubwayConfig({deviceId, providerId = 'mta-subway'}: P
       const normalizedLine = (selectedLines[0] ?? '').trim().toUpperCase();
       if (!normalizedLine.length) {
         setAvailableLines([]);
+        setSelectedLines([]);
         return;
       }
       setAvailableLines([normalizedLine]);
@@ -209,10 +210,14 @@ export default function NycSubwayConfig({deviceId, providerId = 'mta-subway'}: P
 
     const run = async () => {
       setIsLoadingLines(true);
+      setAvailableLines([]);
       try {
         const response = await fetch(`${API_BASE}/stops/${encodeURIComponent(normalizedStopId)}/lines`);
         if (!response.ok) {
-          if (!cancelled) setAvailableLines([]);
+          if (!cancelled) {
+            setAvailableLines([]);
+            setSelectedLines([]);
+          }
           return;
         }
 
@@ -235,7 +240,10 @@ export default function NycSubwayConfig({deviceId, providerId = 'mta-subway'}: P
           });
         }
       } catch {
-        if (!cancelled) setAvailableLines([]);
+        if (!cancelled) {
+          setAvailableLines([]);
+          setSelectedLines([]);
+        }
       } finally {
         if (!cancelled) setIsLoadingLines(false);
       }
@@ -460,7 +468,10 @@ export default function NycSubwayConfig({deviceId, providerId = 'mta-subway'}: P
         )}
         {!isBusMode && <View style={styles.lineGrid}>{lineButtons}</View>}
 
-        <Pressable style={styles.saveButton} onPress={saveConfig} disabled={isSaving}>
+        <Pressable
+          style={styles.saveButton}
+          onPress={saveConfig}
+          disabled={isSaving || isLoadingLines || isLoadingStops || (isBusMode && isLoadingBusRoutes)}>
           <Text style={styles.saveButtonText}>{isSaving ? 'Saving...' : 'Save to Device'}</Text>
         </Pressable>
 
