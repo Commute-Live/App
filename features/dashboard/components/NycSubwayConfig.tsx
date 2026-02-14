@@ -1,5 +1,5 @@
 import React, {useCallback, useEffect, useMemo, useState} from 'react';
-import {Pressable, ScrollView, StyleSheet, Text, TextInput, View} from 'react-native';
+import {Pressable, ScrollView, StyleSheet, Text, View} from 'react-native';
 import {colors, radii, spacing} from '../../../theme';
 
 const API_BASE = 'https://api.commutelive.com';
@@ -9,6 +9,7 @@ const MAX_SELECTED_LINES = 2;
 const MAX_SELECTED_BUS_LINES = 1;
 
 type StopOption = {stopId: string; stop: string; direction: 'N' | 'S' | ''};
+type BusRouteOption = {id: string; label: string};
 
 type Props = {
   deviceId: string;
@@ -20,7 +21,9 @@ export default function NycSubwayConfig({deviceId, providerId = 'mta-subway'}: P
   const [selectedLines, setSelectedLines] = useState<string[]>(['E', 'A']);
   const [stopId, setStopId] = useState(DEFAULT_STOP_ID);
   const [stopName, setStopName] = useState(DEFAULT_STOP_NAME);
-  const [lineInput, setLineInput] = useState('');
+  const [busRouteOptions, setBusRouteOptions] = useState<BusRouteOption[]>([]);
+  const [busRouteDropdownOpen, setBusRouteDropdownOpen] = useState(false);
+  const [isLoadingBusRoutes, setIsLoadingBusRoutes] = useState(false);
   const [allStops, setAllStops] = useState<StopOption[]>([]);
   const [stopOptions, setStopOptions] = useState<StopOption[]>([]);
   const [stopDropdownOpen, setStopDropdownOpen] = useState(false);
@@ -58,7 +61,6 @@ export default function NycSubwayConfig({deviceId, providerId = 'mta-subway'}: P
           const maxLines = isBusMode ? MAX_SELECTED_BUS_LINES : MAX_SELECTED_LINES;
           const picked = configuredLines.slice(0, maxLines);
           setSelectedLines(picked);
-          setLineInput(picked[0] ?? '');
         }
         if (!cancelled && firstStopId.length > 0) {
           const normalized = firstStopId.toUpperCase();
@@ -88,19 +90,17 @@ export default function NycSubwayConfig({deviceId, providerId = 'mta-subway'}: P
     setAllStops([]);
     setStopOptions([]);
     setStopDropdownOpen(false);
+    setBusRouteDropdownOpen(false);
     setStatusText('');
     setStopError('');
     if (isBusMode) {
       setSelectedLines(prev => {
-        const next = prev.length > 0 ? [prev[0]] : ['M15'];
-        setLineInput(next[0] ?? '');
-        return next;
+        return prev.length > 0 ? [prev[0]] : ['M15'];
       });
       setStopId('404040');
       setStopName('Select bus stop');
     } else {
       setSelectedLines(prev => (prev.length > 0 ? prev.slice(0, MAX_SELECTED_LINES) : ['E', 'A']));
-      setLineInput('');
       setStopId(DEFAULT_STOP_ID);
       setStopName(DEFAULT_STOP_NAME);
     }
@@ -108,10 +108,48 @@ export default function NycSubwayConfig({deviceId, providerId = 'mta-subway'}: P
 
   useEffect(() => {
     let cancelled = false;
+    if (!isBusMode) return;
+
+    const run = async () => {
+      setIsLoadingBusRoutes(true);
+      try {
+        const response = await fetch(`${API_BASE}/providers/new-york/routes/bus?limit=1000`);
+        if (!response.ok) return;
+        const data = await response.json();
+        if (!cancelled) {
+          const routes = Array.isArray(data?.routes) ? (data.routes as BusRouteOption[]) : [];
+          setBusRouteOptions(routes);
+          setSelectedLines(prev => {
+            const current = (prev[0] ?? '').trim().toUpperCase();
+            if (current.length > 0 && routes.some(route => route.id.toUpperCase() === current)) {
+              return [current];
+            }
+            if (routes.length > 0) {
+              return [routes[0].id.toUpperCase()];
+            }
+            return prev;
+          });
+        }
+      } catch {
+        if (!cancelled) setBusRouteOptions([]);
+      } finally {
+        if (!cancelled) setIsLoadingBusRoutes(false);
+      }
+    };
+
+    void run();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isBusMode]);
+
+  useEffect(() => {
+    let cancelled = false;
     if (!stopDropdownOpen) return;
 
     const run = async () => {
-      const primaryRoute = (isBusMode ? lineInput : selectedLines[0])?.trim().toUpperCase();
+      const primaryRoute = selectedLines[0]?.trim().toUpperCase();
       if (!primaryRoute) {
         if (!cancelled) setAllStops([]);
         return;
@@ -140,7 +178,7 @@ export default function NycSubwayConfig({deviceId, providerId = 'mta-subway'}: P
     return () => {
       cancelled = true;
     };
-  }, [stopDropdownOpen, selectedLines, lineInput, isBusMode]);
+  }, [stopDropdownOpen, selectedLines, isBusMode]);
 
   useEffect(() => {
     if (!stopDropdownOpen) {
@@ -152,13 +190,12 @@ export default function NycSubwayConfig({deviceId, providerId = 'mta-subway'}: P
 
   useEffect(() => {
     if (isBusMode) {
-      const normalizedLine = lineInput.trim().toUpperCase();
+      const normalizedLine = (selectedLines[0] ?? '').trim().toUpperCase();
       if (!normalizedLine.length) {
         setAvailableLines([]);
         return;
       }
       setAvailableLines([normalizedLine]);
-      setSelectedLines([normalizedLine]);
       return;
     }
 
@@ -189,8 +226,11 @@ export default function NycSubwayConfig({deviceId, providerId = 'mta-subway'}: P
           setAvailableLines(lines);
           setSelectedLines(prev => {
             const filtered = prev.filter(line => lines.includes(line));
-            if (filtered.length > 0) return filtered.slice(0, MAX_SELECTED_LINES);
-            return lines.slice(0, MAX_SELECTED_LINES);
+            const next = (filtered.length > 0 ? filtered : lines).slice(0, MAX_SELECTED_LINES);
+            if (next.length === prev.length && next.every((line: string, idx: number) => line === prev[idx])) {
+              return prev;
+            }
+            return next;
           });
         }
       } catch {
@@ -205,7 +245,7 @@ export default function NycSubwayConfig({deviceId, providerId = 'mta-subway'}: P
     return () => {
       cancelled = true;
     };
-  }, [stopId, lineInput, isBusMode]);
+  }, [stopId, isBusMode]);
 
   const chooseStop = useCallback((option: StopOption) => {
     setStopId(option.stopId.toUpperCase());
@@ -216,10 +256,21 @@ export default function NycSubwayConfig({deviceId, providerId = 'mta-subway'}: P
     setStatusText('');
   }, []);
 
+  const chooseBusRoute = useCallback((option: BusRouteOption) => {
+    const route = option.id.trim().toUpperCase();
+    setSelectedLines(route ? [route] : []);
+    setBusRouteDropdownOpen(false);
+    setAllStops([]);
+    setStopOptions([]);
+    setStopId('');
+    setStopName('Select bus stop');
+    setStopError('');
+    setStatusText('');
+  }, []);
+
   const toggleLine = useCallback((line: string) => {
     if (isBusMode) {
       setSelectedLines([line]);
-      setLineInput(line);
       return;
     }
     setStatusText('');
@@ -301,6 +352,13 @@ export default function NycSubwayConfig({deviceId, providerId = 'mta-subway'}: P
     [availableLines, selectedLines, toggleLine, isSaving, isLoadingLines],
   );
 
+  const selectedBusRoute = selectedLines[0]?.trim().toUpperCase() ?? '';
+  const selectedBusRouteLabel = useMemo(() => {
+    if (!selectedBusRoute) return 'Select bus route';
+    const match = busRouteOptions.find(option => option.id.toUpperCase() === selectedBusRoute);
+    return match?.label ?? selectedBusRoute;
+  }, [busRouteOptions, selectedBusRoute]);
+
   return (
     <>
       <View style={styles.sectionCard}>
@@ -308,20 +366,39 @@ export default function NycSubwayConfig({deviceId, providerId = 'mta-subway'}: P
         {isBusMode && (
           <>
             <Text style={styles.hintText}>Bus route</Text>
-            <TextInput
-              value={lineInput}
-              onChangeText={value => {
-                const normalized = value.toUpperCase().replace(/\s+/g, '');
-                setLineInput(normalized);
-                setSelectedLines(normalized ? [normalized] : []);
-                setAllStops([]);
-                setStopOptions([]);
-              }}
-              placeholder="e.g. M15, Bx12, Q44"
-              placeholderTextColor={colors.textMuted}
-              autoCapitalize="characters"
-              style={styles.routeInput}
-            />
+            <Pressable
+              style={({pressed}) => [
+                styles.stationSelector,
+                busRouteDropdownOpen && styles.stationSelectorOpen,
+                pressed && styles.stationSelectorPressed,
+              ]}
+              onPress={() => setBusRouteDropdownOpen(prev => !prev)}>
+              <Text style={styles.stationSelectorText}>{selectedBusRouteLabel}</Text>
+              <Text style={styles.stationSelectorCaret}>{busRouteDropdownOpen ? '▲' : '▼'}</Text>
+            </Pressable>
+            {isLoadingBusRoutes && <Text style={styles.hintText}>Loading NYC bus routes...</Text>}
+            {busRouteDropdownOpen && !isLoadingBusRoutes && busRouteOptions.length > 0 && (
+              <View style={styles.stopList}>
+                <ScrollView style={styles.stopListScroll} nestedScrollEnabled>
+                  {busRouteOptions.map(option => {
+                    const isSelected = option.id.toUpperCase() === selectedBusRoute;
+                    return (
+                      <Pressable
+                        key={option.id}
+                        style={({pressed}) => [
+                          styles.stopItem,
+                          isSelected && styles.stopItemSelected,
+                          pressed && styles.stopItemPressed,
+                        ]}
+                        onPress={() => chooseBusRoute(option)}>
+                        <Text style={styles.stopItemTitle}>{option.id}</Text>
+                        <Text style={styles.stopItemSubtitle}>{option.label}</Text>
+                      </Pressable>
+                    );
+                  })}
+                </ScrollView>
+              </View>
+            )}
           </>
         )}
 
@@ -422,16 +499,6 @@ const styles = StyleSheet.create({
   stationSelectorPressed: {opacity: 0.9},
   stationSelectorText: {color: colors.text, fontSize: 12, fontWeight: '700', flexShrink: 1},
   stationSelectorCaret: {color: colors.textMuted, fontSize: 10, marginLeft: spacing.xs},
-  routeInput: {
-    borderColor: colors.border,
-    borderWidth: 1,
-    borderRadius: radii.md,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.sm,
-    color: colors.text,
-    backgroundColor: colors.surface,
-    marginBottom: spacing.sm,
-  },
   hintText: {color: colors.textMuted, fontSize: 11, marginBottom: spacing.xs},
   errorText: {color: colors.warning, fontSize: 11, marginBottom: spacing.xs},
   stopList: {
