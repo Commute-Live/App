@@ -1,8 +1,8 @@
 import React, {useCallback, useEffect, useMemo, useState} from 'react';
 import {Pressable, ScrollView, StyleSheet, Text, TextInput, View} from 'react-native';
 import {colors, radii, spacing} from '../../../theme';
+import {apiFetch} from '../../../lib/api';
 
-const API_BASE = 'https://api.commutelive.com';
 const MAX_PHILLY_LINES = 2;
 
 type City = 'boston' | 'philadelphia';
@@ -22,20 +22,20 @@ const providerFor = (city: City, mode: Mode) => {
 
 const stopsEndpointFor = (city: City, mode: Mode, route: string) => {
   if (city === 'boston') {
-    return mode === 'bus'
-      ? `${API_BASE}/providers/boston/stops/bus?route=${encodeURIComponent(route)}&limit=1000`
-      : `${API_BASE}/providers/boston/stops/subway?route=${encodeURIComponent(route)}&limit=1000`;
+      return mode === 'bus'
+      ? `/providers/boston/stops/bus?route=${encodeURIComponent(route)}&limit=1000`
+      : `/providers/boston/stops/subway?route=${encodeURIComponent(route)}&limit=1000`;
   }
   return mode === 'bus'
-    ? `${API_BASE}/providers/philly/stops/bus?limit=1000`
-    : `${API_BASE}/providers/philly/stops/train?limit=1000`;
+    ? '/providers/philly/stops/bus?limit=1000'
+    : '/providers/philly/stops/train?limit=1000';
 };
 
 const linesForStopEndpointFor = (city: City, mode: Mode, stopId: string) => {
   if (city !== 'philadelphia') return '';
   return mode === 'bus'
-    ? `${API_BASE}/providers/philly/stops/bus/${encodeURIComponent(stopId)}/lines`
-    : `${API_BASE}/providers/philly/stops/train/${encodeURIComponent(stopId)}/lines`;
+    ? `/providers/philly/stops/bus/${encodeURIComponent(stopId)}/lines`
+    : `/providers/philly/stops/train/${encodeURIComponent(stopId)}/lines`;
 };
 
 const cityTitle = (city: City) => (city === 'boston' ? 'Boston' : 'Philly');
@@ -73,7 +73,7 @@ export default function RegionalTransitConfig({deviceId, city, mode}: Props) {
     const loadLines = async () => {
       setIsLoadingRoutes(true);
       try {
-        const response = await fetch(linesForStopEndpointFor(city, mode, stopId));
+        const response = await apiFetch(linesForStopEndpointFor(city, mode, stopId));
         if (!response.ok) {
           if (!cancelled) setLineOptions([]);
           return;
@@ -111,7 +111,7 @@ export default function RegionalTransitConfig({deviceId, city, mode}: Props) {
 
     const loadConfig = async () => {
       try {
-        const response = await fetch(`${API_BASE}/device/${deviceId}/config`);
+        const response = await apiFetch(`/device/${deviceId}/config`);
         if (!response.ok) return;
         const data = await response.json();
         const rows = Array.isArray(data?.config?.lines) ? data.config.lines : [];
@@ -154,7 +154,7 @@ export default function RegionalTransitConfig({deviceId, city, mode}: Props) {
     const loadStops = async () => {
       setIsLoadingStops(true);
       try {
-        const response = await fetch(stopsEndpointFor(city, mode, route.trim()));
+        const response = await apiFetch(stopsEndpointFor(city, mode, route.trim()));
         if (!response.ok) {
           if (!cancelled) setStops([]);
           return;
@@ -209,7 +209,7 @@ export default function RegionalTransitConfig({deviceId, city, mode}: Props) {
     setIsSaving(true);
     setStatusText('');
     try {
-      const response = await fetch(`${API_BASE}/device/${deviceId}/config`, {
+      const response = await apiFetch(`/device/${deviceId}/config`, {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({
@@ -226,7 +226,7 @@ export default function RegionalTransitConfig({deviceId, city, mode}: Props) {
         return;
       }
 
-      await fetch(`${API_BASE}/refresh/device/${deviceId}`, {method: 'POST'});
+      await apiFetch(`/refresh/device/${deviceId}`, {method: 'POST'});
       setStatusText(`Updated ${linesToSave.join(', ')} @ ${stopName} (${stopTrimmed})`);
     } catch {
       setStatusText('Network error');

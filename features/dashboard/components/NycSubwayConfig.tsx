@@ -1,8 +1,8 @@
 import React, {useCallback, useEffect, useMemo, useState} from 'react';
 import {Pressable, ScrollView, StyleSheet, Text, View} from 'react-native';
 import {colors, radii, spacing} from '../../../theme';
+import {apiFetch} from '../../../lib/api';
 
-const API_BASE = 'https://api.commutelive.com';
 const DEFAULT_STOP_ID = '725N';
 const DEFAULT_STOP_NAME = 'Times Sq-42 St';
 const MAX_SELECTED_LINES = 2;
@@ -39,7 +39,7 @@ export default function NycSubwayConfig({deviceId, providerId = 'mta-subway'}: P
     let cancelled = false;
     const loadConfig = async () => {
       try {
-        const response = await fetch(`${API_BASE}/device/${deviceId}/config`);
+        const response = await apiFetch(`/device/${deviceId}/config`);
         if (!response.ok) return;
         const data = await response.json();
         const firstProvider = typeof data?.config?.lines?.[0]?.provider === 'string' ? data.config.lines[0].provider : '';
@@ -115,7 +115,7 @@ export default function NycSubwayConfig({deviceId, providerId = 'mta-subway'}: P
     const run = async () => {
       setIsLoadingBusRoutes(true);
       try {
-        const response = await fetch(`${API_BASE}/providers/new-york/routes/bus?limit=1000`);
+        const response = await apiFetch('/providers/new-york/routes/bus?limit=1000');
         if (!response.ok) return;
         const data = await response.json();
         if (!cancelled) {
@@ -163,10 +163,8 @@ export default function NycSubwayConfig({deviceId, providerId = 'mta-subway'}: P
       setStopsError('');
       try {
         const response = isBusMode
-          ? await fetch(
-              `${API_BASE}/providers/new-york/stops/bus?route=${encodeURIComponent(primaryRoute)}&limit=1000`,
-            )
-          : await fetch(`${API_BASE}/stops?limit=1000`);
+          ? await apiFetch(`/providers/new-york/stops/bus?route=${encodeURIComponent(primaryRoute)}&limit=1000`)
+          : await apiFetch('/stops?limit=1000');
         console.log('[NYC stops] request', {
           mode: isBusMode ? 'bus' : 'subway',
           route: primaryRoute ?? null,
@@ -241,7 +239,7 @@ export default function NycSubwayConfig({deviceId, providerId = 'mta-subway'}: P
       setIsLoadingLines(true);
       setAvailableLines([]);
       try {
-        const response = await fetch(`${API_BASE}/stops/${encodeURIComponent(normalizedStopId)}/lines`);
+        const response = await apiFetch(`/stops/${encodeURIComponent(normalizedStopId)}/lines`);
         console.log('[NYC lines] request', {stopId: normalizedStopId, status: response.status, ok: response.ok});
         if (!response.ok) {
           if (!cancelled) {
@@ -351,7 +349,7 @@ export default function NycSubwayConfig({deviceId, providerId = 'mta-subway'}: P
     }
 
     try {
-      const configResponse = await fetch(`${API_BASE}/device/${deviceId}/config`, {
+      const configResponse = await apiFetch(`/device/${deviceId}/config`, {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({
@@ -369,7 +367,7 @@ export default function NycSubwayConfig({deviceId, providerId = 'mta-subway'}: P
         return;
       }
 
-      await fetch(`${API_BASE}/refresh/device/${deviceId}`, {method: 'POST'});
+      await apiFetch(`/refresh/device/${deviceId}`, {method: 'POST'});
       if (isBusMode) {
         setStatusText(`Updated ${selectedLines.join(', ')} at ${normalizedStopId}`);
       } else {

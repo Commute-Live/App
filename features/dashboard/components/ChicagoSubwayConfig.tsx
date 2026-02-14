@@ -1,8 +1,8 @@
 import React, {useCallback, useEffect, useMemo, useState} from 'react';
 import {Pressable, ScrollView, StyleSheet, Text, View} from 'react-native';
 import {colors, radii, spacing} from '../../../theme';
+import {apiFetch} from '../../../lib/api';
 
-const API_BASE = 'https://api.commutelive.com';
 const CTA_DEFAULT_STOP_ID = '40380';
 const CTA_DEFAULT_STOP_NAME = 'Clark/Lake';
 const MAX_SELECTED_LINES = 2;
@@ -35,7 +35,7 @@ export default function ChicagoSubwayConfig({deviceId}: Props) {
         setStopsError('');
       }
       try {
-        const stopsResponse = await fetch(`${API_BASE}/providers/chicago/stops/subway?limit=1000`);
+        const stopsResponse = await apiFetch('/providers/chicago/stops/subway?limit=1000');
         console.log('[CTA stops] request', {status: stopsResponse.status, ok: stopsResponse.ok});
 
         if (cancelled) return;
@@ -85,7 +85,7 @@ export default function ChicagoSubwayConfig({deviceId}: Props) {
 
     const loadConfig = async () => {
       try {
-        const response = await fetch(`${API_BASE}/device/${deviceId}/config`);
+        const response = await apiFetch(`/device/${deviceId}/config`);
         if (!response.ok) return;
 
         const data = await response.json();
@@ -140,7 +140,7 @@ export default function ChicagoSubwayConfig({deviceId}: Props) {
         setAvailableLines([]);
       }
       try {
-        const response = await fetch(`${API_BASE}/providers/chicago/stops/${encodeURIComponent(stopId)}/lines`);
+        const response = await apiFetch(`/providers/chicago/stops/${encodeURIComponent(stopId)}/lines`);
         console.log('[CTA lines] request', {stopId, status: response.status, ok: response.ok});
         if (!response.ok) {
           if (!cancelled) {
@@ -219,7 +219,7 @@ export default function ChicagoSubwayConfig({deviceId}: Props) {
     }
 
     try {
-      const configResponse = await fetch(`${API_BASE}/device/${deviceId}/config`, {
+      const configResponse = await apiFetch(`/device/${deviceId}/config`, {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({
@@ -236,7 +236,7 @@ export default function ChicagoSubwayConfig({deviceId}: Props) {
         return;
       }
 
-      await fetch(`${API_BASE}/refresh/device/${deviceId}`, {method: 'POST'});
+      await apiFetch(`/refresh/device/${deviceId}`, {method: 'POST'});
       setStatusText(`Updated ${selectedLines.join(', ')} at ${stopName} (${stopId})`);
     } catch {
       setStatusText('Network error');
