@@ -6,15 +6,22 @@ import {colors, spacing, radii} from '../../../theme';
 import {useSelectedDevice} from '../../../hooks/useSelectedDevice';
 import NycSubwayConfig from '../components/NycSubwayConfig';
 import ChicagoSubwayConfig from '../components/ChicagoSubwayConfig';
+import RegionalTransitConfig from '../components/RegionalTransitConfig';
 
 const API_BASE = 'https://api.commutelive.com';
 
-type ProviderOption = {id: 'mta-subway' | 'mta-bus' | 'cta-subway'; label: string};
+type CityOption = {id: 'new-york' | 'philadelphia' | 'boston' | 'chicago'; label: string};
+type ModeOption = {id: 'train' | 'bus'; label: string};
 
-const providerOptions: ProviderOption[] = [
-  {id: 'mta-subway', label: 'NYC Subway'},
-  {id: 'mta-bus', label: 'NYC Bus'},
-  {id: 'cta-subway', label: 'Chicago Subway'},
+const cityOptions: CityOption[] = [
+  {id: 'new-york', label: 'New York'},
+  {id: 'philadelphia', label: 'Philly'},
+  {id: 'boston', label: 'Boston'},
+  {id: 'chicago', label: 'Chicago'},
+];
+const modeOptions: ModeOption[] = [
+  {id: 'train', label: 'Train'},
+  {id: 'bus', label: 'Bus'},
 ];
 
 const navItems: BottomNavItem[] = [
@@ -26,7 +33,8 @@ const navItems: BottomNavItem[] = [
 
 export default function DashboardScreen() {
   const selectedDevice = useSelectedDevice();
-  const [selectedProvider, setSelectedProvider] = useState<ProviderOption['id']>('mta-subway');
+  const [selectedCity, setSelectedCity] = useState<CityOption['id']>('new-york');
+  const [selectedMode, setSelectedMode] = useState<ModeOption['id']>('train');
 
   useEffect(() => {
     let cancelled = false;
@@ -37,8 +45,37 @@ export default function DashboardScreen() {
         const data = await response.json();
         const firstProvider = typeof data?.config?.lines?.[0]?.provider === 'string' ? data.config.lines[0].provider : '';
 
-        if (!cancelled && (firstProvider === 'mta-subway' || firstProvider === 'mta-bus' || firstProvider === 'cta-subway')) {
-          setSelectedProvider(firstProvider);
+        if (cancelled) return;
+        if (firstProvider === 'mta-subway' || firstProvider === 'mta') {
+          setSelectedCity('new-york');
+          setSelectedMode('train');
+          return;
+        }
+        if (firstProvider === 'mta-bus') {
+          setSelectedCity('new-york');
+          setSelectedMode('bus');
+          return;
+        }
+        if (firstProvider === 'mbta') {
+          setSelectedCity('boston');
+          const firstLine = typeof data?.config?.lines?.[0]?.line === 'string' ? data.config.lines[0].line : '';
+          const isBusLike = /^[0-9]/.test(firstLine.trim());
+          setSelectedMode(isBusLike ? 'bus' : 'train');
+          return;
+        }
+        if (firstProvider === 'cta-subway') {
+          setSelectedCity('chicago');
+          setSelectedMode('train');
+          return;
+        }
+        if (firstProvider === 'septa-bus' || firstProvider === 'philly-bus') {
+          setSelectedCity('philadelphia');
+          setSelectedMode('bus');
+          return;
+        }
+        if (firstProvider === 'septa-rail' || firstProvider === 'philly-rail') {
+          setSelectedCity('philadelphia');
+          setSelectedMode('train');
         }
       } catch {
         // Keep default provider.
@@ -53,6 +90,8 @@ export default function DashboardScreen() {
       cancelled = true;
     };
   }, [selectedDevice.id]);
+
+  const availableModes = selectedCity === 'chicago' ? modeOptions.filter(m => m.id === 'train') : modeOptions;
 
   return (
     <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
@@ -77,15 +116,30 @@ export default function DashboardScreen() {
           </View>
 
           <View style={styles.sectionCard}>
-            <Text style={styles.sectionTitle}>Pick Provider</Text>
+            <Text style={styles.sectionTitle}>Pick City</Text>
             <View style={styles.providerRow}>
-              {providerOptions.map(option => (
+              {cityOptions.map(option => (
                 <Pressable
                   key={option.id}
-                  style={[styles.providerChip, selectedProvider === option.id && styles.providerChipActive]}
-                  onPress={() => setSelectedProvider(option.id)}>
+                  style={[styles.providerChip, selectedCity === option.id && styles.providerChipActive]}
+                  onPress={() => setSelectedCity(option.id)}>
                   <Text
-                    style={[styles.providerChipText, selectedProvider === option.id && styles.providerChipTextActive]}>
+                    style={[styles.providerChipText, selectedCity === option.id && styles.providerChipTextActive]}>
+                    {option.label}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+
+            <Text style={[styles.sectionTitle, styles.modeTitle]}>Pick Type</Text>
+            <View style={styles.providerRow}>
+              {availableModes.map(option => (
+                <Pressable
+                  key={option.id}
+                  style={[styles.providerChip, selectedMode === option.id && styles.providerChipActive]}
+                  onPress={() => setSelectedMode(option.id)}>
+                  <Text
+                    style={[styles.providerChipText, selectedMode === option.id && styles.providerChipTextActive]}>
                     {option.label}
                   </Text>
                 </Pressable>
@@ -93,10 +147,19 @@ export default function DashboardScreen() {
             </View>
           </View>
 
-          {selectedProvider === 'mta-subway' || selectedProvider === 'mta-bus' ? (
-            <NycSubwayConfig deviceId={selectedDevice.id} providerId={selectedProvider} />
-          ) : (
+          {selectedCity === 'new-york' ? (
+            <NycSubwayConfig
+              deviceId={selectedDevice.id}
+              providerId={selectedMode === 'bus' ? 'mta-bus' : 'mta-subway'}
+            />
+          ) : selectedCity === 'chicago' ? (
             <ChicagoSubwayConfig deviceId={selectedDevice.id} />
+          ) : (
+            <RegionalTransitConfig
+              deviceId={selectedDevice.id}
+              city={selectedCity === 'boston' ? 'boston' : 'philadelphia'}
+              mode={selectedMode}
+            />
           )}
         </ScrollView>
 
@@ -147,6 +210,7 @@ const styles = StyleSheet.create({
     marginBottom: spacing.sm,
   },
   sectionTitle: {color: colors.text, fontSize: 16, fontWeight: '800', marginBottom: spacing.sm},
+  modeTitle: {marginTop: spacing.sm},
   providerRow: {flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs},
   providerChip: {
     borderColor: colors.border,
