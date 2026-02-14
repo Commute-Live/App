@@ -3,15 +3,35 @@ import {Image, Pressable, ScrollView, StyleSheet, Text, TextInput, View} from 'r
 import {SafeAreaView} from 'react-native-safe-area-context';
 import {useRouter} from 'expo-router';
 import {colors, spacing, radii} from '../../../theme';
-import {useAppState} from '../../../state/appState';
-
-const HARDCODED_DEVICE_ID = 'esp32-B44AC2F16E20';
+import {useAuth} from '../../../state/authProvider';
 
 export default function LoginScreen() {
   const router = useRouter();
-  const {setDeviceId, setDeviceStatus} = useAppState();
+  const {signIn, clearAuth} = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [errorText, setErrorText] = useState('');
+
+  const onLogin = async () => {
+    if (!email.trim() || !password) {
+      setErrorText('Email and password are required');
+      return;
+    }
+
+    setIsSubmitting(true);
+    setErrorText('');
+
+    const result = await signIn(email, password);
+    setIsSubmitting(false);
+
+    if (!result.ok) {
+      setErrorText(result.error);
+      return;
+    }
+
+    router.replace('/dashboard');
+  };
 
   return (
     <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
@@ -47,19 +67,25 @@ export default function LoginScreen() {
 
         <Pressable
           style={styles.primaryButton}
+          disabled={isSubmitting}
           onPress={() => {
-            setDeviceId(HARDCODED_DEVICE_ID);
-            setDeviceStatus('pairedOnline');
-            router.push('/dashboard');
+            void onLogin();
           }}>
-          <Text style={styles.primaryText}>Log in</Text>
+          <Text style={styles.primaryText}>{isSubmitting ? 'Logging in...' : 'Log in'}</Text>
         </Pressable>
+
+        {errorText ? <Text style={styles.errorText}>{errorText}</Text> : null}
 
         <Pressable style={styles.resetLink}>
           <Text style={styles.resetText}>Forgot password?</Text>
         </Pressable>
 
-        <Pressable style={styles.secondaryButton} onPress={() => router.push('/auth')}>
+        <Pressable
+          style={styles.secondaryButton}
+          onPress={() => {
+            clearAuth();
+            router.push('/auth');
+          }}>
           <Text style={styles.secondaryText}>Back</Text>
         </Pressable>
       </ScrollView>
@@ -108,4 +134,5 @@ const styles = StyleSheet.create({
   secondaryText: {color: colors.textMuted, fontWeight: '700', fontSize: 13},
   resetLink: {alignItems: 'center', marginTop: spacing.sm},
   resetText: {color: colors.textMuted, fontWeight: '700', fontSize: 12},
+  errorText: {color: '#FCA5A5', fontSize: 12, fontWeight: '700', marginTop: spacing.sm, textAlign: 'center'},
 });
