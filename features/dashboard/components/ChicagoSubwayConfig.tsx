@@ -36,11 +36,16 @@ export default function ChicagoSubwayConfig({deviceId}: Props) {
       }
       try {
         const stopsResponse = await fetch(`${API_BASE}/providers/chicago/stops/subway?limit=1000`);
+        console.log('[CTA stops] request', {status: stopsResponse.status, ok: stopsResponse.ok});
 
         if (cancelled) return;
 
         if (stopsResponse.ok) {
           const data = await stopsResponse.json();
+          console.log('[CTA stops] response', {
+            count: Array.isArray(data?.stops) ? data.stops.length : -1,
+            sample: Array.isArray(data?.stops) ? data.stops.slice(0, 2) : data,
+          });
           const nextStops: StopOption[] = Array.isArray(data?.stops)
             ? data.stops
                 .map((item: any) => ({
@@ -61,6 +66,7 @@ export default function ChicagoSubwayConfig({deviceId}: Props) {
           setStopsError('Failed to load CTA stations');
         }
       } catch {
+        console.log('[CTA stops] error');
         if (!cancelled) setStopsError('Failed to load CTA stations');
       } finally {
         if (!cancelled) setIsLoadingStops(false);
@@ -135,6 +141,7 @@ export default function ChicagoSubwayConfig({deviceId}: Props) {
       }
       try {
         const response = await fetch(`${API_BASE}/providers/chicago/stops/${encodeURIComponent(stopId)}/lines`);
+        console.log('[CTA lines] request', {stopId, status: response.status, ok: response.ok});
         if (!response.ok) {
           if (!cancelled) {
             setAvailableLines([]);
@@ -145,6 +152,10 @@ export default function ChicagoSubwayConfig({deviceId}: Props) {
         }
 
         const data = await response.json();
+        console.log('[CTA lines] response', {
+          stopId,
+          lines: Array.isArray(data?.lines) ? data.lines : data,
+        });
         const nextLines = Array.isArray(data?.lines)
           ? data.lines
               .map((line: unknown) => (typeof line === 'string' ? line.toUpperCase() : ''))
@@ -160,6 +171,7 @@ export default function ChicagoSubwayConfig({deviceId}: Props) {
         });
         setIsLoadingLines(false);
       } catch {
+        console.log('[CTA lines] error', {stopId});
         if (!cancelled) {
           setAvailableLines([]);
           setSelectedLines([]);
@@ -174,44 +186,6 @@ export default function ChicagoSubwayConfig({deviceId}: Props) {
       cancelled = true;
     };
   }, [stopId]);
-
-  useEffect(() => {
-    let cancelled = false;
-    if (!stopDropdownOpen || stops.length > 0 || isLoadingStops) return;
-
-    const retryLoadStops = async () => {
-      setIsLoadingStops(true);
-      setStopsError('');
-      try {
-        const response = await fetch(`${API_BASE}/providers/chicago/stops/subway?limit=1000`);
-        if (!response.ok) {
-          if (!cancelled) setStopsError('Failed to load CTA stations');
-          return;
-        }
-        const data = await response.json();
-        const nextStops: StopOption[] = Array.isArray(data?.stops)
-          ? data.stops
-              .map((item: any) => ({
-                stopId: typeof item?.stopId === 'string' ? item.stopId : '',
-                stop: typeof item?.stop === 'string' ? item.stop : '',
-                direction: '',
-              }))
-              .filter((item: StopOption) => item.stopId.length > 0 && item.stop.length > 0)
-          : [];
-        if (!cancelled) setStops(nextStops);
-      } catch {
-        if (!cancelled) setStopsError('Failed to load CTA stations');
-      } finally {
-        if (!cancelled) setIsLoadingStops(false);
-      }
-    };
-
-    void retryLoadStops();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [stopDropdownOpen, stops.length, isLoadingStops]);
 
   const chooseStop = useCallback((option: StopOption) => {
     setStopId(option.stopId);

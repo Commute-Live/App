@@ -167,17 +167,33 @@ export default function NycSubwayConfig({deviceId, providerId = 'mta-subway'}: P
               `${API_BASE}/providers/new-york/stops/bus?route=${encodeURIComponent(primaryRoute)}&limit=1000`,
             )
           : await fetch(`${API_BASE}/stops?limit=1000`);
+        console.log('[NYC stops] request', {
+          mode: isBusMode ? 'bus' : 'subway',
+          route: primaryRoute ?? null,
+          status: response.status,
+          ok: response.ok,
+        });
         if (!response.ok) {
           if (!cancelled) setStopsError('Failed to load stops');
           return;
         }
         const data = await response.json();
+        console.log('[NYC stops] response', {
+          mode: isBusMode ? 'bus' : 'subway',
+          route: primaryRoute ?? null,
+          count: Array.isArray(data?.stops) ? data.stops.length : -1,
+          sample: Array.isArray(data?.stops) ? data.stops.slice(0, 2) : data,
+        });
         if (!cancelled) {
           const options = Array.isArray(data?.stops) ? (data.stops as StopOption[]) : [];
           setAllStops(options);
           if (options.length === 0) setStopsError('No stops found');
         }
       } catch {
+        console.log('[NYC stops] error', {
+          mode: isBusMode ? 'bus' : 'subway',
+          route: primaryRoute ?? null,
+        });
         if (!cancelled) {
           setAllStops([]);
           setStopsError('Failed to load stops');
@@ -193,42 +209,6 @@ export default function NycSubwayConfig({deviceId, providerId = 'mta-subway'}: P
       cancelled = true;
     };
   }, [stopDropdownOpen, selectedLines, isBusMode]);
-
-  useEffect(() => {
-    let cancelled = false;
-    if (!stopDropdownOpen || isLoadingStops || allStops.length > 0) return;
-    if (isBusMode && !(selectedLines[0] ?? '').trim()) return;
-
-    const retry = async () => {
-      setIsLoadingStops(true);
-      setStopsError('');
-      try {
-        const primaryRoute = selectedLines[0]?.trim().toUpperCase();
-        const response = isBusMode
-          ? await fetch(`${API_BASE}/providers/new-york/stops/bus?route=${encodeURIComponent(primaryRoute)}&limit=1000`)
-          : await fetch(`${API_BASE}/stops?limit=1000`);
-        if (!response.ok) {
-          if (!cancelled) setStopsError('Failed to load stops');
-          return;
-        }
-        const data = await response.json();
-        if (!cancelled) {
-          const options = Array.isArray(data?.stops) ? (data.stops as StopOption[]) : [];
-          setAllStops(options);
-          if (options.length === 0) setStopsError('No stops found');
-        }
-      } catch {
-        if (!cancelled) setStopsError('Failed to load stops');
-      } finally {
-        if (!cancelled) setIsLoadingStops(false);
-      }
-    };
-
-    void retry();
-    return () => {
-      cancelled = true;
-    };
-  }, [stopDropdownOpen, isLoadingStops, allStops.length, isBusMode, selectedLines]);
 
   useEffect(() => {
     if (!stopDropdownOpen) {
@@ -262,6 +242,7 @@ export default function NycSubwayConfig({deviceId, providerId = 'mta-subway'}: P
       setAvailableLines([]);
       try {
         const response = await fetch(`${API_BASE}/stops/${encodeURIComponent(normalizedStopId)}/lines`);
+        console.log('[NYC lines] request', {stopId: normalizedStopId, status: response.status, ok: response.ok});
         if (!response.ok) {
           if (!cancelled) {
             setAvailableLines([]);
@@ -271,6 +252,10 @@ export default function NycSubwayConfig({deviceId, providerId = 'mta-subway'}: P
         }
 
         const data = await response.json();
+        console.log('[NYC lines] response', {
+          stopId: normalizedStopId,
+          lines: Array.isArray(data?.lines) ? data.lines : data,
+        });
         const lines = Array.isArray(data?.lines)
           ? data.lines
               .map((line: unknown) => (typeof line === 'string' ? line.toUpperCase() : ''))
@@ -289,6 +274,7 @@ export default function NycSubwayConfig({deviceId, providerId = 'mta-subway'}: P
           });
         }
       } catch {
+        console.log('[NYC lines] error', {stopId: normalizedStopId});
         if (!cancelled) {
           setAvailableLines([]);
           setSelectedLines([]);
