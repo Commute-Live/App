@@ -2,19 +2,21 @@ import React, {useEffect, useState} from 'react';
 import {Pressable, ScrollView, StyleSheet, Text, View} from 'react-native';
 import {SafeAreaView} from 'react-native-safe-area-context';
 import {Ionicons} from '@expo/vector-icons';
+import {useRouter} from 'expo-router';
 import {PreviewCard} from '../../../components/PreviewCard';
-import {useAppState} from '../../../state/appState';
 import {colors, spacing, radii} from '../../../theme';
+import {apiFetch} from '../../../lib/api';
+import {useAuth} from '../../../state/authProvider';
 
 const fallbackDevice = {id: 'commutelive-001', name: 'Commute Live Display'};
 
 export default function PairedOnlineScreen() {
+  const router = useRouter();
   const [open, setOpen] = useState(false);
   const [linkStatus, setLinkStatus] = useState<'idle' | 'linking' | 'linked' | 'error'>('idle');
   const [linkMessage, setLinkMessage] = useState('');
-  const {
-    state: {deviceId, userId},
-  } = useAppState();
+  const {deviceId, user, clearAuth} = useAuth();
+  const userId = user?.id ?? null;
   const devices = [
     {
       id: deviceId ?? fallbackDevice.id,
@@ -34,10 +36,10 @@ export default function PairedOnlineScreen() {
       setLinkStatus('linking');
       setLinkMessage('');
       try {
-        const response = await fetch('https://api.commutelive.com/user/device/link', {
+        const response = await apiFetch('/user/device/link', {
           method: 'POST',
           headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({userId, deviceId}),
+          body: JSON.stringify({deviceId}),
         });
         const text = await response.text();
         let data: any = null;
@@ -47,6 +49,11 @@ export default function PairedOnlineScreen() {
           data = null;
         }
         if (!response.ok) {
+          if (data?.error === 'REFRESH_INVALID' || data?.error === 'REFRESH_REUSED') {
+            clearAuth();
+            router.replace('/auth');
+            return;
+          }
           setLinkStatus('error');
           setLinkMessage(data?.error || text || 'Link failed.');
           return;
@@ -59,7 +66,7 @@ export default function PairedOnlineScreen() {
       }
     };
     linkDevice();
-  }, [deviceId, userId, linkStatus]);
+  }, [clearAuth, deviceId, linkStatus, router, userId]);
 
   return (
     <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>

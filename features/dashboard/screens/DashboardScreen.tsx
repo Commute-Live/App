@@ -1,14 +1,15 @@
 import React, {useEffect, useState} from 'react';
 import {Pressable, ScrollView, StyleSheet, Text, View} from 'react-native';
 import {SafeAreaView} from 'react-native-safe-area-context';
+import {useRouter} from 'expo-router';
 import {BottomNav, BottomNavItem} from '../../../components/BottomNav';
 import {colors, spacing, radii} from '../../../theme';
 import {useSelectedDevice} from '../../../hooks/useSelectedDevice';
 import NycSubwayConfig from '../components/NycSubwayConfig';
 import ChicagoSubwayConfig from '../components/ChicagoSubwayConfig';
 import RegionalTransitConfig from '../components/RegionalTransitConfig';
-
-const API_BASE = 'https://api.commutelive.com';
+import {apiFetch} from '../../../lib/api';
+import {useAuth} from '../../../state/authProvider';
 
 type CityOption = {id: 'new-york' | 'philadelphia' | 'boston' | 'chicago'; label: string};
 type ModeOption = {id: 'train' | 'bus'; label: string};
@@ -32,6 +33,9 @@ const navItems: BottomNavItem[] = [
 ];
 
 export default function DashboardScreen() {
+  const router = useRouter();
+  const {deviceId} = useAuth();
+  const hasLinkedDevice = !!deviceId;
   const selectedDevice = useSelectedDevice();
   const [selectedCity, setSelectedCity] = useState<CityOption['id']>('new-york');
   const [selectedMode, setSelectedMode] = useState<ModeOption['id']>('train');
@@ -40,7 +44,7 @@ export default function DashboardScreen() {
     let cancelled = false;
     const loadProviderFromConfig = async () => {
       try {
-        const response = await fetch(`${API_BASE}/device/${selectedDevice.id}/config`);
+        const response = await apiFetch(`/device/${selectedDevice.id}/config`);
         if (!response.ok) return;
         const data = await response.json();
         const firstProvider = typeof data?.config?.lines?.[0]?.provider === 'string' ? data.config.lines[0].provider : '';
@@ -82,14 +86,14 @@ export default function DashboardScreen() {
       }
     };
 
-    if (selectedDevice.id) {
+    if (hasLinkedDevice && selectedDevice.id) {
       void loadProviderFromConfig();
     }
 
     return () => {
       cancelled = true;
     };
-  }, [selectedDevice.id]);
+  }, [hasLinkedDevice, selectedDevice.id]);
 
   const availableModes = selectedCity === 'chicago' ? modeOptions.filter(m => m.id === 'train') : modeOptions;
 
@@ -101,7 +105,7 @@ export default function DashboardScreen() {
             <View style={styles.headerRow}>
               <View>
                 <Text style={styles.heading}>Your Device</Text>
-                <Text style={styles.subheading}>Device ID: {selectedDevice.id}</Text>
+                <Text style={styles.subheading}>Device ID: {deviceId ?? 'Not connected'}</Text>
               </View>
               <View style={styles.statusChip}>
                 <View
@@ -115,51 +119,65 @@ export default function DashboardScreen() {
             </View>
           </View>
 
-          <View style={styles.sectionCard}>
-            <Text style={styles.sectionTitle}>Pick City</Text>
-            <View style={styles.providerRow}>
-              {cityOptions.map(option => (
-                <Pressable
-                  key={option.id}
-                  style={[styles.providerChip, selectedCity === option.id && styles.providerChipActive]}
-                  onPress={() => setSelectedCity(option.id)}>
-                  <Text
-                    style={[styles.providerChipText, selectedCity === option.id && styles.providerChipTextActive]}>
-                    {option.label}
-                  </Text>
-                </Pressable>
-              ))}
+          {!hasLinkedDevice ? (
+            <View style={styles.sectionCard}>
+              <Text style={styles.sectionTitle}>No Device Connected</Text>
+              <Text style={styles.subheading}>
+                Your account is ready. Add a Commute Live device when you are ready to configure routes.
+              </Text>
+              <Pressable style={styles.addDeviceButton} onPress={() => router.push('/register-device')}>
+                <Text style={styles.addDeviceButtonText}>Add Device</Text>
+              </Pressable>
             </View>
-
-            <Text style={[styles.sectionTitle, styles.modeTitle]}>Pick Type</Text>
-            <View style={styles.providerRow}>
-              {availableModes.map(option => (
-                <Pressable
-                  key={option.id}
-                  style={[styles.providerChip, selectedMode === option.id && styles.providerChipActive]}
-                  onPress={() => setSelectedMode(option.id)}>
-                  <Text
-                    style={[styles.providerChipText, selectedMode === option.id && styles.providerChipTextActive]}>
-                    {option.label}
-                  </Text>
-                </Pressable>
-              ))}
-            </View>
-          </View>
-
-          {selectedCity === 'new-york' ? (
-            <NycSubwayConfig
-              deviceId={selectedDevice.id}
-              providerId={selectedMode === 'bus' ? 'mta-bus' : 'mta-subway'}
-            />
-          ) : selectedCity === 'chicago' ? (
-            <ChicagoSubwayConfig deviceId={selectedDevice.id} />
           ) : (
-            <RegionalTransitConfig
-              deviceId={selectedDevice.id}
-              city={selectedCity === 'boston' ? 'boston' : 'philadelphia'}
-              mode={selectedMode}
-            />
+            <>
+              <View style={styles.sectionCard}>
+                <Text style={styles.sectionTitle}>Pick City</Text>
+                <View style={styles.providerRow}>
+                  {cityOptions.map(option => (
+                    <Pressable
+                      key={option.id}
+                      style={[styles.providerChip, selectedCity === option.id && styles.providerChipActive]}
+                      onPress={() => setSelectedCity(option.id)}>
+                      <Text
+                        style={[styles.providerChipText, selectedCity === option.id && styles.providerChipTextActive]}>
+                        {option.label}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </View>
+
+                <Text style={[styles.sectionTitle, styles.modeTitle]}>Pick Type</Text>
+                <View style={styles.providerRow}>
+                  {availableModes.map(option => (
+                    <Pressable
+                      key={option.id}
+                      style={[styles.providerChip, selectedMode === option.id && styles.providerChipActive]}
+                      onPress={() => setSelectedMode(option.id)}>
+                      <Text
+                        style={[styles.providerChipText, selectedMode === option.id && styles.providerChipTextActive]}>
+                        {option.label}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </View>
+              </View>
+
+              {selectedCity === 'new-york' ? (
+                <NycSubwayConfig
+                  deviceId={selectedDevice.id}
+                  providerId={selectedMode === 'bus' ? 'mta-bus' : 'mta-subway'}
+                />
+              ) : selectedCity === 'chicago' ? (
+                <ChicagoSubwayConfig deviceId={selectedDevice.id} />
+              ) : (
+                <RegionalTransitConfig
+                  deviceId={selectedDevice.id}
+                  city={selectedCity === 'boston' ? 'boston' : 'philadelphia'}
+                  mode={selectedMode}
+                />
+              )}
+            </>
           )}
         </ScrollView>
 
@@ -226,4 +244,12 @@ const styles = StyleSheet.create({
   },
   providerChipText: {color: colors.text, fontSize: 12, fontWeight: '700'},
   providerChipTextActive: {color: colors.accent},
+  addDeviceButton: {
+    marginTop: spacing.md,
+    backgroundColor: colors.accent,
+    paddingVertical: spacing.md,
+    borderRadius: radii.md,
+    alignItems: 'center',
+  },
+  addDeviceButtonText: {color: colors.background, fontWeight: '800', fontSize: 14},
 });

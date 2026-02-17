@@ -5,6 +5,7 @@ import {Ionicons} from '@expo/vector-icons';
 import {useRouter} from 'expo-router';
 import {BottomNav, BottomNavItem} from '../../../components/BottomNav';
 import {colors, spacing, radii} from '../../../theme';
+import {useAuth} from '../../../state/authProvider';
 
 const navItems: BottomNavItem[] = [
   {key: 'home', label: 'Home', icon: 'home-outline', route: '/dashboard'},
@@ -15,7 +16,9 @@ const navItems: BottomNavItem[] = [
 
 export default function SettingsScreen() {
   const router = useRouter();
+  const {signOut, user} = useAuth();
   const [openSection, setOpenSection] = useState<string | null>('Account');
+  const [isSigningOut, setIsSigningOut] = useState(false);
 
   const toggleSection = (key: string) =>
     setOpenSection(prev => (prev === key ? null : key));
@@ -137,9 +140,20 @@ export default function SettingsScreen() {
             {openSection === 'Sign out' ? (
               <View style={styles.cardContent}>
                 <Text style={styles.itemLabel}>You’re signed in as</Text>
-                <Text style={styles.itemValue}>alex@example.com</Text>
-                <Pressable style={styles.signOutButton} onPress={() => router.push('/auth')}>
-                  <Text style={styles.signOutText}>Sign out</Text>
+                <Text style={styles.itemValue}>{user?.email ?? '-'}</Text>
+                <Pressable
+                  style={styles.signOutButton}
+                  onPress={async () => {
+                    if (isSigningOut) return;
+                    setIsSigningOut(true);
+                    try {
+                      await signOut();
+                    } finally {
+                      setIsSigningOut(false);
+                      router.replace('/auth');
+                    }
+                  }}>
+                  <Text style={styles.signOutText}>{isSigningOut ? 'Signing out...' : 'Sign out'}</Text>
                 </Pressable>
               </View>
             ) : null}
