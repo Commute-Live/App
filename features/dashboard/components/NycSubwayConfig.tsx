@@ -363,7 +363,12 @@ export default function NycSubwayConfig({deviceId, providerId = 'mta-subway'}: P
       });
 
       if (!configResponse.ok) {
-        setStatusText('Failed to save line');
+        const data = await configResponse.json().catch(() => null);
+        const message =
+          typeof data?.error === 'string'
+            ? data.error
+            : `Failed to save line (${configResponse.status})`;
+        setStatusText(message);
         return;
       }
 

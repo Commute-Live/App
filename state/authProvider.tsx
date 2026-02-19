@@ -64,7 +64,7 @@ export function AuthProvider({children}: {children: React.ReactNode}) {
       const nextDeviceId =
         appDeviceId && profile.deviceIds.includes(appDeviceId)
           ? appDeviceId
-          : profile.deviceIds[0] ?? appDeviceId ?? null;
+          : profile.deviceIds[0] ?? null;
       setAppDeviceId(nextDeviceId);
       setDeviceStatus(profile.deviceIds.length > 0 ? 'pairedOnline' : 'notPaired');
     },

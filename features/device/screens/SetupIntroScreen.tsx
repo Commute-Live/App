@@ -5,10 +5,13 @@ import {Ionicons} from '@expo/vector-icons';
 import {useRouter} from 'expo-router';
 import {colors, spacing, radii} from '../../../theme';
 import {useAppState} from '../../../state/appState';
+import {apiFetch} from '../../../lib/api';
+import {useAuth} from '../../../state/authProvider';
 
 export default function SetupIntroScreen() {
   const router = useRouter();
   const {state, setDeviceStatus, setDeviceId} = useAppState();
+  const {deviceIds} = useAuth();
   const setupSsid = 'Commute-Live-Setup-xxx';
   const statusUrl = 'http://192.168.4.1/status';
   const [ssid, setSsid] = useState('');
@@ -18,6 +21,9 @@ export default function SetupIntroScreen() {
   const [connectStatus, setConnectStatus] = useState<'idle' | 'connecting' | 'success' | 'error'>('idle');
   const [errorMsg, setErrorMsg] = useState('');
   const [apiResponse, setApiResponse] = useState<string | null>(null);
+  const [pendingLinkDeviceId, setPendingLinkDeviceId] = useState<string | null>(null);
+  const [needsHomeWifiForLink, setNeedsHomeWifiForLink] = useState(false);
+  const [isLinking, setIsLinking] = useState(false);
   const isConnecting = connectStatus === 'connecting';
 
   useEffect(() => {
@@ -42,18 +48,87 @@ export default function SetupIntroScreen() {
     };
 
     loadStatus();
-  }, [statusUrl]);
+  }, [setDeviceId, setDeviceStatus, statusUrl]);
+
+  const tryRegisterAndLinkDevice = async (deviceIdToLink: string) => {
+    if (deviceIds.includes(deviceIdToLink)) {
+      setPendingLinkDeviceId(null);
+      setNeedsHomeWifiForLink(false);
+      setDeviceStatus('pairedOnline');
+      setErrorMsg('');
+      return true;
+    }
+
+    setIsLinking(true);
+    try {
+      const registerResponse = await apiFetch('/device/register', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({id: deviceIdToLink}),
+      });
+      if (!registerResponse.ok && registerResponse.status !== 409) {
+        const registerData = await registerResponse.json().catch(() => null);
+        setConnectStatus('error');
+        setNeedsHomeWifiForLink(false);
+        setPendingLinkDeviceId(null);
+        setErrorMsg(
+          typeof registerData?.error === 'string'
+            ? `Device register failed: ${registerData.error}`
+            : `Device register failed (${registerResponse.status})`,
+        );
+        return false;
+      }
+
+      const linkResponse = await apiFetch('/user/device/link', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({deviceId: deviceIdToLink}),
+      });
+
+      if (!linkResponse.ok) {
+        const linkData = await linkResponse.json().catch(() => null);
+        setConnectStatus('error');
+        setNeedsHomeWifiForLink(false);
+        setPendingLinkDeviceId(null);
+        setErrorMsg(
+          typeof linkData?.error === 'string'
+            ? `Wi-Fi connected, but device link failed: ${linkData.error}`
+            : `Wi-Fi connected, but device link failed (${linkResponse.status})`,
+        );
+        return false;
+      }
+
+      setPendingLinkDeviceId(null);
+      setNeedsHomeWifiForLink(false);
+      setDeviceStatus('pairedOnline');
+      setErrorMsg('');
+      return true;
+    } catch {
+      setPendingLinkDeviceId(deviceIdToLink);
+      setNeedsHomeWifiForLink(true);
+      setConnectStatus('success');
+      setErrorMsg(
+        'Now switch your phone from ESP Wi-Fi to home Wi-Fi/cellular, then tap "I have done it".',
+      );
+      return false;
+    } finally {
+      setIsLinking(false);
+    }
+  };
 
   const handleConnect = async () => {
     setConnectStatus('connecting');
     setErrorMsg('');
     setApiResponse(null);
+    setNeedsHomeWifiForLink(false);
+    setPendingLinkDeviceId(null);
+
     try {
-        const response = await fetch('http://192.168.4.1/connect', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-          body: `ssid=${encodeURIComponent(ssid)}&password=${encodeURIComponent(wifiPassword)}&user=${encodeURIComponent(wifiUsername)}`,
-        });
+      const response = await fetch('http://192.168.4.1/connect', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: `ssid=${encodeURIComponent(ssid)}&password=${encodeURIComponent(wifiPassword)}&user=${encodeURIComponent(wifiUsername)}`,
+      });
       const text = await response.text();
       setApiResponse(text);
       let data;
@@ -78,13 +153,48 @@ export default function SetupIntroScreen() {
         } else {
           setErrorMsg(rawError);
         }
-      } else {
-        setConnectStatus('success');
+        return;
       }
-    } catch (e) {
-      setConnectStatus('error');
-      setErrorMsg('Network error');
+
+      let resolvedDeviceId = state.deviceId;
+      if (!resolvedDeviceId) {
+        try {
+          const infoResponse = await fetch('http://192.168.4.1/device-info', {method: 'GET'});
+          if (infoResponse.ok) {
+            const info = await infoResponse.json();
+            if (info?.deviceId) {
+              resolvedDeviceId = String(info.deviceId);
+              setDeviceId(resolvedDeviceId);
+            }
+          }
+        } catch {
+          // ignore
+        }
+      }
+
+      setConnectStatus('success');
+      if (!resolvedDeviceId) return;
+      await tryRegisterAndLinkDevice(resolvedDeviceId);
+    } catch {
+      if (state.deviceId) {
+        setPendingLinkDeviceId(state.deviceId);
+        setNeedsHomeWifiForLink(true);
+        setConnectStatus('success');
+        setErrorMsg(
+          'Connection to ESP Wi-Fi dropped. This often means device switched networks. Switch phone to home Wi-Fi/cellular, then tap "I have done it".',
+        );
+      } else {
+        setConnectStatus('error');
+        setErrorMsg('Network error');
+      }
     }
+  };
+
+  const handleRetryLink = async () => {
+    if (!pendingLinkDeviceId) return;
+    setErrorMsg('');
+    setConnectStatus('success');
+    await tryRegisterAndLinkDevice(pendingLinkDeviceId);
   };
 
   return (
@@ -147,7 +257,27 @@ export default function SetupIntroScreen() {
               )}
             </Pressable>
             {connectStatus === 'error' && <Text style={{ color: 'red', marginTop: 8 }}>{errorMsg}</Text>}
-            {connectStatus === 'success' && <Text style={{ color: 'green', marginTop: 8 }}>Connected!</Text>}
+            {connectStatus === 'success' && (
+              <Text style={{ color: 'green', marginTop: 8 }}>
+                {needsHomeWifiForLink ? 'Connected to device Wi-Fi.' : 'Connected!'}
+              </Text>
+            )}
+            {needsHomeWifiForLink && pendingLinkDeviceId ? (
+              <View style={styles.pauseCard}>
+                <Text style={styles.pauseTitle}>Pause: Switch Phone Network</Text>
+                <Text style={styles.pauseText}>
+                  Connect your phone to home Wi-Fi (or cellular), then continue.
+                </Text>
+                <Pressable
+                  style={[styles.secondaryButton, {marginTop: spacing.sm}]}
+                  disabled={isLinking}
+                  onPress={handleRetryLink}>
+                  <Text style={styles.secondaryText}>
+                    {isLinking ? 'Registering + Linking...' : 'I have done it'}
+                  </Text>
+                </Pressable>
+              </View>
+            ) : null}
             {apiResponse && (
               <Text style={{ color: colors.textMuted, marginTop: 8, fontSize: 12 }} selectable>
                 API Response: {apiResponse}
@@ -158,7 +288,7 @@ export default function SetupIntroScreen() {
         <View style={styles.footer}>
           <Pressable
             style={styles.finishLink}
-            disabled={isConnecting}
+            disabled={isConnecting || isLinking || needsHomeWifiForLink}
             onPress={() => router.push('/dashboard')}
           >
             <Text style={styles.finishText}>Finish setup</Text>
@@ -320,6 +450,25 @@ const styles = StyleSheet.create({
   primaryButtonDisabled: {backgroundColor: colors.border},
   primaryText: {color: colors.background, fontWeight: '800', fontSize: 14},
   primaryTextDisabled: {color: colors.textMuted},
+  secondaryButton: {
+    borderColor: colors.border,
+    borderWidth: 1,
+    paddingVertical: spacing.md,
+    borderRadius: radii.md,
+    alignItems: 'center',
+    width: '100%',
+  },
+  secondaryText: {color: colors.textMuted, fontWeight: '700', fontSize: 14},
+  pauseCard: {
+    borderColor: colors.border,
+    borderWidth: 1,
+    borderRadius: radii.md,
+    backgroundColor: colors.surface,
+    padding: spacing.md,
+    marginTop: spacing.sm,
+  },
+  pauseTitle: {color: colors.text, fontSize: 13, fontWeight: '800'},
+  pauseText: {color: colors.textMuted, fontSize: 12, marginTop: 4},
   pressed: {opacity: 0.85},
   footer: {
     paddingHorizontal: spacing.lg,

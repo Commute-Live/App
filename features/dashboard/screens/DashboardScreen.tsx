@@ -34,11 +34,17 @@ const navItems: BottomNavItem[] = [
 
 export default function DashboardScreen() {
   const router = useRouter();
-  const {deviceId} = useAuth();
-  const hasLinkedDevice = !!deviceId;
+  const {deviceId, deviceIds, setDeviceId} = useAuth();
+  const hasLinkedDevice = deviceIds.length > 0;
   const selectedDevice = useSelectedDevice();
   const [selectedCity, setSelectedCity] = useState<CityOption['id']>('new-york');
   const [selectedMode, setSelectedMode] = useState<ModeOption['id']>('train');
+
+  useEffect(() => {
+    if (!deviceId && deviceIds.length > 0) {
+      setDeviceId(deviceIds[0]);
+    }
+  }, [deviceId, deviceIds, setDeviceId]);
 
   useEffect(() => {
     let cancelled = false;

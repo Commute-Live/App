@@ -232,7 +232,12 @@ export default function ChicagoSubwayConfig({deviceId}: Props) {
       });
 
       if (!configResponse.ok) {
-        setStatusText('Failed to save line');
+        const data = await configResponse.json().catch(() => null);
+        const message =
+          typeof data?.error === 'string'
+            ? data.error
+            : `Failed to save line (${configResponse.status})`;
+        setStatusText(message);
         return;
       }
 

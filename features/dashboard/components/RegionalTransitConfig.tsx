@@ -222,7 +222,12 @@ export default function RegionalTransitConfig({deviceId, city, mode}: Props) {
       });
 
       if (!response.ok) {
-        setStatusText('Failed to save line');
+        const data = await response.json().catch(() => null);
+        const message =
+          typeof data?.error === 'string'
+            ? data.error
+            : `Failed to save line (${response.status})`;
+        setStatusText(message);
         return;
       }
 
