@@ -1,5 +1,15 @@
 import React, {useState} from 'react';
-import {Image, Pressable, ScrollView, StyleSheet, Text, TextInput, View} from 'react-native';
+import {
+  Image,
+  KeyboardAvoidingView,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
 import {SafeAreaView} from 'react-native-safe-area-context';
 import {useRouter} from 'expo-router';
 import {colors, spacing, radii} from '../../../theme';
@@ -35,67 +45,75 @@ export default function LoginScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
-      <ScrollView contentContainerStyle={styles.content}>
-        <Image source={require('../../../app-logo.png')} style={styles.logo} resizeMode="contain" />
-        <Text style={styles.title}>Log in</Text>
-        <Text style={styles.subtitle}>Access your account to manage your display.</Text>
+      <KeyboardAvoidingView
+        style={styles.keyboardAvoid}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 12 : 0}>
+        <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+          <Image source={require('../../../app-logo.png')} style={styles.logo} resizeMode="contain" />
+          <Text style={styles.title}>Log in</Text>
+          <Text style={styles.subtitle}>Access your account to manage your display.</Text>
 
-        <View style={styles.field}>
-          <Text style={styles.label}>Email</Text>
-          <TextInput
-            value={email}
-            onChangeText={setEmail}
-            placeholder="you@example.com"
-            placeholderTextColor={colors.textMuted}
-            autoCapitalize="none"
-            keyboardType="email-address"
-            style={styles.input}
-          />
-        </View>
+          <View style={styles.field}>
+            <Text style={styles.label}>Email</Text>
+            <TextInput
+              value={email}
+              onChangeText={setEmail}
+              placeholder="you@example.com"
+              placeholderTextColor={colors.textMuted}
+              autoCapitalize="none"
+              keyboardType="email-address"
+              style={styles.input}
+              returnKeyType="next"
+            />
+          </View>
 
-        <View style={styles.field}>
-          <Text style={styles.label}>Password</Text>
-          <TextInput
-            value={password}
-            onChangeText={setPassword}
-            placeholder="••••••••"
-            placeholderTextColor={colors.textMuted}
-            secureTextEntry
-            style={styles.input}
-          />
-        </View>
+          <View style={styles.field}>
+            <Text style={styles.label}>Password</Text>
+            <TextInput
+              value={password}
+              onChangeText={setPassword}
+              placeholder="â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢"
+              placeholderTextColor={colors.textMuted}
+              secureTextEntry
+              style={styles.input}
+              returnKeyType="done"
+            />
+          </View>
 
-        <Pressable
-          style={styles.primaryButton}
-          disabled={isSubmitting}
-          onPress={() => {
-            void onLogin();
-          }}>
-          <Text style={styles.primaryText}>{isSubmitting ? 'Logging in...' : 'Log in'}</Text>
-        </Pressable>
+          <Pressable
+            style={styles.primaryButton}
+            disabled={isSubmitting}
+            onPress={() => {
+              void onLogin();
+            }}>
+            <Text style={styles.primaryText}>{isSubmitting ? 'Logging in...' : 'Log in'}</Text>
+          </Pressable>
 
-        {errorText ? <Text style={styles.errorText}>{errorText}</Text> : null}
+          {errorText ? <Text style={styles.errorText}>{errorText}</Text> : null}
 
-        <Pressable style={styles.resetLink}>
-          <Text style={styles.resetText}>Forgot password?</Text>
-        </Pressable>
+          <Pressable style={styles.resetLink}>
+            <Text style={styles.resetText}>Forgot password?</Text>
+          </Pressable>
 
-        <Pressable
-          style={styles.secondaryButton}
-          onPress={() => {
-            clearAuth();
-            router.push('/auth');
-          }}>
-          <Text style={styles.secondaryText}>Back</Text>
-        </Pressable>
-      </ScrollView>
+          <Pressable
+            style={styles.secondaryButton}
+            onPress={() => {
+              clearAuth();
+              router.push('/auth');
+            }}>
+            <Text style={styles.secondaryText}>Back</Text>
+          </Pressable>
+        </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   container: {flex: 1, backgroundColor: colors.background},
-  content: {padding: spacing.lg},
+  keyboardAvoid: {flex: 1},
+  content: {padding: spacing.lg, paddingBottom: spacing.xl * 1.5},
   logo: {width: 160, height: 160, alignSelf: 'center', marginBottom: spacing.xs},
   title: {color: colors.text, fontSize: 22, fontWeight: '800', textAlign: 'center'},
   subtitle: {

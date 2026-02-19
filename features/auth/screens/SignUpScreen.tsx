@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import {
    Image,
+   KeyboardAvoidingView,
+   Platform,
    Pressable,
    ScrollView,
    StyleSheet,
@@ -88,113 +90,126 @@ export default function SignUpScreen() {
 
    return (
       <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
-         <ScrollView contentContainerStyle={styles.content}>
-            <ScreenHeader title='Sign Up' />
+         <KeyboardAvoidingView
+            style={styles.keyboardAvoid}
+            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+            keyboardVerticalOffset={Platform.OS === 'ios' ? 12 : 0}
+         >
+            <ScrollView
+               contentContainerStyle={styles.content}
+               keyboardShouldPersistTaps='handled'
+            >
+               <ScreenHeader title='Sign Up' />
 
-            <Image
-               source={require('../../../app-logo.png')}
-               style={styles.logo}
-               resizeMode='contain'
-            />
-            <Text style={styles.title}>Create your account</Text>
-            <Text style={styles.subtitle}>Set up your profile.</Text>
-
-            <View style={styles.field}>
-               <Text style={styles.label}>Username</Text>
-               <TextInput
-                  value={username}
-                  onChangeText={setUsername}
-                  placeholder='yourname'
-                  placeholderTextColor={colors.textMuted}
-                  autoCapitalize='none'
-                  style={styles.input}
+               <Image
+                  source={require('../../../app-logo.png')}
+                  style={styles.logo}
+                  resizeMode='contain'
                />
-            </View>
+               <Text style={styles.title}>Create your account</Text>
+               <Text style={styles.subtitle}>Set up your profile.</Text>
 
-            <View style={styles.field}>
-               <Text style={styles.label}>Email</Text>
-               <TextInput
-                  value={email}
-                  onChangeText={setEmail}
-                  placeholder='you@example.com'
-                  placeholderTextColor={colors.textMuted}
-                  autoCapitalize='none'
-                  keyboardType='email-address'
-                  style={styles.input}
-               />
-            </View>
+               <View style={styles.field}>
+                  <Text style={styles.label}>Username</Text>
+                  <TextInput
+                     value={username}
+                     onChangeText={setUsername}
+                     placeholder='yourname'
+                     placeholderTextColor={colors.textMuted}
+                     autoCapitalize='none'
+                     style={styles.input}
+                     returnKeyType='next'
+                  />
+               </View>
 
-            <View style={styles.field}>
-               <Text style={styles.label}>Password</Text>
-               <TextInput
-                  value={password}
-                  onChangeText={setPassword}
-                  placeholder='••••••••'
-                  placeholderTextColor={colors.textMuted}
-                  secureTextEntry
-                  style={styles.input}
-               />
-            </View>
+               <View style={styles.field}>
+                  <Text style={styles.label}>Email</Text>
+                  <TextInput
+                     value={email}
+                     onChangeText={setEmail}
+                     placeholder='you@example.com'
+                     placeholderTextColor={colors.textMuted}
+                     autoCapitalize='none'
+                     keyboardType='email-address'
+                     style={styles.input}
+                     returnKeyType='next'
+                  />
+               </View>
 
-            <View style={styles.field}>
-               <Text style={styles.label}>Time zone</Text>
+               <View style={styles.field}>
+                  <Text style={styles.label}>Password</Text>
+                  <TextInput
+                     value={password}
+                     onChangeText={setPassword}
+                     placeholder='â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢'
+                     placeholderTextColor={colors.textMuted}
+                     secureTextEntry
+                     style={styles.input}
+                     returnKeyType='next'
+                  />
+               </View>
+
+               <View style={styles.field}>
+                  <Text style={styles.label}>Time zone</Text>
+                  <Pressable
+                     style={styles.select}
+                     onPress={() => setTimezoneOpen((prev) => !prev)}
+                  >
+                     <Text style={styles.selectValue}>
+                        {selectedTimezone.label}
+                     </Text>
+                     <Text style={styles.selectChevron}>
+                        {timezoneOpen ? 'â–²' : 'â–¼'}
+                     </Text>
+                  </Pressable>
+                  {timezoneOpen ? (
+                     <View style={styles.selectList}>
+                        {TIMEZONES.map((item) => (
+                           <Pressable
+                              key={item.value}
+                              style={({ pressed }) => [
+                                 styles.selectItem,
+                                 pressed && styles.pressed,
+                              ]}
+                              onPress={() => {
+                                 setTimezone(item.value);
+                                 setTimezoneOpen(false);
+                              }}
+                           >
+                              <Text style={styles.selectItemText}>
+                                 {item.label}
+                              </Text>
+                           </Pressable>
+                        ))}
+                     </View>
+                  ) : null}
+               </View>
+
                <Pressable
-                  style={styles.select}
-                  onPress={() => setTimezoneOpen((prev) => !prev)}
+                  style={styles.primaryButton}
+                  disabled={isSubmitting}
+                  onPress={() => {
+                     void onCreateAccount();
+                  }}
                >
-                  <Text style={styles.selectValue}>
-                     {selectedTimezone.label}
-                  </Text>
-                  <Text style={styles.selectChevron}>
-                     {timezoneOpen ? '▲' : '▼'}
+                  <Text style={styles.primaryText}>
+                     {isSubmitting ? 'Creating account...' : 'Create account'}
                   </Text>
                </Pressable>
-               {timezoneOpen ? (
-                  <View style={styles.selectList}>
-                     {TIMEZONES.map((item) => (
-                        <Pressable
-                           key={item.value}
-                           style={({ pressed }) => [
-                              styles.selectItem,
-                              pressed && styles.pressed,
-                           ]}
-                           onPress={() => {
-                              setTimezone(item.value);
-                              setTimezoneOpen(false);
-                           }}
-                        >
-                           <Text style={styles.selectItemText}>
-                              {item.label}
-                           </Text>
-                        </Pressable>
-                     ))}
-                  </View>
+
+               {errorText ? (
+                  <Text style={styles.errorText}>{errorText}</Text>
                ) : null}
-            </View>
-
-            <Pressable
-               style={styles.primaryButton}
-               disabled={isSubmitting}
-               onPress={() => {
-                  void onCreateAccount();
-               }}
-            >
-               <Text style={styles.primaryText}>
-                  {isSubmitting ? 'Creating account...' : 'Create account'}
-               </Text>
-            </Pressable>
-
-            {errorText ? (
-               <Text style={styles.errorText}>{errorText}</Text>
-            ) : null}
-         </ScrollView>
+            </ScrollView>
+         </KeyboardAvoidingView>
       </SafeAreaView>
    );
 }
 
 const styles = StyleSheet.create({
    container: { flex: 1, backgroundColor: colors.background },
-   content: { padding: spacing.lg, paddingBottom: spacing.xl },
+   keyboardAvoid: { flex: 1 },
+   content: { padding: spacing.lg, paddingBottom: spacing.xl * 1.5 },
    logo: {
       width: 190,
       height: 190,
