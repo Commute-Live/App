@@ -1,18 +1,41 @@
 import React, {useEffect, useMemo, useRef, useState} from 'react';
-import {ImageBackground, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View} from 'react-native';
+import {Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View} from 'react-native';
 import {SafeAreaView} from 'react-native-safe-area-context';
+import {useRouter} from 'expo-router';
 import {colors, radii, spacing} from '../../../theme';
+import Display3DPreview from '../components/Display3DPreview';
+
 type CityId = 'new-york' | 'philadelphia' | 'boston' | 'chicago';
 type ModeId = 'train' | 'bus';
 type Direction = 'uptown' | 'downtown';
 type Station = {id: string; name: string; area: string; lines: string[]};
 type Route = {id: string; label: string; color: string; textColor?: string};
 type Arrival = {lineId: string; minutes: number; status: 'GOOD' | 'DELAYS'};
-type LinePick = {id: string; mode: ModeId; stationId: string; routeId: string; direction: Direction};
+type LinePick = {
+  id: string;
+  mode: ModeId;
+  stationId: string;
+  routeId: string;
+  direction: Direction;
+  label: string;
+  textColor: string;
+  nextStops: number;
+};
 type CityConfig = {
   recents: string[];
   modes: Partial<Record<ModeId, {stations: Station[]; routes: Route[]}>>;
 };
+
+const DEFAULT_TEXT_COLOR = '#E9ECEF';
+const DEFAULT_NEXT_STOPS = 3;
+const MAX_NEXT_STOPS = 5;
+const DEFAULT_LAYOUT_SLOTS = 2;
+const LAYOUT_OPTIONS = [
+  {id: 'layout-1', slots: 1, label: '1 stop'},
+  {id: 'layout-2', slots: 2, label: '2 stops'},
+];
+const TEXT_COLOR_SWATCHES = ['#E9ECEF', '#5CE1E6', '#FBBF24', '#FCA5A5', '#86EFAC', '#C4B5FD'];
+
 const cityData: Record<CityId, CityConfig> = {
   'new-york': {
     recents: ['Times Sq - 42 St', 'Hoyt-Schermerhorn', '149 St-Grand Concourse'],
@@ -60,8 +83,8 @@ const cityData: Record<CityId, CityConfig> = {
     modes: {
       train: {
         stations: [
-          {id: '30th', name: '30th Street Station', area: 'University City', lines: ['Trenton', 'Media', 'Airport']},
-          {id: 'suburban', name: 'Suburban Station', area: 'Center City', lines: ['Warminster', 'Airport']},
+          {id: '30th', name: '30th Street Station', area: 'University City', lines: ['TR', 'ME', 'AP']},
+          {id: 'suburban', name: 'Suburban Station', area: 'Center City', lines: ['ME', 'AP']},
         ],
         routes: [
           {id: 'TR', label: 'Tr', color: '#0061AA'},
@@ -128,28 +151,25 @@ const cityData: Record<CityId, CityConfig> = {
     },
   },
 };
-const pixelGridSvg =
-  "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='8' height='8' viewBox='0 0 8 8'><rect width='8' height='8' fill='%23000000'/><circle cx='1' cy='1' r='0.5' fill='%23111'/><circle cx='5' cy='3' r='0.5' fill='%23111'/><circle cx='3' cy='6' r='0.5' fill='%23111'/></svg>";
-
-const mockDevices = [
-  {id: 'CL-0412', name: 'CL-0412'},
-  {id: 'CL-8821', name: 'Kitchen Display'},
-];
 
 const Haptics = {selectionAsync: async () => {}, notificationAsync: async (_: any) => {}};
-
 export default function DashboardScreen() {
-  const [city, setCity] = useState<CityId>('new-york');
-  const [deviceId, setDeviceId] = useState<string>(mockDevices[0].id);
-  const [lines, setLines] = useState<LinePick[]>(() => seedDefaultLines('new-york'));
+  const router = useRouter();
+  const city: CityId = 'new-york';
+  const [layoutSlots, setLayoutSlots] = useState<number>(DEFAULT_LAYOUT_SLOTS);
+  const [lines, setLines] = useState<LinePick[]>(() => ensureLineCount(seedDefaultLines('new-york'), 'new-york', DEFAULT_LAYOUT_SLOTS));
+  const [selectedLineId, setSelectedLineId] = useState<string>('line-1');
   const [stationSearch, setStationSearch] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
   const [saveDone, setSaveDone] = useState(false);
+  const [openLayoutPicker, setOpenLayoutPicker] = useState(false);
+  const [previewDragging, setPreviewDragging] = useState(false);
+  const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
 
   const [arrivals, setArrivals] = useState<Arrival[]>(() => seedArrivals(lines));
 
   useEffect(() => {
-    setArrivals(seedArrivals(lines));
+    setArrivals(prev => syncArrivals(prev, lines));
   }, [lines]);
 
   useEffect(() => {
@@ -159,24 +179,22 @@ export default function DashboardScreen() {
     return () => clearInterval(timer);
   }, []);
 
-  useEffect(() => {
-    setLines(seedDefaultLines(city));
-    setStationSearch({});
-    void Haptics.selectionAsync();
-  }, [city]);
-
-  const snapshotRef = useRef({city, deviceId, lines});
+  const snapshotRef = useRef({city, layoutSlots, lines});
   const isDirty = useMemo(() => {
     const snap = snapshotRef.current;
-    return snap.city !== city || snap.deviceId !== deviceId || JSON.stringify(snap.lines) !== JSON.stringify(lines);
-  }, [city, deviceId, lines]);
+    return (
+      snap.city !== city ||
+      snap.layoutSlots !== layoutSlots ||
+      JSON.stringify(snap.lines) !== JSON.stringify(lines)
+    );
+  }, [city, layoutSlots, lines]);
 
   const handleSave = () => {
     if (!isDirty || saving) return;
     setSaving(true);
     setSaveDone(false);
     setTimeout(() => {
-      snapshotRef.current = {city, deviceId, lines};
+      snapshotRef.current = {city, layoutSlots, lines};
       setSaving(false);
       setSaveDone(true);
       void Haptics.notificationAsync?.('success');
@@ -184,256 +202,220 @@ export default function DashboardScreen() {
     }, 1000);
   };
 
+  const handleBackPress = () => {
+    if (isDirty) {
+      setShowDiscardConfirm(true);
+      return;
+    }
+    router.replace('/settings');
+  };
+
+  const applyLayout = (slots: number) => {
+    const safeSlots = slots === 1 ? 1 : 2;
+    if (safeSlots === layoutSlots) return;
+    setLayoutSlots(safeSlots);
+    setLines(prev => ensureLineCount(prev, city, safeSlots));
+    setSelectedLineId('line-1');
+    void Haptics.selectionAsync();
+  };
+
   const updateLine = (id: string, next: Partial<LinePick>) => {
-    setLines(prev => prev.map(l => (l.id === id ? {...l, ...next} : l)));
+    setLines(prev => prev.map(line => (line.id === id ? normalizeLine(city, {...line, ...next}) : line)));
   };
-
-  const replaceLine = (id: string, line: LinePick) => {
-    setLines(prev => prev.map(l => (l.id === id ? line : l)));
-  };
-
-  const removeLine = (id: string) => {
-    setLines(prev => (prev.length === 1 ? prev : prev.filter(l => l.id !== id)));
-  };
-
-  const addLine = (mode: ModeId) => {
-    const base = newLine(city, mode);
-    setLines(prev => [...prev, {...base, id: `${Date.now()}`}]);
-  };
-
-  const moveLine = (id: string, dir: 'up' | 'down') => {
+  const reorderLineByHold = (id: string) => {
     setLines(prev => {
-      const idx = prev.findIndex(l => l.id === id);
-      if (idx === -1) return prev;
-      const target = dir === 'up' ? idx - 1 : idx + 1;
+      const idx = prev.findIndex(line => line.id === id);
+      if (idx === -1 || prev.length < 2) return prev;
+      const target = idx === 0 ? 1 : idx - 1;
       if (target < 0 || target >= prev.length) return prev;
       const next = [...prev];
       [next[idx], next[target]] = [next[target], next[idx]];
       return next;
     });
+    void Haptics.selectionAsync();
   };
 
-  const currentStations = (mode: ModeId) => cityData[city].modes[mode]?.stations ?? [];
-  const currentRoutes = (mode: ModeId) => cityData[city].modes[mode]?.routes ?? [];
-
-  const cityRecents = cityData[city].recents;
-
+  const selectedLine = lines.find(line => line.id === selectedLineId) ?? lines[0] ?? null;
+  const selectedLineIndex = selectedLine ? lines.findIndex(line => line.id === selectedLine.id) : -1;
+  const previewSlots = useMemo(
+    () =>
+      lines.map(line => {
+        const cityStations = cityData[city].modes[line.mode]?.stations ?? [];
+        const cityRoutes = cityData[city].modes[line.mode]?.routes ?? [];
+        const station = cityStations.find(item => item.id === line.stationId);
+        const route = cityRoutes.find(item => item.id === line.routeId);
+        const arrival = arrivals.find(item => item.lineId === line.id);
+        const stopName = line.label.trim() || station?.name || 'Select stop';
+        const times = buildNextArrivalTimes(arrival?.minutes ?? 7, line.nextStops)
+          .map(item => item.replace('m', ''))
+          .join(', ');
+        return {
+          id: line.id,
+          color: route?.color ?? '#3A3A3A',
+          textColor: route?.textColor ?? '#FFFFFF',
+          routeLabel: route?.label ?? '?',
+          selected: line.id === selectedLineId,
+          stopName,
+          times,
+        };
+      }),
+    [arrivals, city, lines, selectedLineId],
+  );
   return (
     <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
-      <ScrollView contentContainerStyle={styles.scroll}>
+      <ScrollView contentContainerStyle={styles.scroll} scrollEnabled={!previewDragging}>
         <TopBar
-          deviceId={deviceId}
-          onDeviceChange={setDeviceId}
-          devices={mockDevices}
-          city={city}
-          onCityChange={setCity}
-          cities={Object.keys(cityData) as CityId[]}
+          layoutSlots={layoutSlots}
+          onLayoutOpen={() => setOpenLayoutPicker(true)}
+          onBackPress={handleBackPress}
         />
 
-        <LivePreviewCard lines={lines} city={city} arrivals={arrivals} />
+        <View style={styles.previewSection}>
+          <Display3DPreview
+            slots={previewSlots}
+            onSelectSlot={setSelectedLineId}
+            onReorderSlot={reorderLineByHold}
+            onDragStateChange={setPreviewDragging}
+          />
+        </View>
+
+        <SimplePicker
+          visible={openLayoutPicker}
+          options={LAYOUT_OPTIONS.map(option => ({id: String(option.slots), label: option.label}))}
+          value={String(layoutSlots)}
+          onSelect={val => {
+            applyLayout(Number(val));
+            setOpenLayoutPicker(false);
+          }}
+          onClose={() => setOpenLayoutPicker(false)}
+        />
 
         <View style={styles.card}>
-          <View style={styles.headerRow}>
-            <Text style={styles.sectionLabel}>Lines & Order</Text>
-            <View style={styles.addRow}>
-              <Pressable style={styles.addButton} onPress={() => addLine('train')}>
-                <Text style={styles.addButtonText}>+ Add subway</Text>
-              </Pressable>
-              <Pressable style={styles.addButton} onPress={() => addLine('bus')}>
-                <Text style={styles.addButtonText}>+ Add bus</Text>
-              </Pressable>
-            </View>
-          </View>
-
-          {lines.map((line, idx) => {
-            const stations = currentStations(line.mode);
-            const routes = currentRoutes(line.mode);
-            const selectedStation = stations.find(s => s.id === line.stationId) ?? stations[0];
-            const allowedRoutes = selectedStation ? routes.filter(r => selectedStation.lines.includes(r.id)) : routes;
-            const safeRouteId = allowedRoutes.find(r => r.id === line.routeId)?.id ?? allowedRoutes[0]?.id ?? '';
-            if (safeRouteId && safeRouteId !== line.routeId) {
-              replaceLine(line.id, {...line, routeId: safeRouteId});
-            }
-
-            return (
-              <LineCard
-                key={line.id}
-                line={line}
-                index={idx}
-                total={lines.length}
-                stations={stations}
-                routes={allowedRoutes}
-                stationSearch={stationSearch[line.id] ?? ''}
-                onStationSearch={text => setStationSearch(prev => ({...prev, [line.id]: text}))}
-                recents={cityRecents}
+          {selectedLine ? (
+            <>
+              <View style={styles.editorHeader}>
+                <Text style={styles.sectionLabel}>Edit Slot {selectedLineIndex + 1}</Text>
+                <Text style={styles.editorMeta}>{modeLabel(selectedLine.mode)} mode</Text>
+              </View>
+              <SlotEditor
+                city={city}
+                line={selectedLine}
+                stationSearch={stationSearch[selectedLine.id] ?? ''}
+                onStationSearch={text => setStationSearch(prev => ({...prev, [selectedLine.id]: text}))}
+                recents={cityData[city].recents}
                 onChange={updateLine}
-                onMoveUp={() => moveLine(line.id, 'up')}
-                onMoveDown={() => moveLine(line.id, 'down')}
-                onRemove={() => removeLine(line.id)}
-                modeLabel={line.mode === 'train' ? 'Train' : 'Bus'}
               />
-            );
-          })}
-          {lines.length === 0 ? (
-            <Text style={styles.emptyHint}>Add a train or bus line using the tabs above.</Text>
-          ) : null}
+            </>
+          ) : (
+            <Text style={styles.emptyHint}>Select a slot in the preview to start editing.</Text>
+          )}
         </View>
       </ScrollView>
 
       <SaveBar dirty={isDirty} loading={saving} success={saveDone} onPress={handleSave} />
+      <ConfirmDiscardModal
+        visible={showDiscardConfirm}
+        onStay={() => setShowDiscardConfirm(false)}
+        onLeave={() => {
+          setShowDiscardConfirm(false);
+          router.replace('/settings');
+        }}
+      />
     </SafeAreaView>
   );
 }
+
 function TopBar({
-  deviceId,
-  onDeviceChange,
-  devices,
-  city,
-  onCityChange,
-  cities,
+  layoutSlots,
+  onLayoutOpen,
+  onBackPress,
 }: {
-  deviceId: string;
-  onDeviceChange: (id: string) => void;
-  devices: {id: string; name: string}[];
-  city: CityId;
-  onCityChange: (c: CityId) => void;
-  cities: CityId[];
+  layoutSlots: number;
+  onLayoutOpen: () => void;
+  onBackPress: () => void;
 }) {
-  const [openCity, setOpenCity] = useState(false);
-  const [openDevice, setOpenDevice] = useState(false);
   return (
-    <>
-      <View style={styles.topBar}>
-        <View style={styles.topBarLeft}>
-          <Text style={styles.label}>Your Device</Text>
-          <View style={styles.onlineDot} />
-          <Text style={styles.onlineText}>Online</Text>
-        </View>
-        <View style={styles.topBarActions}>
-          <Pressable style={styles.devicePill} onPress={() => setOpenDevice(true)}>
-            <Text style={styles.cityPillText}>{devices.find(d => d.id === deviceId)?.name ?? deviceId} ▾</Text>
-          </Pressable>
-          <Pressable style={styles.cityPill} onPress={() => setOpenCity(true)}>
-            <Text style={styles.cityPillText}>{cityLabel(city)} ▾</Text>
-          </Pressable>
-        </View>
-      </View>
-
-      <SimplePicker
-        visible={openCity}
-        options={cities.map(c => ({id: c, label: cityLabel(c)}))}
-        value={city}
-        onSelect={val => {
-          onCityChange(val as CityId);
-          setOpenCity(false);
-        }}
-        onClose={() => setOpenCity(false)}
-      />
-
-      <SimplePicker
-        visible={openDevice}
-        options={devices.map(d => ({id: d.id, label: d.name}))}
-        value={deviceId}
-        onSelect={val => {
-          onDeviceChange(val);
-          setOpenDevice(false);
-        }}
-        onClose={() => setOpenDevice(false)}
-      />
-    </>
-  );
-}
-function LivePreviewCard({lines, city, arrivals}: {lines: LinePick[]; city: CityId; arrivals: Arrival[]}) {
-  const cityRoutes = (mode: ModeId) => cityData[city].modes[mode]?.routes ?? [];
-  return (
-    <View style={styles.previewWrapper}>
-      <ImageBackground source={{uri: pixelGridSvg}} style={styles.previewCard} imageStyle={{opacity: 0.22}}>
-        <View style={styles.previewHeaderRow}>
-          <Text style={styles.previewStation}>Live Preview</Text>
-          <View style={[styles.statusPill, styles.statusGood]}>
-            <View style={styles.statusDotLarge} />
-            <Text style={styles.statusPillText}>GOOD</Text>
-          </View>
-        </View>
-        <View style={styles.previewList}>
-          {lines.map(line => {
-            const stations = cityData[city].modes[line.mode]?.stations ?? [];
-            const station = stations.find(s => s.id === line.stationId);
-            const routes = cityRoutes(line.mode);
-            const route = routes.find(r => r.id === line.routeId);
-            const arrival = arrivals.find(a => a.lineId === line.id);
-            return (
-              <View key={line.id} style={styles.previewRow}>
-                <View style={[styles.routeBadge, {backgroundColor: route?.color ?? '#444', minWidth: 54}]}>
-                  <Text style={[styles.routeBadgeText, {color: route?.textColor ?? '#fff'}]}>{route?.label ?? '?'}</Text>
-                  <Text style={styles.routeDir}>{line.direction === 'uptown' ? 'UP' : 'DOWN'}</Text>
-                </View>
-                <View style={{flex: 1}}>
-                  <Text style={styles.previewStationName} numberOfLines={1}>
-                    {station?.name ?? 'Pick station'}
-                  </Text>
-                  <Text style={styles.previewArea}>{station?.area ?? '-'}</Text>
-                </View>
-                <View style={styles.arrivalPill}>
-                  <Text style={styles.arrivalTime}>{arrival?.minutes ?? 3}m</Text>
-                </View>
-              </View>
-            );
-          })}
-        </View>
-      </ImageBackground>
+    <View style={styles.topBar}>
+      <Pressable style={styles.backButton} onPress={onBackPress}>
+        <Text style={styles.backButtonText}>Back</Text>
+      </Pressable>
+      <Pressable style={styles.layoutPillTopRight} onPress={onLayoutOpen}>
+        <Text style={styles.layoutIcon}>[]</Text>
+        <Text style={styles.layoutPillTopRightText}>
+          {LAYOUT_OPTIONS.find(option => option.slots === layoutSlots)?.label ?? 'Layout'} v
+        </Text>
+      </Pressable>
     </View>
   );
 }
-function LineCard({
+
+function ConfirmDiscardModal({
+  visible,
+  onStay,
+  onLeave,
+}: {
+  visible: boolean;
+  onStay: () => void;
+  onLeave: () => void;
+}) {
+  return (
+    <Modal transparent visible={visible} animationType="fade" onRequestClose={onStay}>
+      <Pressable style={styles.confirmOverlay} onPress={onStay}>
+        <Pressable style={styles.confirmSheet} onPress={() => {}}>
+          <Text style={styles.confirmTitle}>Discard unsaved changes?</Text>
+          <Text style={styles.confirmBody}>You have unsaved edits. Leave this page without saving?</Text>
+          <View style={styles.confirmActions}>
+            <Pressable style={styles.confirmStayButton} onPress={onStay}>
+              <Text style={styles.confirmStayText}>Keep editing</Text>
+            </Pressable>
+            <Pressable style={styles.confirmLeaveButton} onPress={onLeave}>
+              <Text style={styles.confirmLeaveText}>Discard and Go Back</Text>
+            </Pressable>
+          </View>
+        </Pressable>
+      </Pressable>
+    </Modal>
+  );
+}
+function SlotEditor({
+  city,
   line,
-  index,
-  total,
-  stations,
-  routes,
-  modeLabel,
   stationSearch,
   onStationSearch,
   recents,
   onChange,
-  onMoveUp,
-  onMoveDown,
-  onRemove,
 }: {
+  city: CityId;
   line: LinePick;
-  index: number;
-  total: number;
-  stations: Station[];
-  routes: Route[];
-  modeLabel: string;
   stationSearch: string;
-  onStationSearch: (t: string) => void;
+  onStationSearch: (value: string) => void;
   recents: string[];
   onChange: (id: string, next: Partial<LinePick>) => void;
-  onMoveUp: () => void;
-  onMoveDown: () => void;
-  onRemove: () => void;
 }) {
+  const cityModes = cityData[city].modes;
+  const trainAvailable = !!cityModes.train;
+  const busAvailable = !!cityModes.bus;
+  const stations = cityModes[line.mode]?.stations ?? [];
+  const routes = cityModes[line.mode]?.routes ?? [];
+  const station = stations.find(s => s.id === line.stationId) ?? stations[0];
+  const allowedRoutes = station ? routes.filter(r => station.lines.includes(r.id)) : routes;
+
   return (
-    <View style={styles.lineCard}>
-      <View style={styles.lineHeader}>
-        <Text style={styles.lineTitle}>Line {index + 1}</Text>
-        <View style={styles.modePill}>
-          <Text style={styles.modePillText}>{modeLabel}</Text>
-        </View>
-        <View style={styles.lineActions}>
-          <Pressable disabled={index === 0} onPress={onMoveUp} style={styles.iconButton}>
-            <Text style={styles.iconButtonText}>{'^'}</Text>
-          </Pressable>
-          <Pressable disabled={index === total - 1} onPress={onMoveDown} style={styles.iconButton}>
-            <Text style={styles.iconButtonText}>{'v'}</Text>
-          </Pressable>
-          {total > 1 && (
-            <Pressable onPress={onRemove} style={[styles.iconButton, {marginLeft: 6}]}>
-              <Text style={styles.iconButtonText}>{'x'}</Text>
-            </Pressable>
-          )}
-        </View>
+    <View style={styles.sectionBlock}>
+      <Text style={styles.sectionLabel}>Transit Type</Text>
+      <View style={styles.segmented}>
+        <Pressable
+          style={[styles.segment, line.mode === 'train' && styles.segmentActive, !trainAvailable && styles.segmentDisabled]}
+          disabled={!trainAvailable}
+          onPress={() => onChange(line.id, {mode: 'train'})}>
+          <Text style={[styles.segmentText, line.mode === 'train' && styles.segmentTextActive]}>Subway</Text>
+        </Pressable>
+        <Pressable
+          style={[styles.segment, line.mode === 'bus' && styles.segmentActive, !busAvailable && styles.segmentDisabled]}
+          disabled={!busAvailable}
+          onPress={() => onChange(line.id, {mode: 'bus'})}>
+          <Text style={[styles.segmentText, line.mode === 'bus' && styles.segmentTextActive]}>Bus</Text>
+        </Pressable>
       </View>
 
       <StationInlinePicker
@@ -445,46 +427,123 @@ function LineCard({
         onSelect={id => onChange(line.id, {stationId: id})}
       />
 
-      <RouteGridPicker
-        routes={routes}
-        selected={line.routeId ? [line.routeId] : []}
-        onToggle={id => onChange(line.id, {routeId: id})}
-        single
-      />
+      <View style={styles.sectionBlock}>
+        <Text style={styles.sectionLabel}>Route</Text>
+        {allowedRoutes.length === 0 ? (
+          <Text style={styles.sectionHint}>No routes for this stop yet.</Text>
+        ) : (
+          <RouteGridPicker
+            routes={allowedRoutes}
+            selected={line.routeId ? [line.routeId] : []}
+            onToggle={id => onChange(line.id, {routeId: id})}
+          />
+        )}
+      </View>
 
-      <DirectionToggle value={line.direction} onChange={dir => onChange(line.id, {direction: dir})} />
+      <DirectionToggle value={line.direction} onChange={direction => onChange(line.id, {direction})} />
+
+      <View style={styles.sectionBlock}>
+        <Text style={styles.sectionLabel}>Custom Name</Text>
+        <TextInput
+          value={line.label}
+          onChangeText={value => onChange(line.id, {label: value})}
+          placeholder={station?.name ?? 'Give this slot a name'}
+          placeholderTextColor={colors.textMuted}
+          style={styles.customInput}
+        />
+      </View>
+
+      <TextColorPicker value={line.textColor} onChange={color => onChange(line.id, {textColor: color})} />
+
+      <View style={styles.sectionBlock}>
+        <Text style={styles.sectionLabel}>Next Arrivals To Show</Text>
+        <View style={styles.stepperRow}>
+          <Pressable
+            style={styles.stepperButton}
+            onPress={() => onChange(line.id, {nextStops: clampNextStops(line.nextStops - 1)})}>
+            <Text style={styles.stepperButtonText}>-</Text>
+          </Pressable>
+          <Text style={styles.stepperValue}>{line.nextStops}</Text>
+          <Pressable
+            style={styles.stepperButton}
+            onPress={() => onChange(line.id, {nextStops: clampNextStops(line.nextStops + 1)})}>
+            <Text style={styles.stepperButtonText}>+</Text>
+          </Pressable>
+        </View>
+        <Text style={styles.sectionHint}>This controls how many upcoming times appear for this slot.</Text>
+      </View>
     </View>
   );
 }
+
+function TextColorPicker({value, onChange}: {value: string; onChange: (next: string) => void}) {
+  const [draft, setDraft] = useState(value);
+
+  useEffect(() => {
+    setDraft(value);
+  }, [value]);
+
+  return (
+    <View style={styles.sectionBlock}>
+      <Text style={styles.sectionLabel}>Text Color</Text>
+      <View style={styles.colorSwatchRow}>
+        {TEXT_COLOR_SWATCHES.map(swatch => {
+          const active = swatch.toUpperCase() === value.toUpperCase();
+          return (
+            <Pressable
+              key={swatch}
+              style={[styles.colorSwatch, {backgroundColor: swatch}, active && styles.colorSwatchActive]}
+              onPress={() => onChange(swatch)}
+            />
+          );
+        })}
+      </View>
+      <TextInput
+        value={draft}
+        onChangeText={setDraft}
+        onBlur={() => {
+          const normalized = normalizeHexColor(draft);
+          if (normalized) {
+            onChange(normalized);
+            setDraft(normalized);
+            return;
+          }
+          setDraft(value);
+        }}
+        autoCapitalize="characters"
+        autoCorrect={false}
+        placeholder="#E9ECEF"
+        placeholderTextColor={colors.textMuted}
+        style={styles.colorInput}
+      />
+    </View>
+  );
+}
+
 function RouteGridPicker({
   routes,
   selected,
   onToggle,
-  single = false,
 }: {
   routes: Route[];
   selected: string[];
   onToggle: (id: string) => void;
-  single?: boolean;
 }) {
   return (
-    <View style={styles.sectionBlock}>
-      <Text style={styles.sectionLabel}>Route</Text>
-      <View style={styles.routeGrid}>
-        {routes.map(route => {
-          const active = selected.includes(route.id);
-          return (
-            <Pressable
-              key={route.id}
-              style={[styles.routeTile, {borderColor: active ? colors.accent : colors.border}]}
-              onPress={() => onToggle(single ? route.id : route.id)}>
-              <View style={[styles.routeCircle, {backgroundColor: route.color}]}>
-                <Text style={[styles.routeCircleText, {color: route.textColor ?? '#fff'}]}>{route.label}</Text>
-              </View>
-            </Pressable>
-          );
-        })}
-      </View>
+    <View style={styles.routeGrid}>
+      {routes.map(route => {
+        const active = selected.includes(route.id);
+        return (
+          <Pressable
+            key={route.id}
+            style={[styles.routeTile, active && styles.routeTileActive]}
+            onPress={() => onToggle(route.id)}>
+            <View style={[styles.routeCircle, {backgroundColor: route.color}]}>
+              <Text style={[styles.routeCircleText, {color: route.textColor ?? '#fff'}]}>{route.label}</Text>
+            </View>
+          </Pressable>
+        );
+      })}
     </View>
   );
 }
@@ -500,7 +559,7 @@ function StationInlinePicker({
   stations: Station[];
   value: string;
   search: string;
-  onSearch: (t: string) => void;
+  onSearch: (value: string) => void;
   recents: string[];
   onSelect: (id: string) => void;
 }) {
@@ -508,30 +567,32 @@ function StationInlinePicker({
     const term = search.trim().toLowerCase();
     if (!term) return stations;
     return stations.filter(
-      s =>
-        s.name.toLowerCase().includes(term) ||
-        s.area.toLowerCase().includes(term) ||
-        s.lines.join(' ').toLowerCase().includes(term),
+      station =>
+        station.name.toLowerCase().includes(term) ||
+        station.area.toLowerCase().includes(term) ||
+        station.lines.join(' ').toLowerCase().includes(term),
     );
   }, [search, stations]);
 
   return (
     <View style={styles.sectionBlock}>
-      <Text style={styles.sectionLabel}>Station</Text>
+      <Text style={styles.sectionLabel}>Stop</Text>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.recentsRow}>
-        {recents.map(r => (
-          <Pressable key={r} style={styles.recentChip} onPress={() => onSelectByName(r, stations, onSelect)}>
-            <Text style={styles.recentChipText}>{r}</Text>
+        {recents.map(recent => (
+          <Pressable key={recent} style={styles.recentChip} onPress={() => onSelectByName(recent, stations, onSelect)}>
+            <Text style={styles.recentChipText}>{recent}</Text>
           </Pressable>
         ))}
       </ScrollView>
+
       <TextInput
         value={search}
         onChangeText={onSearch}
-        placeholder="Search station"
+        placeholder="Search stop"
         placeholderTextColor={colors.textMuted}
         style={styles.searchInput}
       />
+
       <View style={styles.stationListInline}>
         {filtered.map((item, idx) => (
           <React.Fragment key={item.id}>
@@ -542,7 +603,9 @@ function StationInlinePicker({
                   {item.area} - {item.lines.join(' / ')}
                 </Text>
               </View>
-              <Text style={styles.chevron}>{value === item.id ? 'OK' : '>'}</Text>
+              <Text style={[styles.chevron, value === item.id && styles.chevronSelected]}>
+                {value === item.id ? 'Selected' : 'Tap'}
+              </Text>
             </Pressable>
             {idx < filtered.length - 1 && <View style={styles.listDivider} />}
           </React.Fragment>
@@ -552,17 +615,20 @@ function StationInlinePicker({
   );
 }
 
-function DirectionToggle({value, onChange}: {value: Direction; onChange: (d: Direction) => void}) {
+function DirectionToggle({value, onChange}: {value: Direction; onChange: (direction: Direction) => void}) {
   return (
     <View style={styles.sectionBlock}>
       <Text style={styles.sectionLabel}>Direction</Text>
       <View style={styles.segmented}>
-        {(['uptown', 'downtown'] as Direction[]).map(dir => {
-          const active = dir === value;
+        {(['uptown', 'downtown'] as Direction[]).map(direction => {
+          const active = direction === value;
           return (
-            <Pressable key={dir} style={[styles.segment, active && styles.segmentActive]} onPress={() => onChange(dir)}>
+            <Pressable
+              key={direction}
+              style={[styles.segment, active && styles.segmentActive]}
+              onPress={() => onChange(direction)}>
               <Text style={[styles.segmentText, active && styles.segmentTextActive]}>
-                {dir === 'uptown' ? 'Uptown / North' : 'Downtown / South'}
+                {direction === 'uptown' ? 'Uptown / North' : 'Downtown / South'}
               </Text>
             </Pressable>
           );
@@ -571,6 +637,7 @@ function DirectionToggle({value, onChange}: {value: Direction; onChange: (d: Dir
     </View>
   );
 }
+
 function SaveBar({dirty, loading, success, onPress}: {dirty: boolean; loading: boolean; success: boolean; onPress: () => void}) {
   return (
     <View style={styles.saveBar}>
@@ -584,6 +651,7 @@ function SaveBar({dirty, loading, success, onPress}: {dirty: boolean; loading: b
     </View>
   );
 }
+
 function SimplePicker({
   visible,
   options,
@@ -601,12 +669,12 @@ function SimplePicker({
     <Modal transparent visible={visible} animationType="fade" onRequestClose={onClose}>
       <Pressable style={styles.modalOverlay} onPress={onClose}>
         <View style={styles.modalSheet}>
-          {options.map(opt => (
+          {options.map(option => (
             <Pressable
-              key={opt.id}
-              style={[styles.modalOption, opt.id === value && styles.modalOptionActive]}
-              onPress={() => onSelect(opt.id)}>
-              <Text style={[styles.modalOptionText, opt.id === value && styles.modalOptionTextActive]}>{opt.label}</Text>
+              key={option.id}
+              style={[styles.modalOption, option.id === value && styles.modalOptionActive]}
+              onPress={() => onSelect(option.id)}>
+              <Text style={[styles.modalOptionText, option.id === value && styles.modalOptionTextActive]}>{option.label}</Text>
             </Pressable>
           ))}
         </View>
@@ -614,104 +682,190 @@ function SimplePicker({
     </Modal>
   );
 }
-function cityLabel(id: CityId) {
-  switch (id) {
-    case 'new-york':
-      return 'New York';
-    case 'philadelphia':
-      return 'Philly';
-    case 'boston':
-      return 'Boston';
-    case 'chicago':
-      return 'Chicago';
-  }
+function modeLabel(mode: ModeId) {
+  return mode === 'train' ? 'Subway' : 'Bus';
 }
 
-function newLine(city: CityId, mode: ModeId = 'train'): LinePick {
-  const stations = cityData[city].modes[mode]?.stations ?? [];
-  const routes = cityData[city].modes[mode]?.routes ?? [];
+function hasMode(city: CityId, mode: ModeId) {
+  return !!cityData[city].modes[mode];
+}
+
+function normalizeMode(city: CityId, mode: ModeId): ModeId {
+  if (hasMode(city, mode)) return mode;
+  return 'train';
+}
+
+function newLine(city: CityId, mode: ModeId, id: string): LinePick {
+  const safeMode = normalizeMode(city, mode);
+  const stations = cityData[city].modes[safeMode]?.stations ?? [];
+  const routes = cityData[city].modes[safeMode]?.routes ?? [];
   const firstStation = stations[0];
-  const firstRoute = firstStation ? routes.find(r => firstStation.lines.includes(r.id)) : routes[0];
-  return {
-    id: `${Date.now()}`,
-    mode,
+  const firstRoute = firstStation ? routes.find(route => firstStation.lines.includes(route.id)) : routes[0];
+
+  return normalizeLine(city, {
+    id,
+    mode: safeMode,
     stationId: firstStation?.id ?? '',
     routeId: firstRoute?.id ?? '',
     direction: 'uptown',
+    label: '',
+    textColor: DEFAULT_TEXT_COLOR,
+    nextStops: DEFAULT_NEXT_STOPS,
+  });
+}
+
+function normalizeLine(city: CityId, line: LinePick): LinePick {
+  const safeMode = normalizeMode(city, line.mode);
+  const stations = cityData[city].modes[safeMode]?.stations ?? [];
+  const routes = cityData[city].modes[safeMode]?.routes ?? [];
+  const station = stations.find(item => item.id === line.stationId) ?? stations[0];
+  const allowedRoutes = station ? routes.filter(route => station.lines.includes(route.id)) : routes;
+  const route = allowedRoutes.find(item => item.id === line.routeId) ?? allowedRoutes[0] ?? routes[0];
+
+  return {
+    ...line,
+    mode: safeMode,
+    stationId: station?.id ?? '',
+    routeId: route?.id ?? '',
+    direction: line.direction === 'downtown' ? 'downtown' : 'uptown',
+    label: line.label ?? '',
+    textColor: normalizeHexColor(line.textColor) ?? DEFAULT_TEXT_COLOR,
+    nextStops: clampNextStops(line.nextStops),
   };
 }
 
 function seedDefaultLines(city: CityId): LinePick[] {
-  const lines: LinePick[] = [];
-  const stations = cityData[city].modes.train?.stations ?? [];
-  const routes = cityData[city].modes.train?.routes ?? [];
-  const firstStation = stations[0];
-  const secondStation = stations[1] ?? stations[0];
-  const r2 = routes.find(r => secondStation?.lines.includes(r.id));
-  const r1 = routes.find(r => firstStation?.lines.includes(r.id));
-  lines.push({
-    id: 'line-1',
-    mode: 'train',
-    stationId: firstStation?.id ?? '',
-    routeId: r1?.id ?? '',
-    direction: 'uptown',
-  });
-  // leave only one default line to reduce clutter; user can add bus or train via tabs
-  return lines;
+  const defaults = [newLine(city, 'train', 'line-1')];
+  defaults.push(newLine(city, hasMode(city, 'bus') ? 'bus' : 'train', 'line-2'));
+  return defaults;
+}
+
+function ensureLineCount(existing: LinePick[], city: CityId, slots: number): LinePick[] {
+  const next: LinePick[] = [];
+  for (let index = 0; index < slots; index += 1) {
+    const id = `line-${index + 1}`;
+    const fromExisting = existing.find(line => line.id === id);
+    if (fromExisting) {
+      next.push(normalizeLine(city, {...fromExisting, id}));
+      continue;
+    }
+
+    const mode: ModeId = index === 0 ? 'train' : hasMode(city, 'bus') ? 'bus' : 'train';
+    next.push(newLine(city, mode, id));
+  }
+  return next;
 }
 
 function seedArrivals(lines: LinePick[]): Arrival[] {
-  return lines.map(l => ({
-    lineId: l.id,
+  return lines.map(line => ({
+    lineId: line.id,
     minutes: 2 + Math.floor(Math.random() * 8),
     status: Math.random() > 0.85 ? 'DELAYS' : 'GOOD',
   }));
 }
 
+function syncArrivals(existing: Arrival[], lines: LinePick[]): Arrival[] {
+  return lines.map(line => {
+    const found = existing.find(item => item.lineId === line.id);
+    if (found) return found;
+    return {
+      lineId: line.id,
+      minutes: 2 + Math.floor(Math.random() * 8),
+      status: Math.random() > 0.85 ? 'DELAYS' : 'GOOD',
+    };
+  });
+}
+
 function tickArrivals(prev: Arrival[]): Arrival[] {
-  return prev.map(a => {
-    const next = Math.max(0, a.minutes - (Math.random() > 0.4 ? 1 : 0));
+  return prev.map(arrival => {
+    const next = Math.max(0, arrival.minutes - (Math.random() > 0.4 ? 1 : 0));
     const recycled = next === 0 ? 8 + Math.floor(Math.random() * 4) : next;
     const status = Math.random() > 0.9 ? 'DELAYS' : 'GOOD';
-    return {...a, minutes: recycled, status};
+    return {...arrival, minutes: recycled, status};
   });
 }
 
 function onSelectByName(name: string, stations: Station[], onSelect: (id: string) => void) {
-  const found = stations.find(s => s.name === name);
+  const found = stations.find(station => station.name === name);
   if (found) onSelect(found.id);
 }
+
+function clampNextStops(value: number) {
+  if (!Number.isFinite(value)) return DEFAULT_NEXT_STOPS;
+  return Math.min(MAX_NEXT_STOPS, Math.max(1, Math.round(value)));
+}
+
+function normalizeHexColor(value: string | undefined | null): string | null {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  const match = trimmed.match(/^#?([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/);
+  if (!match) return null;
+  return `#${match[1].toUpperCase()}`;
+}
+
+function buildNextArrivalTimes(firstMinutes: number, count: number): string[] {
+  const safeCount = clampNextStops(count);
+  const times: string[] = [];
+  let current = Math.max(1, Math.round(firstMinutes));
+  for (let idx = 0; idx < safeCount; idx += 1) {
+    times.push(`${current}m`);
+    current += idx % 2 === 0 ? 2 : 3;
+  }
+  return times;
+}
+
 const styles = StyleSheet.create({
   container: {flex: 1, backgroundColor: colors.background},
-  scroll: {padding: spacing.lg, paddingBottom: 140},
+  scroll: {padding: spacing.lg, paddingBottom: 140, gap: spacing.md},
   topBar: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: spacing.md,
+    gap: spacing.xs,
   },
-  topBarLeft: {flexDirection: 'row', alignItems: 'center', gap: 6},
-  topBarActions: {flexDirection: 'row', gap: spacing.xs},
-  label: {color: colors.textMuted, fontSize: 12, fontWeight: '700'},
-  onlineDot: {width: 8, height: 8, borderRadius: 4, backgroundColor: colors.success},
-  onlineText: {color: colors.text, fontSize: 12, fontWeight: '700'},
-  cityPill: {
-    backgroundColor: colors.card,
-    borderColor: colors.border,
-    borderWidth: 1,
+  backButton: {
     borderRadius: radii.md,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
-  },
-  devicePill: {
+    borderWidth: 1,
+    borderColor: colors.border,
     backgroundColor: colors.surface,
-    borderColor: colors.border,
-    borderWidth: 1,
-    borderRadius: radii.md,
     paddingHorizontal: spacing.sm,
     paddingVertical: spacing.xs,
   },
-  cityPillText: {color: colors.text, fontSize: 12, fontWeight: '800'},
+  backButtonText: {color: colors.text, fontSize: 13, fontWeight: '800'},
+  confirmOverlay: {
+    flex: 1,
+    backgroundColor: '#00000088',
+    justifyContent: 'center',
+    paddingHorizontal: spacing.lg,
+  },
+  confirmSheet: {
+    backgroundColor: colors.card,
+    borderRadius: radii.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.md,
+  },
+  confirmTitle: {color: colors.text, fontSize: 16, fontWeight: '800'},
+  confirmBody: {color: colors.textMuted, fontSize: 13, marginTop: spacing.xs},
+  confirmActions: {flexDirection: 'row', justifyContent: 'flex-end', gap: spacing.xs, marginTop: spacing.md},
+  confirmStayButton: {
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+  },
+  confirmStayText: {color: colors.text, fontSize: 13, fontWeight: '700'},
+  confirmLeaveButton: {
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: '#5B1C1C',
+    backgroundColor: '#2B1010',
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+  },
+  confirmLeaveText: {color: '#FCA5A5', fontSize: 13, fontWeight: '700'},
   modalOverlay: {flex: 1, backgroundColor: '#00000088', justifyContent: 'flex-start', paddingTop: 72},
   modalSheet: {
     marginHorizontal: spacing.lg,
@@ -724,7 +878,10 @@ const styles = StyleSheet.create({
   modalOptionActive: {backgroundColor: colors.accentMuted},
   modalOptionText: {color: colors.text, fontSize: 15, fontWeight: '700'},
   modalOptionTextActive: {color: colors.accent},
-  previewWrapper: {marginBottom: spacing.md},
+  previewWrapper: {marginBottom: spacing.xs},
+  previewSection: {
+    gap: spacing.xs,
+  },
   previewCard: {
     borderRadius: radii.lg,
     overflow: 'hidden',
@@ -736,7 +893,6 @@ const styles = StyleSheet.create({
   },
   previewHeaderRow: {flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center'},
   previewStation: {color: '#E9F5FF', fontSize: 18, fontWeight: '900', flex: 1, marginRight: spacing.sm},
-  previewArea: {color: '#7A8699', fontSize: 12},
   statusPill: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -749,95 +905,27 @@ const styles = StyleSheet.create({
   statusDotLarge: {width: 8, height: 8, borderRadius: 4, backgroundColor: '#5CE1E6'},
   statusPillText: {color: '#fff', fontWeight: '800', fontSize: 11},
   previewList: {marginTop: spacing.sm, gap: spacing.sm},
-  previewRow: {flexDirection: 'row', alignItems: 'center', gap: spacing.sm},
-  previewStationName: {color: '#E9ECEF', fontSize: 14, fontWeight: '800'},
-  arrivalPill: {
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
-    borderRadius: radii.md,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  arrivalTime: {color: colors.text, fontSize: 18, fontWeight: '900'},
-  card: {
-    backgroundColor: colors.card,
-    borderRadius: radii.lg,
-    borderWidth: 1,
-    borderColor: colors.border,
-    padding: spacing.md,
-    gap: spacing.sm,
-  },
-  headerRow: {flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between'},
-  addRow: {flexDirection: 'row', gap: spacing.xs},
-  addButton: {
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
-    borderRadius: radii.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
-  },
-  addButtonText: {color: colors.text, fontWeight: '800'},
-  lineCard: {
-    borderRadius: radii.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-    padding: spacing.sm,
-    backgroundColor: colors.surface,
-    gap: spacing.xs,
-  },
-  lineHeader: {flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center'},
-  lineTitle: {color: colors.text, fontWeight: '800'},
-  lineActions: {flexDirection: 'row', alignItems: 'center'},
-  iconButton: {
-    paddingHorizontal: spacing.xs,
-    paddingVertical: 4,
-    borderRadius: radii.sm,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.card,
-  },
-  iconButtonText: {color: colors.text},
-  segmented: {
-    flexDirection: 'row',
-    backgroundColor: colors.background,
-    borderRadius: radii.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-    overflow: 'hidden',
-  },
-  segment: {flex: 1, paddingVertical: spacing.sm, alignItems: 'center'},
-  segmentActive: {backgroundColor: colors.accentMuted},
-  segmentText: {color: colors.textMuted, fontWeight: '700', fontSize: 13},
-  segmentTextActive: {color: colors.accent},
-  selector: {
-    backgroundColor: colors.card,
-    borderRadius: radii.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-    padding: spacing.sm,
+  previewRowButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  selectorLabel: {color: colors.textMuted, fontSize: 12, fontWeight: '700'},
-  selectorValue: {color: colors.text, fontSize: 14, fontWeight: '800'},
-  sectionBlock: {gap: spacing.xs},
-  sectionLabel: {color: colors.text, fontSize: 14, fontWeight: '800'},
-  routeGrid: {flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm},
-  routeTile: {
-    width: 70,
-    height: 70,
+    gap: spacing.sm,
     borderRadius: radii.md,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: '#1E232B',
+    padding: spacing.sm,
+    backgroundColor: '#090C12',
+  },
+  previewRowButtonActive: {borderColor: colors.accent, backgroundColor: '#0E1720'},
+  previewSlotBadge: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#38414A',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: colors.background,
   },
-  routeCircle: {width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center'},
-  routeCircleText: {fontWeight: '900', fontSize: 18},
+  previewSlotBadgeText: {color: '#C7CFD6', fontSize: 12, fontWeight: '800'},
   routeBadge: {
     paddingHorizontal: 10,
     paddingVertical: 8,
@@ -848,12 +936,88 @@ const styles = StyleSheet.create({
   },
   routeBadgeText: {fontWeight: '900', fontSize: 16},
   routeDir: {color: '#E9ECEF', fontSize: 11, fontWeight: '700', opacity: 0.8},
-  stationRow: {flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: spacing.sm},
-  stationListInline: {maxHeight: 240},
-  stationName: {color: colors.text, fontSize: 14, fontWeight: '800'},
-  stationMeta: {color: colors.textMuted, fontSize: 12, marginTop: 2},
-  chevron: {color: colors.textMuted, fontSize: 18, fontWeight: '700'},
-  listDivider: {height: 1, backgroundColor: colors.border},
+  previewMain: {flex: 1, gap: 2},
+  previewStationName: {fontSize: 14, fontWeight: '800'},
+  previewArea: {fontSize: 12, opacity: 0.75},
+  previewTimes: {fontSize: 12, fontWeight: '700'},
+  card: {
+    backgroundColor: colors.card,
+    borderRadius: radii.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.md,
+    gap: spacing.sm,
+  },
+  sectionLabel: {color: colors.text, fontSize: 14, fontWeight: '800'},
+  layoutRow: {flexDirection: 'row', gap: spacing.xs},
+  layoutDropdownLabel: {color: colors.textMuted, fontSize: 12, fontWeight: '700'},
+  layoutDropdownButton: {
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+  },
+  layoutDropdownButtonText: {color: colors.text, fontSize: 12, fontWeight: '700'},
+  layoutPillTopRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderWidth: 1,
+    borderRadius: radii.md,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    alignSelf: 'flex-end',
+  },
+  layoutIcon: {color: colors.textMuted, fontSize: 12, fontWeight: '800'},
+  layoutPillTopRightText: {color: colors.text, fontSize: 13, fontWeight: '700'},
+  layoutPill: {
+    flex: 1,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    paddingVertical: spacing.sm,
+    alignItems: 'center',
+  },
+  layoutPillActive: {borderColor: colors.accent, backgroundColor: colors.accentMuted},
+  layoutPillText: {color: colors.text, fontWeight: '700', fontSize: 13},
+  layoutPillTextActive: {color: colors.accent},
+  layoutHint: {color: colors.textMuted, fontSize: 12},
+  editorHeader: {flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center'},
+  editorMeta: {color: colors.textMuted, fontSize: 12, fontWeight: '700'},
+  sectionBlock: {gap: spacing.xs},
+  sectionHint: {color: colors.textMuted, fontSize: 12},
+  selectorField: {
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.sm,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  selectorValueText: {color: colors.text, fontSize: 14, fontWeight: '700'},
+  selectorCaptionText: {color: colors.textMuted, fontSize: 12, marginTop: 2},
+  selectorChevron: {color: colors.textMuted, fontSize: 12, fontWeight: '700'},
+  segmented: {
+    flexDirection: 'row',
+    backgroundColor: colors.background,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    overflow: 'hidden',
+  },
+  segment: {flex: 1, paddingVertical: spacing.sm, alignItems: 'center'},
+  segmentActive: {backgroundColor: colors.accentMuted},
+  segmentDisabled: {opacity: 0.4},
+  segmentText: {color: colors.textMuted, fontWeight: '700', fontSize: 13},
+  segmentTextActive: {color: colors.accent},
   recentsRow: {flexGrow: 0, marginBottom: spacing.xs},
   recentChip: {
     backgroundColor: colors.surface,
@@ -875,6 +1039,67 @@ const styles = StyleSheet.create({
     color: colors.text,
     marginBottom: spacing.xs,
   },
+  stationListInline: {maxHeight: 220},
+  stationRow: {flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: spacing.sm},
+  stationName: {color: colors.text, fontSize: 14, fontWeight: '800'},
+  stationMeta: {color: colors.textMuted, fontSize: 12, marginTop: 2},
+  chevron: {color: colors.textMuted, fontSize: 12, fontWeight: '700'},
+  chevronSelected: {color: colors.accent},
+  listDivider: {height: 1, backgroundColor: colors.border},
+  routeGrid: {flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm},
+  routeTile: {
+    width: 70,
+    height: 70,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.background,
+  },
+  routeTileActive: {borderColor: colors.accent, backgroundColor: colors.accentMuted},
+  routeCircle: {width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center'},
+  routeCircleText: {fontWeight: '900', fontSize: 18},
+  customInput: {
+    backgroundColor: colors.surface,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.sm,
+    color: colors.text,
+  },
+  colorSwatchRow: {flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs},
+  colorSwatch: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    borderWidth: 2,
+    borderColor: colors.border,
+  },
+  colorSwatchActive: {borderColor: colors.accent},
+  colorInput: {
+    backgroundColor: colors.surface,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    color: colors.text,
+  },
+  stepperRow: {flexDirection: 'row', alignItems: 'center', gap: spacing.md},
+  stepperButton: {
+    width: 36,
+    height: 36,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  stepperButtonText: {color: colors.text, fontSize: 18, fontWeight: '800'},
+  stepperValue: {color: colors.text, fontSize: 20, fontWeight: '900', minWidth: 20, textAlign: 'center'},
   saveBar: {
     position: 'absolute',
     left: 0,
@@ -896,5 +1121,7 @@ const styles = StyleSheet.create({
   saveButtonSuccess: {backgroundColor: colors.success},
   saveButtonText: {color: colors.background, fontWeight: '900', fontSize: 15},
   saveHint: {color: colors.textMuted, fontSize: 12, textAlign: 'center'},
-  emptyHint: {color: colors.textMuted, fontSize: 12, marginTop: spacing.xs},
+  emptyHint: {color: colors.textMuted, fontSize: 12},
 });
+
+
