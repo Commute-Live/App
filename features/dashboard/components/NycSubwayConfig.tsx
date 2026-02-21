@@ -389,15 +389,15 @@ export default function NycSubwayConfig({deviceId, providerId = 'mta-subway'}: P
     return () => {
       cancelled = true;
     };
-  }, [isBusMode, subwaySelections]);
+  }, [isBusMode, subwaySelections[0]?.stopId, subwaySelections[1]?.stopId]);
 
   useEffect(() => {
-    if (!stopDropdownOpen) {
+    if (!isBusMode || !stopDropdownOpen) {
       setStopOptions([]);
       return;
     }
     setStopOptions(allStops);
-  }, [allStops, stopDropdownOpen]);
+  }, [isBusMode, allStops, stopDropdownOpen]);
 
   useEffect(() => {
     if (!isBusMode) return;
@@ -443,7 +443,7 @@ export default function NycSubwayConfig({deviceId, providerId = 'mta-subway'}: P
     setStatusText('');
   }, []);
 
-  const toggleLine = useCallback((line: string) => {
+  const toggleLineAtIndex = useCallback((line: string, index: 0 | 1) => {
     if (isBusMode) {
       setSelectedLines([line]);
       return;
@@ -451,12 +451,11 @@ export default function NycSubwayConfig({deviceId, providerId = 'mta-subway'}: P
     setStatusText('');
     setSubwaySelections(prev => {
       const next = [...prev];
-      const index = activeSubwaySelectionIndex;
       if (!next[index]) return prev;
       next[index] = {...next[index], line};
       return next;
     });
-  }, [activeSubwaySelectionIndex, isBusMode]);
+  }, [isBusMode]);
 
   const saveConfig = useCallback(async () => {
     if (!deviceId) return;
@@ -549,13 +548,13 @@ export default function NycSubwayConfig({deviceId, providerId = 'mta-subway'}: P
         style={[styles.lineChip, selected === line && styles.lineChipActive]}
         onPress={() => {
           setActiveSubwaySelectionIndex(index);
-          toggleLine(line);
+          toggleLineAtIndex(line, index);
         }}
         disabled={isSaving || subwayLoadingLines[index]}>
         <Text style={[styles.lineChipText, selected === line && styles.lineChipTextActive]}>{line}</Text>
       </Pressable>
     ));
-  }, [isSaving, subwayAvailableLines, subwayLoadingLines, subwaySelections, toggleLine]);
+  }, [isSaving, subwayAvailableLines, subwayLoadingLines, subwaySelections, toggleLineAtIndex]);
 
   const selectedBusRoute = selectedLines[0]?.trim().toUpperCase() ?? '';
   const selectedBusRouteLabel = useMemo(() => {
