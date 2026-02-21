@@ -7,6 +7,7 @@ const DEFAULT_STOP_ID = '725N';
 const DEFAULT_STOP_NAME = 'Times Sq-42 St';
 const MAX_SELECTED_LINES = 2;
 const MAX_SELECTED_BUS_LINES = 1;
+const DISPLAY_PRESETS = [1, 2, 3, 4, 5] as const;
 
 type StopOption = {stopId: string; stop: string; direction: 'N' | 'S' | ''};
 type BusRouteOption = {id: string; label: string};
@@ -34,6 +35,8 @@ export default function NycSubwayConfig({deviceId, providerId = 'mta-subway'}: P
   const [isSaving, setIsSaving] = useState(false);
   const [statusText, setStatusText] = useState('');
   const [stopError, setStopError] = useState('');
+  const [displayType, setDisplayType] = useState<number>(1);
+  const [presetDropdownOpen, setPresetDropdownOpen] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -72,6 +75,11 @@ export default function NycSubwayConfig({deviceId, providerId = 'mta-subway'}: P
           } else {
             setStopId(normalized);
           }
+        }
+        const configuredDisplayType = Number(data?.config?.displayType);
+        if (!cancelled && Number.isFinite(configuredDisplayType)) {
+          const normalizedPreset = Math.max(1, Math.min(5, Math.trunc(configuredDisplayType)));
+          setDisplayType(normalizedPreset);
         }
       } catch {
         // Keep defaults.
@@ -353,6 +361,7 @@ export default function NycSubwayConfig({deviceId, providerId = 'mta-subway'}: P
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({
+          displayType,
           lines: selectedLines.map(line => ({
             provider: isBusMode ? 'mta-bus' : 'mta-subway',
             line,
@@ -383,7 +392,7 @@ export default function NycSubwayConfig({deviceId, providerId = 'mta-subway'}: P
     } finally {
       setIsSaving(false);
     }
-  }, [deviceId, selectedLines, stopId, derivedDirection, isBusMode]);
+  }, [deviceId, selectedLines, stopId, derivedDirection, isBusMode, displayType]);
 
   const lineButtons = useMemo(
     () =>
@@ -495,6 +504,45 @@ export default function NycSubwayConfig({deviceId, providerId = 'mta-subway'}: P
           </View>
         )}
         {!!stopError && <Text style={styles.errorText}>{stopError}</Text>}
+      </View>
+
+      <View style={styles.sectionCard}>
+        <Text style={styles.sectionTitle}>Preset Layout</Text>
+        <Text style={styles.hintText}>Choose layout preset for this device (1-5).</Text>
+        <Pressable
+          style={({pressed}) => [
+            styles.stationSelector,
+            presetDropdownOpen && styles.stationSelectorOpen,
+            pressed && styles.stationSelectorPressed,
+          ]}
+          onPress={() => setPresetDropdownOpen(prev => !prev)}>
+          <Text style={styles.stationSelectorText}>Preset {displayType}</Text>
+          <Text style={styles.stationSelectorCaret}>{presetDropdownOpen ? '▲' : '▼'}</Text>
+        </Pressable>
+        {presetDropdownOpen && (
+          <View style={styles.stopList}>
+            <ScrollView style={styles.stopListScroll} nestedScrollEnabled>
+              {DISPLAY_PRESETS.map(option => {
+                const isSelected = displayType === option;
+                return (
+                  <Pressable
+                    key={option}
+                    style={({pressed}) => [
+                      styles.stopItem,
+                      isSelected && styles.stopItemSelected,
+                      pressed && styles.stopItemPressed,
+                    ]}
+                    onPress={() => {
+                      setDisplayType(option);
+                      setPresetDropdownOpen(false);
+                    }}>
+                    <Text style={styles.stopItemTitle}>Preset {option}</Text>
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+          </View>
+        )}
       </View>
 
       <View style={styles.sectionCard}>

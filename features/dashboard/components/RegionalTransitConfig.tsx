@@ -4,6 +4,7 @@ import {colors, radii, spacing} from '../../../theme';
 import {apiFetch} from '../../../lib/api';
 
 const MAX_PHILLY_LINES = 2;
+const DISPLAY_PRESETS = [1, 2, 3, 4, 5] as const;
 
 type City = 'boston' | 'philadelphia';
 type Mode = 'train' | 'bus';
@@ -52,6 +53,8 @@ export default function RegionalTransitConfig({deviceId, city, mode}: Props) {
   const [isLoadingStops, setIsLoadingStops] = useState(false);
   const [statusText, setStatusText] = useState('');
   const [isSaving, setIsSaving] = useState(false);
+  const [displayType, setDisplayType] = useState<number>(1);
+  const [presetDropdownOpen, setPresetDropdownOpen] = useState(false);
 
   const provider = useMemo(() => providerFor(city, mode), [city, mode]);
 
@@ -129,6 +132,11 @@ export default function RegionalTransitConfig({deviceId, city, mode}: Props) {
         if (savedStop) {
           setStopId(savedStop);
           setStopName(savedStop);
+        }
+        const configuredDisplayType = Number(data?.config?.displayType);
+        if (Number.isFinite(configuredDisplayType)) {
+          const normalizedPreset = Math.max(1, Math.min(5, Math.trunc(configuredDisplayType)));
+          setDisplayType(normalizedPreset);
         }
       } catch {
         // no-op
@@ -213,6 +221,7 @@ export default function RegionalTransitConfig({deviceId, city, mode}: Props) {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({
+          displayType,
           lines: linesToSave.map(line => ({
               provider,
               line,
@@ -238,10 +247,50 @@ export default function RegionalTransitConfig({deviceId, city, mode}: Props) {
     } finally {
       setIsSaving(false);
     }
-  }, [city, deviceId, provider, route, selectedLines, stopId, stopName]);
+  }, [city, deviceId, provider, route, selectedLines, stopId, stopName, displayType]);
 
   return (
     <>
+      <View style={styles.sectionCard}>
+        <Text style={styles.sectionTitle}>Preset Layout</Text>
+        <Text style={styles.hintText}>Choose layout preset for this device (1-5).</Text>
+        <Pressable
+          style={({pressed}) => [
+            styles.stationSelector,
+            presetDropdownOpen && styles.stationSelectorOpen,
+            pressed && styles.stationSelectorPressed,
+          ]}
+          onPress={() => setPresetDropdownOpen(prev => !prev)}>
+          <Text style={styles.stationSelectorText}>Preset {displayType}</Text>
+          <Text style={styles.stationSelectorCaret}>{presetDropdownOpen ? '▲' : '▼'}</Text>
+        </Pressable>
+
+        {presetDropdownOpen && (
+          <View style={styles.stopList}>
+            <ScrollView style={styles.stopListScroll} nestedScrollEnabled>
+              {DISPLAY_PRESETS.map(option => {
+                const isSelected = displayType === option;
+                return (
+                  <Pressable
+                    key={option}
+                    style={({pressed}) => [
+                      styles.stopItem,
+                      isSelected && styles.stopItemSelected,
+                      pressed && styles.stopItemPressed,
+                    ]}
+                    onPress={() => {
+                      setDisplayType(option);
+                      setPresetDropdownOpen(false);
+                    }}>
+                    <Text style={styles.stopItemTitle}>Preset {option}</Text>
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+          </View>
+        )}
+      </View>
+
       <View style={styles.sectionCard}>
         <Text style={styles.sectionTitle}>{cityTitle(city)} {mode === 'train' ? 'Train' : 'Bus'}</Text>
         {city === 'philadelphia' ? (
