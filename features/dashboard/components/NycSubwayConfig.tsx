@@ -11,6 +11,7 @@ const DISPLAY_PRESETS = [1, 2, 3, 4, 5] as const;
 
 type StopOption = {stopId: string; stop: string; direction: 'N' | 'S' | ''};
 type BusRouteOption = {id: string; label: string};
+type SubwaySelection = {line: string; stopId: string; stopName: string};
 
 type Props = {
   deviceId: string;
@@ -37,6 +38,23 @@ export default function NycSubwayConfig({deviceId, providerId = 'mta-subway'}: P
   const [stopError, setStopError] = useState('');
   const [displayType, setDisplayType] = useState<number>(1);
   const [presetDropdownOpen, setPresetDropdownOpen] = useState(false);
+  const [subwaySelections, setSubwaySelections] = useState<SubwaySelection[]>([
+    {line: 'E', stopId: DEFAULT_STOP_ID, stopName: DEFAULT_STOP_NAME},
+  ]);
+  const [activeSubwaySelectionIndex, setActiveSubwaySelectionIndex] = useState<0 | 1>(0);
+  const [subwayStopDropdownOpen, setSubwayStopDropdownOpen] = useState(false);
+  const [subwayAllStops, setSubwayAllStops] = useState<StopOption[]>([]);
+  const [subwayAvailableLines, setSubwayAvailableLines] = useState<string[][]>([[], []]);
+  const [subwayLoadingLines, setSubwayLoadingLines] = useState<boolean[]>([false, false]);
+
+  const normalizeStopId = useCallback((rawStop: string, rawDirection: string) => {
+    const normalized = rawStop.trim().toUpperCase();
+    if (!normalized.length) return '';
+    if (normalized.endsWith('N') || normalized.endsWith('S')) return normalized;
+    const direction = rawDirection.trim().toUpperCase();
+    if (direction === 'N' || direction === 'S') return `${normalized}${direction}`;
+    return normalized;
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -52,29 +70,44 @@ export default function NycSubwayConfig({deviceId, providerId = 'mta-subway'}: P
           return;
         }
 
-        const configuredLines = Array.isArray(data?.config?.lines)
-          ? data.config.lines
-              .map((line: any) => (typeof line?.line === 'string' ? line.line.toUpperCase() : ''))
-              .filter((line: string) => line.length > 0)
-          : [];
-        const firstStopId = typeof data?.config?.lines?.[0]?.stop === 'string' ? data.config.lines[0].stop : '';
-        const firstDirection =
-          typeof data?.config?.lines?.[0]?.direction === 'string' ? data.config.lines[0].direction.toUpperCase() : '';
+        const configuredRows = Array.isArray(data?.config?.lines) ? data.config.lines : [];
+        const configuredLines = configuredRows
+          .map((line: any) => (typeof line?.line === 'string' ? line.line.toUpperCase() : ''))
+          .filter((line: string) => line.length > 0);
 
         if (!cancelled && configuredLines.length > 0) {
           const maxLines = isBusMode ? MAX_SELECTED_BUS_LINES : MAX_SELECTED_LINES;
-          const picked = configuredLines.slice(0, maxLines);
-          setSelectedLines(picked);
+          setSelectedLines(configuredLines.slice(0, maxLines));
         }
-        if (!cancelled && firstStopId.length > 0) {
-          const normalized = firstStopId.toUpperCase();
-          if (normalized.endsWith('N') || normalized.endsWith('S')) {
-            setStopId(normalized);
-          } else if (firstDirection === 'N' || firstDirection === 'S') {
-            setStopId(`${normalized}${firstDirection}`);
-          } else {
-            setStopId(normalized);
+
+        if (!cancelled && !isBusMode) {
+          const subwayRows = configuredRows
+            .filter((row: any) => {
+              const p = typeof row?.provider === 'string' ? row.provider.toLowerCase() : '';
+              return p === 'mta-subway' || p === 'mta';
+            })
+            .slice(0, MAX_SELECTED_LINES);
+          if (subwayRows.length > 0) {
+            const mapped: SubwaySelection[] = subwayRows.map((row: any) => {
+              const line = typeof row?.line === 'string' ? row.line.toUpperCase() : '';
+              const rawStop = typeof row?.stop === 'string' ? row.stop : '';
+              const rawDirection = typeof row?.direction === 'string' ? row.direction : '';
+              const stopIdForLine = normalizeStopId(rawStop, rawDirection);
+              return {
+                line,
+                stopId: stopIdForLine,
+                stopName: stopIdForLine || 'Select stop',
+              };
+            });
+            setSubwaySelections(mapped);
+            setActiveSubwaySelectionIndex(0);
           }
+        }
+
+        const firstStopId = typeof configuredRows?.[0]?.stop === 'string' ? configuredRows[0].stop : '';
+        const firstDirection = typeof configuredRows?.[0]?.direction === 'string' ? configuredRows[0].direction : '';
+        if (!cancelled && firstStopId.length > 0) {
+          setStopId(normalizeStopId(firstStopId, firstDirection));
         }
         const configuredDisplayType = Number(data?.config?.displayType);
         if (!cancelled && Number.isFinite(configuredDisplayType)) {
@@ -93,12 +126,13 @@ export default function NycSubwayConfig({deviceId, providerId = 'mta-subway'}: P
     return () => {
       cancelled = true;
     };
-  }, [deviceId]);
+  }, [deviceId, isBusMode, normalizeStopId]);
 
   useEffect(() => {
     setAllStops([]);
     setStopOptions([]);
     setStopDropdownOpen(false);
+    setSubwayStopDropdownOpen(false);
     setBusRouteDropdownOpen(false);
     setStatusText('');
     setStopError('');
@@ -113,6 +147,10 @@ export default function NycSubwayConfig({deviceId, providerId = 'mta-subway'}: P
       setSelectedLines(prev => (prev.length > 0 ? prev.slice(0, MAX_SELECTED_LINES) : ['E', 'A']));
       setStopId(DEFAULT_STOP_ID);
       setStopName(DEFAULT_STOP_NAME);
+      setSubwaySelections([{line: 'E', stopId: DEFAULT_STOP_ID, stopName: DEFAULT_STOP_NAME}]);
+      setSubwayAvailableLines([[], []]);
+      setSubwayLoadingLines([false, false]);
+      setActiveSubwaySelectionIndex(0);
     }
   }, [isBusMode]);
 
@@ -156,7 +194,7 @@ export default function NycSubwayConfig({deviceId, providerId = 'mta-subway'}: P
 
   useEffect(() => {
     let cancelled = false;
-    if (!stopDropdownOpen) return;
+    if (!stopDropdownOpen || !isBusMode) return;
 
     const run = async () => {
       const primaryRoute = selectedLines[0]?.trim().toUpperCase();
@@ -170,9 +208,7 @@ export default function NycSubwayConfig({deviceId, providerId = 'mta-subway'}: P
       setIsLoadingStops(true);
       setStopsError('');
       try {
-        const response = isBusMode
-          ? await apiFetch(`/providers/new-york/stops/bus?route=${encodeURIComponent(primaryRoute)}&limit=1000`)
-          : await apiFetch('/stops?limit=1000');
+        const response = await apiFetch(`/providers/new-york/stops/bus?route=${encodeURIComponent(primaryRoute)}&limit=1000`);
         console.log('[NYC stops] request', {
           mode: isBusMode ? 'bus' : 'subway',
           route: primaryRoute ?? null,
@@ -217,6 +253,145 @@ export default function NycSubwayConfig({deviceId, providerId = 'mta-subway'}: P
   }, [stopDropdownOpen, selectedLines, isBusMode]);
 
   useEffect(() => {
+    if (!isBusMode || !stopDropdownOpen) {
+      setStopOptions([]);
+      return;
+    }
+    setStopOptions(allStops);
+  }, [isBusMode, stopDropdownOpen, allStops]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (isBusMode) return;
+
+    const run = async () => {
+      setIsLoadingStops(true);
+      setStopsError('');
+      try {
+        const response = await apiFetch('/stops?limit=1000');
+        if (!response.ok) {
+          if (!cancelled) setStopsError('Failed to load stops');
+          return;
+        }
+        const data = await response.json();
+        if (!cancelled) {
+          const options = Array.isArray(data?.stops) ? (data.stops as StopOption[]) : [];
+          setSubwayAllStops(options);
+          if (options.length === 0) setStopsError('No stops found');
+        }
+      } catch {
+        if (!cancelled) {
+          setSubwayAllStops([]);
+          setStopsError('Failed to load stops');
+        }
+      } finally {
+        if (!cancelled) setIsLoadingStops(false);
+      }
+    };
+
+    void run();
+    return () => {
+      cancelled = true;
+    };
+  }, [isBusMode]);
+
+  useEffect(() => {
+    if (isBusMode || subwayAllStops.length === 0) return;
+    setSubwaySelections(prev =>
+      prev.map(entry => {
+        const match = subwayAllStops.find(stop => stop.stopId.toUpperCase() === entry.stopId.toUpperCase());
+        if (!match) return entry;
+        return {...entry, stopName: match.stop};
+      }),
+    );
+  }, [isBusMode, subwayAllStops]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (isBusMode) return;
+
+    const fetchLinesFor = async (stopIdForLine: string, index: number) => {
+      const normalizedStopId = stopIdForLine.trim().toUpperCase();
+      if (!normalizedStopId) {
+        if (!cancelled) {
+          setSubwayAvailableLines(prev => {
+            const next = [...prev];
+            next[index] = [];
+            return next;
+          });
+        }
+        return;
+      }
+
+      setSubwayLoadingLines(prev => {
+        const next = [...prev];
+        next[index] = true;
+        return next;
+      });
+      try {
+        const response = await apiFetch(`/stops/${encodeURIComponent(normalizedStopId)}/lines`);
+        if (!response.ok) {
+          if (!cancelled) {
+            setSubwayAvailableLines(prev => {
+              const next = [...prev];
+              next[index] = [];
+              return next;
+            });
+          }
+          return;
+        }
+
+        const data = await response.json();
+        const lines = Array.isArray(data?.lines)
+          ? data.lines
+              .map((line: unknown) => (typeof line === 'string' ? line.toUpperCase() : ''))
+              .filter((line: string) => line.length > 0)
+          : [];
+
+        if (!cancelled) {
+          setSubwayAvailableLines(prev => {
+            const next = [...prev];
+            next[index] = lines;
+            return next;
+          });
+          setSubwaySelections(prev => {
+            if (index >= prev.length) return prev;
+            const current = prev[index];
+            if (current.line && lines.includes(current.line)) return prev;
+            const replacement = lines[0] ?? '';
+            const next = [...prev];
+            next[index] = {...current, line: replacement};
+            return next;
+          });
+        }
+      } catch {
+        if (!cancelled) {
+          setSubwayAvailableLines(prev => {
+            const next = [...prev];
+            next[index] = [];
+            return next;
+          });
+        }
+      } finally {
+        if (!cancelled) {
+          setSubwayLoadingLines(prev => {
+            const next = [...prev];
+            next[index] = false;
+            return next;
+          });
+        }
+      }
+    };
+
+    void fetchLinesFor(subwaySelections[0]?.stopId ?? '', 0);
+    void fetchLinesFor(subwaySelections[1]?.stopId ?? '', 1);
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isBusMode, subwaySelections]);
+
+  useEffect(() => {
     if (!stopDropdownOpen) {
       setStopOptions([]);
       return;
@@ -225,86 +400,36 @@ export default function NycSubwayConfig({deviceId, providerId = 'mta-subway'}: P
   }, [allStops, stopDropdownOpen]);
 
   useEffect(() => {
-    if (isBusMode) {
-      const normalizedLine = (selectedLines[0] ?? '').trim().toUpperCase();
-      if (!normalizedLine.length) {
-        setAvailableLines([]);
-        setSelectedLines([]);
-        return;
-      }
-      setAvailableLines([normalizedLine]);
+    if (!isBusMode) return;
+    const normalizedLine = (selectedLines[0] ?? '').trim().toUpperCase();
+    if (!normalizedLine.length) {
+      setAvailableLines([]);
+      setSelectedLines([]);
       return;
     }
-
-    let cancelled = false;
-    const normalizedStopId = stopId.trim().toUpperCase();
-    if (!normalizedStopId) {
-      setAvailableLines([]);
-      return;
-    }
-
-    const run = async () => {
-      setIsLoadingLines(true);
-      setAvailableLines([]);
-      try {
-        const response = await apiFetch(`/stops/${encodeURIComponent(normalizedStopId)}/lines`);
-        console.log('[NYC lines] request', {stopId: normalizedStopId, status: response.status, ok: response.ok});
-        if (!response.ok) {
-          if (!cancelled) {
-            setAvailableLines([]);
-            setSelectedLines([]);
-          }
-          return;
-        }
-
-        const data = await response.json();
-        console.log('[NYC lines] response', {
-          stopId: normalizedStopId,
-          lines: Array.isArray(data?.lines) ? data.lines : data,
-        });
-        const lines = Array.isArray(data?.lines)
-          ? data.lines
-              .map((line: unknown) => (typeof line === 'string' ? line.toUpperCase() : ''))
-              .filter((line: string) => line.length > 0)
-          : [];
-
-        if (!cancelled) {
-          setAvailableLines(lines);
-          setSelectedLines(prev => {
-            const filtered = prev.filter(line => lines.includes(line));
-            const next = (filtered.length > 0 ? filtered : lines).slice(0, MAX_SELECTED_LINES);
-            if (next.length === prev.length && next.every((line: string, idx: number) => line === prev[idx])) {
-              return prev;
-            }
-            return next;
-          });
-        }
-      } catch {
-        console.log('[NYC lines] error', {stopId: normalizedStopId});
-        if (!cancelled) {
-          setAvailableLines([]);
-          setSelectedLines([]);
-        }
-      } finally {
-        if (!cancelled) setIsLoadingLines(false);
-      }
-    };
-
-    void run();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [stopId, isBusMode]);
+    setAvailableLines([normalizedLine]);
+  }, [isBusMode, selectedLines]);
 
   const chooseStop = useCallback((option: StopOption) => {
-    setStopId(option.stopId.toUpperCase());
-    setStopName(option.stop);
+    const normalizedStopId = option.stopId.toUpperCase();
+    if (isBusMode) {
+      setStopId(normalizedStopId);
+      setStopName(option.stop);
+      setStopDropdownOpen(false);
+    } else {
+      setSubwaySelections(prev => {
+        const next = [...prev];
+        const index = activeSubwaySelectionIndex;
+        if (!next[index]) return prev;
+        next[index] = {...next[index], stopId: normalizedStopId, stopName: option.stop};
+        return next;
+      });
+      setSubwayStopDropdownOpen(false);
+    }
     setStopOptions([]);
-    setStopDropdownOpen(false);
     setStopError('');
     setStatusText('');
-  }, []);
+  }, [activeSubwaySelectionIndex, isBusMode]);
 
   const chooseBusRoute = useCallback((option: BusRouteOption) => {
     const route = option.id.trim().toUpperCase();
@@ -324,50 +449,70 @@ export default function NycSubwayConfig({deviceId, providerId = 'mta-subway'}: P
       return;
     }
     setStatusText('');
-    setSelectedLines(prev => {
-      if (prev.includes(line)) {
-        return prev.filter(item => item !== line);
-      }
-      if (prev.length >= MAX_SELECTED_LINES) {
-        return [...prev.slice(1), line];
-      }
-      return [...prev, line];
+    setSubwaySelections(prev => {
+      const next = [...prev];
+      const index = activeSubwaySelectionIndex;
+      if (!next[index]) return prev;
+      next[index] = {...next[index], line};
+      return next;
     });
-  }, [isBusMode]);
-
-  const derivedDirection: 'N' | 'S' = stopId.toUpperCase().endsWith('S') ? 'S' : 'N';
+  }, [activeSubwaySelectionIndex, isBusMode]);
 
   const saveConfig = useCallback(async () => {
     if (!deviceId) return;
     setIsSaving(true);
     setStatusText('');
 
-    if (selectedLines.length === 0) {
-      setStatusText('Select at least one line');
-      setIsSaving(false);
-      return;
-    }
-
-    const normalizedStopId = stopId.trim().toUpperCase();
-    if (!normalizedStopId.length) {
-      setStatusText('Select a stop');
-      setStopError('Select a stop from the list');
-      setIsSaving(false);
-      return;
-    }
-
     try {
+      let payloadLines: Array<{provider: string; line: string; stop: string; direction?: 'N' | 'S'}> = [];
+      if (isBusMode) {
+        if (selectedLines.length === 0) {
+          setStatusText('Select at least one line');
+          setIsSaving(false);
+          return;
+        }
+        const normalizedStopId = stopId.trim().toUpperCase();
+        if (!normalizedStopId.length) {
+          setStatusText('Select a stop');
+          setStopError('Select a stop from the list');
+          setIsSaving(false);
+          return;
+        }
+        payloadLines = selectedLines.map(line => ({
+          provider: 'mta-bus',
+          line,
+          stop: normalizedStopId,
+        }));
+      } else {
+        const validSelections = subwaySelections
+          .map(sel => ({
+            line: sel.line.trim().toUpperCase(),
+            stopId: sel.stopId.trim().toUpperCase(),
+          }))
+          .filter(sel => sel.line.length > 0 && sel.stopId.length > 0)
+          .slice(0, MAX_SELECTED_LINES);
+
+        if (validSelections.length === 0) {
+          setStatusText('Pick at least one train and stop');
+          setStopError('Choose stop + line');
+          setIsSaving(false);
+          return;
+        }
+
+        payloadLines = validSelections.map(sel => ({
+          provider: 'mta-subway',
+          line: sel.line,
+          stop: sel.stopId,
+          direction: sel.stopId.endsWith('S') ? 'S' : 'N',
+        }));
+      }
+
       const configResponse = await apiFetch(`/device/${deviceId}/config`, {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({
           displayType,
-          lines: selectedLines.map(line => ({
-            provider: isBusMode ? 'mta-bus' : 'mta-subway',
-            line,
-            stop: normalizedStopId,
-            ...(isBusMode ? {} : {direction: derivedDirection}),
-          })),
+          lines: payloadLines,
         }),
       });
 
@@ -383,30 +528,34 @@ export default function NycSubwayConfig({deviceId, providerId = 'mta-subway'}: P
 
       await apiFetch(`/refresh/device/${deviceId}`, {method: 'POST'});
       if (isBusMode) {
+        const normalizedStopId = stopId.trim().toUpperCase();
         setStatusText(`Updated ${selectedLines.join(', ')} at ${normalizedStopId}`);
       } else {
-        setStatusText(`Updated ${selectedLines.join(', ')} at ${normalizedStopId} ${derivedDirection}`);
+        setStatusText(`Updated ${payloadLines.map(row => `${row.line}@${row.stop}`).join(', ')}`);
       }
     } catch {
       setStatusText('Network error');
     } finally {
       setIsSaving(false);
     }
-  }, [deviceId, selectedLines, stopId, derivedDirection, isBusMode, displayType]);
+  }, [deviceId, selectedLines, stopId, isBusMode, displayType, subwaySelections]);
 
-  const lineButtons = useMemo(
-    () =>
-      availableLines.map(line => (
-        <Pressable
-          key={line}
-          style={[styles.lineChip, selectedLines.includes(line) && styles.lineChipActive]}
-          onPress={() => toggleLine(line)}
-          disabled={isSaving || isLoadingLines}>
-          <Text style={[styles.lineChipText, selectedLines.includes(line) && styles.lineChipTextActive]}>{line}</Text>
-        </Pressable>
-      )),
-    [availableLines, selectedLines, toggleLine, isSaving, isLoadingLines],
-  );
+  const subwayLineButtons = useCallback((index: 0 | 1) => {
+    const lines = subwayAvailableLines[index] ?? [];
+    const selected = subwaySelections[index]?.line ?? '';
+    return lines.map(line => (
+      <Pressable
+        key={`${index}-${line}`}
+        style={[styles.lineChip, selected === line && styles.lineChipActive]}
+        onPress={() => {
+          setActiveSubwaySelectionIndex(index);
+          toggleLine(line);
+        }}
+        disabled={isSaving || subwayLoadingLines[index]}>
+        <Text style={[styles.lineChipText, selected === line && styles.lineChipTextActive]}>{line}</Text>
+      </Pressable>
+    ));
+  }, [isSaving, subwayAvailableLines, subwayLoadingLines, subwaySelections, toggleLine]);
 
   const selectedBusRoute = selectedLines[0]?.trim().toUpperCase() ?? '';
   const selectedBusRouteLabel = useMemo(() => {
@@ -458,50 +607,146 @@ export default function NycSubwayConfig({deviceId, providerId = 'mta-subway'}: P
           </>
         )}
 
-        <Pressable
-          style={({pressed}) => [
-            styles.stationSelector,
-            stopDropdownOpen && styles.stationSelectorOpen,
-            pressed && styles.stationSelectorPressed,
-          ]}
-          onPress={() => {
-            setStopDropdownOpen(prev => !prev);
-            setStopError('');
-            setStopsError('');
-          }}>
-          <Text style={styles.stationSelectorText}>
-            {stopName} ({stopId})
-          </Text>
-          <Text style={styles.stationSelectorCaret}>{stopDropdownOpen ? '▲' : '▼'}</Text>
-        </Pressable>
+        {isBusMode ? (
+          <>
+            <Pressable
+              style={({pressed}) => [
+                styles.stationSelector,
+                stopDropdownOpen && styles.stationSelectorOpen,
+                pressed && styles.stationSelectorPressed,
+              ]}
+              onPress={() => {
+                setStopDropdownOpen(prev => !prev);
+                setStopError('');
+                setStopsError('');
+              }}>
+              <Text style={styles.stationSelectorText}>
+                {stopName} ({stopId})
+              </Text>
+              <Text style={styles.stationSelectorCaret}>{stopDropdownOpen ? '▲' : '▼'}</Text>
+            </Pressable>
 
-        {isLoadingStops && <Text style={styles.hintText}>Searching NYC {isBusMode ? 'bus' : 'subway'} stops...</Text>}
-        {stopDropdownOpen && (
-          <View style={styles.stopList}>
-            <ScrollView style={styles.stopListScroll} nestedScrollEnabled>
-              {!isLoadingStops && stopOptions.length === 0 && (
-                <Text style={styles.stopItemSubtitle}>{stopsError || 'No stops available'}</Text>
-              )}
-              {stopOptions.map(option => {
-                const isSelected = option.stopId.toUpperCase() === stopId.toUpperCase();
-                return (
-                  <Pressable
-                    key={option.stopId}
-                    style={({pressed}) => [
-                      styles.stopItem,
-                      isSelected && styles.stopItemSelected,
-                      pressed && styles.stopItemPressed,
-                    ]}
-                    onPress={() => chooseStop(option)}>
-                    <Text style={styles.stopItemTitle}>{option.stop}</Text>
-                    <Text style={styles.stopItemSubtitle}>
-                      {option.stopId} {option.direction ? `(${option.direction})` : ''}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </ScrollView>
-          </View>
+            {isLoadingStops && <Text style={styles.hintText}>Searching NYC bus stops...</Text>}
+            {stopDropdownOpen && (
+              <View style={styles.stopList}>
+                <ScrollView style={styles.stopListScroll} nestedScrollEnabled>
+                  {!isLoadingStops && stopOptions.length === 0 && (
+                    <Text style={styles.stopItemSubtitle}>{stopsError || 'No stops available'}</Text>
+                  )}
+                  {stopOptions.map(option => {
+                    const isSelected = option.stopId.toUpperCase() === stopId.toUpperCase();
+                    return (
+                      <Pressable
+                        key={option.stopId}
+                        style={({pressed}) => [
+                          styles.stopItem,
+                          isSelected && styles.stopItemSelected,
+                          pressed && styles.stopItemPressed,
+                        ]}
+                        onPress={() => chooseStop(option)}>
+                        <Text style={styles.stopItemTitle}>{option.stop}</Text>
+                        <Text style={styles.stopItemSubtitle}>
+                          {option.stopId} {option.direction ? `(${option.direction})` : ''}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </ScrollView>
+              </View>
+            )}
+          </>
+        ) : (
+          <>
+            <Text style={styles.hintText}>Train 1 stop</Text>
+            <Pressable
+              style={({pressed}) => [
+                styles.stationSelector,
+                activeSubwaySelectionIndex === 0 && subwayStopDropdownOpen && styles.stationSelectorOpen,
+                pressed && styles.stationSelectorPressed,
+              ]}
+              onPress={() => {
+                setActiveSubwaySelectionIndex(0);
+                setSubwayStopDropdownOpen(prev => (activeSubwaySelectionIndex === 0 ? !prev : true));
+                setStopError('');
+                setStopsError('');
+              }}>
+              <Text style={styles.stationSelectorText}>
+                {subwaySelections[0]?.stopName || 'Select stop'} ({subwaySelections[0]?.stopId || '-'})
+              </Text>
+              <Text style={styles.stationSelectorCaret}>
+                {activeSubwaySelectionIndex === 0 && subwayStopDropdownOpen ? '▲' : '▼'}
+              </Text>
+            </Pressable>
+
+            <Text style={styles.hintText}>Train 2 stop (optional)</Text>
+            <Pressable
+              style={({pressed}) => [
+                styles.stationSelector,
+                activeSubwaySelectionIndex === 1 && subwayStopDropdownOpen && styles.stationSelectorOpen,
+                pressed && styles.stationSelectorPressed,
+              ]}
+              onPress={() => {
+                setSubwaySelections(prev => {
+                  if (prev.length >= 2) return prev;
+                  return [...prev, {line: '', stopId: '', stopName: 'Select stop'}];
+                });
+                setActiveSubwaySelectionIndex(1);
+                setSubwayStopDropdownOpen(prev => (activeSubwaySelectionIndex === 1 ? !prev : true));
+                setStopError('');
+                setStopsError('');
+              }}>
+              <Text style={styles.stationSelectorText}>
+                {subwaySelections[1]?.stopName || 'Select stop'} ({subwaySelections[1]?.stopId || '-'})
+              </Text>
+              <Text style={styles.stationSelectorCaret}>
+                {activeSubwaySelectionIndex === 1 && subwayStopDropdownOpen ? '▲' : '▼'}
+              </Text>
+            </Pressable>
+
+            {subwaySelections.length > 1 && (
+              <Pressable
+                style={[styles.stationSelector, {marginTop: 0}]}
+                onPress={() => {
+                  setSubwaySelections(prev => prev.slice(0, 1));
+                  setSubwayAvailableLines(prev => [prev[0] ?? [], []]);
+                  setSubwayLoadingLines(prev => [prev[0] ?? false, false]);
+                  setActiveSubwaySelectionIndex(0);
+                  setSubwayStopDropdownOpen(false);
+                }}>
+                <Text style={styles.stationSelectorText}>Remove Train 2</Text>
+              </Pressable>
+            )}
+
+            {isLoadingStops && <Text style={styles.hintText}>Loading NYC subway stops...</Text>}
+            {subwayStopDropdownOpen && (
+              <View style={styles.stopList}>
+                <ScrollView style={styles.stopListScroll} nestedScrollEnabled>
+                  {!isLoadingStops && subwayAllStops.length === 0 && (
+                    <Text style={styles.stopItemSubtitle}>{stopsError || 'No stops available'}</Text>
+                  )}
+                  {subwayAllStops.map(option => {
+                    const activeStopId = subwaySelections[activeSubwaySelectionIndex]?.stopId ?? '';
+                    const isSelected = option.stopId.toUpperCase() === activeStopId.toUpperCase();
+                    return (
+                      <Pressable
+                        key={`${activeSubwaySelectionIndex}-${option.stopId}`}
+                        style={({pressed}) => [
+                          styles.stopItem,
+                          isSelected && styles.stopItemSelected,
+                          pressed && styles.stopItemPressed,
+                        ]}
+                        onPress={() => chooseStop(option)}>
+                        <Text style={styles.stopItemTitle}>{option.stop}</Text>
+                        <Text style={styles.stopItemSubtitle}>
+                          {option.stopId} {option.direction ? `(${option.direction})` : ''}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </ScrollView>
+              </View>
+            )}
+          </>
         )}
         {!!stopError && <Text style={styles.errorText}>{stopError}</Text>}
       </View>
@@ -547,21 +792,48 @@ export default function NycSubwayConfig({deviceId, providerId = 'mta-subway'}: P
 
       <View style={styles.sectionCard}>
         <Text style={styles.sectionTitle}>{isBusMode ? 'NYC Bus' : 'NYC Trains'}</Text>
-        <Text style={styles.hintText}>
-          {isBusMode ? `Selected route for ${stopId}.` : `Select up to 2 lines for ${stopId}.`}
-        </Text>
-        <Text style={styles.destFixed}>Selected: {selectedLines.join(', ') || 'None'}</Text>
+        <Text style={styles.hintText}>{isBusMode ? `Selected route for ${stopId}.` : 'Each train can use a different stop.'}</Text>
+        {isBusMode ? (
+          <>
+            <Text style={styles.destFixed}>Selected: {selectedLines.join(', ') || 'None'}</Text>
+            {isLoadingLines && <Text style={styles.hintText}>Loading lines...</Text>}
+            {!isLoadingLines && availableLines.length === 0 && (
+              <Text style={styles.hintText}>No lines found for this stop yet.</Text>
+            )}
+          </>
+        ) : (
+          <>
+            <Text style={styles.hintText}>Train 1 line ({subwaySelections[0]?.stopId || '-'})</Text>
+            {subwayLoadingLines[0] && <Text style={styles.hintText}>Loading train 1 lines...</Text>}
+            {!subwayLoadingLines[0] && (subwayAvailableLines[0]?.length ?? 0) === 0 && (
+              <Text style={styles.hintText}>No lines for train 1 stop.</Text>
+            )}
+            <View style={styles.lineGrid}>{subwayLineButtons(0)}</View>
 
-        {isLoadingLines && <Text style={styles.hintText}>Loading lines...</Text>}
-        {!isLoadingLines && availableLines.length === 0 && (
-          <Text style={styles.hintText}>No lines found for this stop yet.</Text>
+            {subwaySelections.length > 1 && (
+              <>
+                <Text style={styles.hintText}>Train 2 line ({subwaySelections[1]?.stopId || '-'})</Text>
+                {subwayLoadingLines[1] && <Text style={styles.hintText}>Loading train 2 lines...</Text>}
+                {!subwayLoadingLines[1] && (subwayAvailableLines[1]?.length ?? 0) === 0 && (
+                  <Text style={styles.hintText}>No lines for train 2 stop.</Text>
+                )}
+                <View style={styles.lineGrid}>{subwayLineButtons(1)}</View>
+              </>
+            )}
+            <Text style={styles.destFixed}>
+              Selected:{' '}
+              {subwaySelections
+                .filter(sel => sel.line && sel.stopId)
+                .map(sel => `${sel.line}@${sel.stopId}`)
+                .join(', ') || 'None'}
+            </Text>
+          </>
         )}
-        {!isBusMode && <View style={styles.lineGrid}>{lineButtons}</View>}
 
         <Pressable
           style={styles.saveButton}
           onPress={saveConfig}
-          disabled={isSaving || isLoadingLines || isLoadingStops || (isBusMode && isLoadingBusRoutes)}>
+          disabled={isSaving || isLoadingStops || (isBusMode && (isLoadingLines || isLoadingBusRoutes))}>
           <Text style={styles.saveButtonText}>{isSaving ? 'Saving...' : 'Save to Device'}</Text>
         </Pressable>
 
