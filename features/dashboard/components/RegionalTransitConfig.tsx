@@ -37,7 +37,9 @@ const linesForStopEndpointFor = (city: City, mode: Mode, stopId: string, directi
   if (mode === 'bus') {
     return `/providers/philly/stops/bus/${encodeURIComponent(stopId)}/lines`;
   }
-  const query = direction ? `?direction=${encodeURIComponent(direction)}` : '';
+  const params = new URLSearchParams();
+  if (direction) params.set('direction', direction);
+  const query = `?${params.toString()}`;
   return `/providers/philly/stops/train/${encodeURIComponent(stopId)}/lines${query}`;
 };
 
