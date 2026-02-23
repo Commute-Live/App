@@ -28,8 +28,8 @@ const stopsEndpointFor = (city: City, mode: Mode, route: string) => {
       : `/providers/boston/stops/subway?route=${encodeURIComponent(route)}&limit=1000`;
   }
   return mode === 'bus'
-    ? '/providers/philly/stops/bus?limit=1000'
-    : '/providers/philly/stops/train?limit=1000';
+    ? '/providers/philly/stops/bus'
+    : '/providers/philly/stops/train';
 };
 
 const linesForStopEndpointFor = (city: City, mode: Mode, stopId: string) => {
@@ -47,6 +47,7 @@ export default function RegionalTransitConfig({deviceId, city, mode}: Props) {
   const [lineOptions, setLineOptions] = useState<string[]>([]);
   const [isLoadingRoutes, setIsLoadingRoutes] = useState(false);
   const [stops, setStops] = useState<StopOption[]>([]);
+  const [phillyStopQuery, setPhillyStopQuery] = useState('');
   const [stopId, setStopId] = useState('');
   const [stopName, setStopName] = useState('Select stop');
   const [stopDropdownOpen, setStopDropdownOpen] = useState(false);
@@ -63,6 +64,7 @@ export default function RegionalTransitConfig({deviceId, city, mode}: Props) {
     setSelectedLines([]);
     setLineOptions([]);
     setStops([]);
+    setPhillyStopQuery('');
     setStopId('');
     setStopName('Select stop');
     setStatusText('');
@@ -162,7 +164,17 @@ export default function RegionalTransitConfig({deviceId, city, mode}: Props) {
     const loadStops = async () => {
       setIsLoadingStops(true);
       try {
-        const response = await apiFetch(stopsEndpointFor(city, mode, route.trim()));
+        let endpoint = stopsEndpointFor(city, mode, route.trim());
+        if (city === 'philadelphia') {
+          const params = new URLSearchParams();
+          if (phillyStopQuery.trim().length > 0) {
+            params.set('q', phillyStopQuery.trim());
+          }
+          params.set('limit', '1000');
+          endpoint = `${endpoint}?${params.toString()}`;
+        }
+
+        const response = await apiFetch(endpoint);
         if (!response.ok) {
           if (!cancelled) setStops([]);
           return;
@@ -193,7 +205,7 @@ export default function RegionalTransitConfig({deviceId, city, mode}: Props) {
     return () => {
       cancelled = true;
     };
-  }, [city, mode, route, stopDropdownOpen, stopId]);
+  }, [city, mode, route, stopDropdownOpen, stopId, phillyStopQuery]);
 
   const chooseStop = useCallback((option: StopOption) => {
     setStopId(option.stopId);
@@ -294,7 +306,9 @@ export default function RegionalTransitConfig({deviceId, city, mode}: Props) {
       <View style={styles.sectionCard}>
         <Text style={styles.sectionTitle}>{cityTitle(city)} {mode === 'train' ? 'Train' : 'Bus'}</Text>
         {city === 'philadelphia' ? (
-          <Text style={styles.hintText}>Pick station first, then choose up to 2 lines.</Text>
+          <Text style={styles.hintText}>
+            Pick {mode === 'train' ? 'rail station' : 'bus stop'} first, then choose up to 2 lines.
+          </Text>
         ) : (
           <>
             <Text style={styles.hintText}>
@@ -322,12 +336,27 @@ export default function RegionalTransitConfig({deviceId, city, mode}: Props) {
           <Text style={styles.stationSelectorCaret}>{stopDropdownOpen ? '▲' : '▼'}</Text>
         </Pressable>
 
+        {city === 'philadelphia' && (
+          <TextInput
+            value={phillyStopQuery}
+            onChangeText={setPhillyStopQuery}
+            placeholder={mode === 'train' ? 'Search rail stations' : 'Search bus stops'}
+            placeholderTextColor={colors.textMuted}
+            style={styles.input}
+            autoCapitalize="words"
+          />
+        )}
+
         {isLoadingStops && <Text style={styles.hintText}>Loading stops...</Text>}
 
         {stopDropdownOpen && (
           <View style={styles.stopList}>
             <ScrollView style={styles.stopListScroll} nestedScrollEnabled>
-              {!isLoadingStops && stops.length === 0 && <Text style={styles.emptyText}>No stops available</Text>}
+              {!isLoadingStops && stops.length === 0 && (
+                <Text style={styles.emptyText}>
+                  No {city === 'philadelphia' ? (mode === 'train' ? 'stations' : 'stops') : 'stops'} available
+                </Text>
+              )}
               {stops.map(option => {
                 const isSelected = option.stopId.toUpperCase() === stopId.toUpperCase();
                 return (
