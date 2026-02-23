@@ -56,6 +56,7 @@ export default function RegionalTransitConfig({deviceId, city, mode}: Props) {
   const [isSaving, setIsSaving] = useState(false);
   const [displayType, setDisplayType] = useState<number>(1);
   const [presetDropdownOpen, setPresetDropdownOpen] = useState(false);
+  const [phillyDirection, setPhillyDirection] = useState<'N' | 'S'>('N');
   const [septaDebugJson, setSeptaDebugJson] = useState('');
   const [septaDebugLoading, setSeptaDebugLoading] = useState(false);
 
@@ -71,6 +72,7 @@ export default function RegionalTransitConfig({deviceId, city, mode}: Props) {
     setStopName('Select stop');
     setStatusText('');
     setStopDropdownOpen(false);
+    setPhillyDirection('N');
     setSeptaDebugJson('');
   }, [city, mode]);
 
@@ -130,6 +132,7 @@ export default function RegionalTransitConfig({deviceId, city, mode}: Props) {
           .map((row: any) => (typeof row?.line === 'string' ? row.line.toUpperCase().trim() : ''))
           .filter((line: string) => line.length > 0);
         const savedStop = typeof matches[0]?.stop === 'string' ? matches[0].stop : '';
+        const savedDirectionRaw = typeof matches[0]?.direction === 'string' ? matches[0].direction.toUpperCase() : '';
         if (savedLines.length > 0) {
           setRoute(savedLines[0]);
           setSelectedLines(savedLines.slice(0, MAX_PHILLY_LINES));
@@ -137,6 +140,9 @@ export default function RegionalTransitConfig({deviceId, city, mode}: Props) {
         if (savedStop) {
           setStopId(savedStop);
           setStopName(savedStop);
+        }
+        if (city === 'philadelphia' && mode === 'train' && (savedDirectionRaw === 'N' || savedDirectionRaw === 'S')) {
+          setPhillyDirection(savedDirectionRaw);
         }
         const configuredDisplayType = Number(data?.config?.displayType);
         if (Number.isFinite(configuredDisplayType)) {
@@ -153,7 +159,7 @@ export default function RegionalTransitConfig({deviceId, city, mode}: Props) {
     return () => {
       cancelled = true;
     };
-  }, [deviceId, provider]);
+  }, [city, deviceId, mode, provider]);
 
   useEffect(() => {
     let cancelled = false;
@@ -241,6 +247,7 @@ export default function RegionalTransitConfig({deviceId, city, mode}: Props) {
               provider,
               line,
               stop: stopTrimmed,
+              ...(city === 'philadelphia' && mode === 'train' ? {direction: phillyDirection} : {}),
             })),
         }),
       });
@@ -262,7 +269,7 @@ export default function RegionalTransitConfig({deviceId, city, mode}: Props) {
     } finally {
       setIsSaving(false);
     }
-  }, [city, deviceId, provider, route, selectedLines, stopId, stopName, displayType]);
+  }, [city, deviceId, provider, route, selectedLines, stopId, stopName, displayType, mode, phillyDirection]);
 
   const loadSeptaDebugJson = useCallback(async () => {
     if (city !== 'philadelphia' || mode !== 'train') return;
@@ -274,7 +281,7 @@ export default function RegionalTransitConfig({deviceId, city, mode}: Props) {
 
     setSeptaDebugLoading(true);
     try {
-      const endpoint = `/providers/philly/debug/arrivals?station=${encodeURIComponent(stationValue)}&results=30`;
+      const endpoint = `/providers/philly/debug/arrivals?station=${encodeURIComponent(stationValue)}&direction=${phillyDirection}&results=30`;
       const response = await apiFetch(endpoint);
       const data = await response.json().catch(() => null);
       if (!response.ok) {
@@ -288,7 +295,7 @@ export default function RegionalTransitConfig({deviceId, city, mode}: Props) {
     } finally {
       setSeptaDebugLoading(false);
     }
-  }, [city, mode, stopId, stopName]);
+  }, [city, mode, stopId, stopName, phillyDirection]);
 
   return (
     <>
@@ -351,6 +358,27 @@ export default function RegionalTransitConfig({deviceId, city, mode}: Props) {
               style={styles.input}
               autoCapitalize="characters"
             />
+          </>
+        )}
+
+        {city === 'philadelphia' && mode === 'train' && (
+          <>
+            <Text style={styles.hintText}>Direction</Text>
+            <View style={styles.lineGrid}>
+              {(['N', 'S'] as const).map(dir => {
+                const isSelected = phillyDirection === dir;
+                return (
+                  <Pressable
+                    key={dir}
+                    style={[styles.lineChip, isSelected && styles.lineChipActive]}
+                    onPress={() => setPhillyDirection(dir)}>
+                    <Text style={[styles.lineChipText, isSelected && styles.lineChipTextActive]}>
+                      {dir === 'N' ? 'Northbound (N)' : 'Southbound (S)'}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
           </>
         )}
 
