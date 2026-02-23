@@ -32,12 +32,16 @@ const stopsEndpointFor = (city: City, mode: Mode, route: string) => {
     : '/providers/philly/stops/train';
 };
 
-const linesForStopEndpointFor = (city: City, mode: Mode, stopId: string) => {
+const linesForStopEndpointFor = (city: City, mode: Mode, stopId: string, direction?: 'N' | 'S') => {
   if (city !== 'philadelphia') return '';
-  return mode === 'bus'
-    ? `/providers/philly/stops/bus/${encodeURIComponent(stopId)}/lines`
-    : `/providers/philly/stops/train/${encodeURIComponent(stopId)}/lines`;
+  if (mode === 'bus') {
+    return `/providers/philly/stops/bus/${encodeURIComponent(stopId)}/lines`;
+  }
+  const query = direction ? `?direction=${encodeURIComponent(direction)}` : '';
+  return `/providers/philly/stops/train/${encodeURIComponent(stopId)}/lines${query}`;
 };
+
+const directionHint = (dir: 'N' | 'S') => (dir === 'N' ? 'Northbound (N)' : 'Southbound (S)');
 
 const cityTitle = (city: City) => (city === 'boston' ? 'Boston' : 'Philly');
 
@@ -83,7 +87,7 @@ export default function RegionalTransitConfig({deviceId, city, mode}: Props) {
     const loadLines = async () => {
       setIsLoadingRoutes(true);
       try {
-        const response = await apiFetch(linesForStopEndpointFor(city, mode, stopId));
+        const response = await apiFetch(linesForStopEndpointFor(city, mode, stopId, phillyDirection));
         if (!response.ok) {
           if (!cancelled) setLineOptions([]);
           return;
@@ -114,7 +118,7 @@ export default function RegionalTransitConfig({deviceId, city, mode}: Props) {
     return () => {
       cancelled = true;
     };
-  }, [city, mode, stopId]);
+  }, [city, mode, stopId, phillyDirection]);
 
   useEffect(() => {
     let cancelled = false;
@@ -384,7 +388,7 @@ export default function RegionalTransitConfig({deviceId, city, mode}: Props) {
                     style={[styles.lineChip, isSelected && styles.lineChipActive]}
                     onPress={() => setPhillyDirection(dir)}>
                     <Text style={[styles.lineChipText, isSelected && styles.lineChipTextActive]}>
-                      {dir === 'N' ? 'Northbound (N)' : 'Southbound (S)'}
+                      {directionHint(dir)}
                     </Text>
                   </Pressable>
                 );
