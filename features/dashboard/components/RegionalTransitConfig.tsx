@@ -56,6 +56,8 @@ export default function RegionalTransitConfig({deviceId, city, mode}: Props) {
   const [isSaving, setIsSaving] = useState(false);
   const [displayType, setDisplayType] = useState<number>(1);
   const [presetDropdownOpen, setPresetDropdownOpen] = useState(false);
+  const [septaDebugJson, setSeptaDebugJson] = useState('');
+  const [septaDebugLoading, setSeptaDebugLoading] = useState(false);
 
   const provider = useMemo(() => providerFor(city, mode), [city, mode]);
 
@@ -69,6 +71,7 @@ export default function RegionalTransitConfig({deviceId, city, mode}: Props) {
     setStopName('Select stop');
     setStatusText('');
     setStopDropdownOpen(false);
+    setSeptaDebugJson('');
   }, [city, mode]);
 
   useEffect(() => {
@@ -261,6 +264,32 @@ export default function RegionalTransitConfig({deviceId, city, mode}: Props) {
     }
   }, [city, deviceId, provider, route, selectedLines, stopId, stopName, displayType]);
 
+  const loadSeptaDebugJson = useCallback(async () => {
+    if (city !== 'philadelphia' || mode !== 'train') return;
+    const stationValue = stopName.trim() || stopId.trim();
+    if (!stationValue) {
+      setSeptaDebugJson('Select a SEPTA rail station first.');
+      return;
+    }
+
+    setSeptaDebugLoading(true);
+    try {
+      const endpoint = `/providers/philly/debug/arrivals?station=${encodeURIComponent(stationValue)}&results=30`;
+      const response = await apiFetch(endpoint);
+      const data = await response.json().catch(() => null);
+      if (!response.ok) {
+        const message = typeof data?.error === 'string' ? data.error : `Debug fetch failed (${response.status})`;
+        setSeptaDebugJson(JSON.stringify({error: message, details: data ?? null}, null, 2));
+        return;
+      }
+      setSeptaDebugJson(JSON.stringify(data, null, 2));
+    } catch {
+      setSeptaDebugJson(JSON.stringify({error: 'Network error while loading SEPTA debug JSON'}, null, 2));
+    } finally {
+      setSeptaDebugLoading(false);
+    }
+  }, [city, mode, stopId, stopName]);
+
   return (
     <>
       <View style={styles.sectionCard}>
@@ -406,6 +435,24 @@ export default function RegionalTransitConfig({deviceId, city, mode}: Props) {
                 );
               })}
             </View>
+
+            {mode === 'train' && (
+              <>
+                <Pressable
+                  style={[styles.saveButton, septaDebugLoading && styles.saveButtonDisabled]}
+                  onPress={loadSeptaDebugJson}
+                  disabled={septaDebugLoading}>
+                  <Text style={styles.saveButtonText}>{septaDebugLoading ? 'Loading API JSON...' : 'Show SEPTA API JSON'}</Text>
+                </Pressable>
+                {!!septaDebugJson && (
+                  <View style={styles.debugBox}>
+                    <ScrollView style={styles.debugScroll} nestedScrollEnabled>
+                      <Text style={styles.debugText}>{septaDebugJson}</Text>
+                    </ScrollView>
+                  </View>
+                )}
+              </>
+            )}
           </>
         )}
 
@@ -489,9 +536,24 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
     alignItems: 'center',
   },
+  saveButtonDisabled: {opacity: 0.6},
   saveButtonText: {color: colors.background, fontSize: 12, fontWeight: '800'},
   statusNote: {color: colors.textMuted, fontSize: 11, marginTop: spacing.sm},
   lineGrid: {flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs, marginBottom: spacing.sm},
+  debugBox: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radii.md,
+    backgroundColor: colors.surface,
+    marginTop: spacing.sm,
+  },
+  debugScroll: {maxHeight: 220},
+  debugText: {
+    color: colors.text,
+    fontSize: 10,
+    padding: spacing.sm,
+    fontFamily: 'Courier',
+  },
   lineChip: {
     borderColor: colors.border,
     borderWidth: 1,
