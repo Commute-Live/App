@@ -1,5 +1,5 @@
 import React, {useCallback, useEffect, useMemo, useState} from 'react';
-import {Pressable, ScrollView, StyleSheet, Text, TextInput, View} from 'react-native';
+import {Pressable, ScrollView, Share, StyleSheet, Text, TextInput, View} from 'react-native';
 import {colors, radii, spacing} from '../../../theme';
 import {apiFetch} from '../../../lib/api';
 
@@ -297,6 +297,17 @@ export default function RegionalTransitConfig({deviceId, city, mode}: Props) {
     }
   }, [city, mode, stopId, stopName, phillyDirection]);
 
+  const shareSeptaDebugJson = useCallback(async () => {
+    if (!septaDebugJson) return;
+    try {
+      await Share.share({
+        message: septaDebugJson,
+      });
+    } catch {
+      setStatusText('Unable to open share sheet');
+    }
+  }, [septaDebugJson]);
+
   return (
     <>
       <View style={styles.sectionCard}>
@@ -474,8 +485,14 @@ export default function RegionalTransitConfig({deviceId, city, mode}: Props) {
                 </Pressable>
                 {!!septaDebugJson && (
                   <View style={styles.debugBox}>
+                    <Pressable style={styles.debugShareButton} onPress={shareSeptaDebugJson}>
+                      <Text style={styles.debugShareButtonText}>Share / Copy JSON</Text>
+                    </Pressable>
+                    <Text style={styles.hintText}>Tip: long-press inside JSON to select and copy text.</Text>
                     <ScrollView style={styles.debugScroll} nestedScrollEnabled>
-                      <Text style={styles.debugText}>{septaDebugJson}</Text>
+                      <Text style={styles.debugText} selectable>
+                        {septaDebugJson}
+                      </Text>
                     </ScrollView>
                   </View>
                 )}
@@ -575,6 +592,17 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
     marginTop: spacing.sm,
   },
+  debugShareButton: {
+    margin: spacing.sm,
+    marginBottom: spacing.xs,
+    backgroundColor: colors.accentMuted,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.accent,
+    paddingVertical: spacing.xs,
+    alignItems: 'center',
+  },
+  debugShareButtonText: {color: colors.accent, fontSize: 11, fontWeight: '800'},
   debugScroll: {maxHeight: 220},
   debugText: {
     color: colors.text,
