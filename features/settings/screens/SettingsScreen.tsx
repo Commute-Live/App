@@ -9,9 +9,8 @@ import {useAuth} from '../../../state/authProvider';
 
 const navItems: BottomNavItem[] = [
   {key: 'home', label: 'Home', icon: 'home-outline', route: '/dashboard'},
-  {key: 'stations', label: 'Stations', icon: 'train-outline', route: '/edit-stations'},
-  {key: 'layout', label: 'Layout', icon: 'color-palette-outline', route: '/change-layout'},
-  {key: 'bright', label: 'Bright', icon: 'sunny-outline', route: '/brightness'},
+  {key: 'presets', label: 'Displays', icon: 'albums-outline', route: '/presets'},
+  {key: 'settings', label: 'Settings', icon: 'settings-outline', route: '/settings'},
 ];
 
 export default function SettingsScreen() {
@@ -19,6 +18,8 @@ export default function SettingsScreen() {
   const {signOut, user} = useAuth();
   const [openSection, setOpenSection] = useState<string | null>('Account');
   const [isSigningOut, setIsSigningOut] = useState(false);
+  const [selectedCity, setSelectedCity] = useState<'NYC' | 'Philly' | 'Boston' | 'Chicago'>('NYC');
+  const [timeFormat, setTimeFormat] = useState<'ampm' | '24h'>('ampm');
 
   const toggleSection = (key: string) =>
     setOpenSection(prev => (prev === key ? null : key));
@@ -79,6 +80,39 @@ export default function SettingsScreen() {
             ) : null}
           </Pressable>
 
+          <Pressable style={styles.card} onPress={() => toggleSection('City')}>
+            <View style={styles.cardHeader}>
+              <View>
+                <Text style={styles.cardTitle}>City</Text>
+                <Text style={styles.cardSubtitle}>Default transit city for displays and home preview</Text>
+              </View>
+              <Ionicons
+                name={openSection === 'City' ? 'chevron-up' : 'chevron-down'}
+                size={18}
+                color={colors.textMuted}
+              />
+            </View>
+            {openSection === 'City' ? (
+              <View style={styles.cardContent}>
+                <View style={styles.cityPillRow}>
+                  {(['NYC', 'Philly', 'Boston', 'Chicago'] as const).map(city => {
+                    const active = city === selectedCity;
+                    return (
+                      <Pressable
+                        key={city}
+                        style={[styles.cityPill, active && styles.cityPillActive]}
+                        onPress={() => setSelectedCity(city)}>
+                        <Text style={[styles.cityPillText, active && styles.cityPillTextActive]}>{city}</Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+                <Text style={styles.itemLabel}>Current selection</Text>
+                <Text style={styles.itemValue}>{selectedCity}</Text>
+              </View>
+            ) : null}
+          </Pressable>
+
           <Pressable style={styles.card} onPress={() => toggleSection('Notifications')}>
             <View style={styles.cardHeader}>
               <View>
@@ -97,6 +131,38 @@ export default function SettingsScreen() {
                 <Text style={styles.itemValue}>Enabled</Text>
                 <Text style={styles.itemLabel}>Offline alerts</Text>
                 <Text style={styles.itemValue}>Enabled</Text>
+              </View>
+            ) : null}
+          </Pressable>
+
+          <Pressable style={styles.card} onPress={() => toggleSection('Time Format')}>
+            <View style={styles.cardHeader}>
+              <View>
+                <Text style={styles.cardTitle}>Time Format</Text>
+                <Text style={styles.cardSubtitle}>Choose how times are shown across the app</Text>
+              </View>
+              <Ionicons
+                name={openSection === 'Time Format' ? 'chevron-up' : 'chevron-down'}
+                size={18}
+                color={colors.textMuted}
+              />
+            </View>
+            {openSection === 'Time Format' ? (
+              <View style={styles.cardContent}>
+                <View style={styles.cityPillRow}>
+                  <Pressable
+                    style={[styles.cityPill, timeFormat === 'ampm' && styles.cityPillActive]}
+                    onPress={() => setTimeFormat('ampm')}>
+                    <Text style={[styles.cityPillText, timeFormat === 'ampm' && styles.cityPillTextActive]}>AM / PM</Text>
+                  </Pressable>
+                  <Pressable
+                    style={[styles.cityPill, timeFormat === '24h' && styles.cityPillActive]}
+                    onPress={() => setTimeFormat('24h')}>
+                    <Text style={[styles.cityPillText, timeFormat === '24h' && styles.cityPillTextActive]}>24-hour</Text>
+                  </Pressable>
+                </View>
+                <Text style={styles.itemLabel}>Current format</Text>
+                <Text style={styles.itemValue}>{timeFormat === 'ampm' ? 'AM / PM' : '24-hour'}</Text>
               </View>
             ) : null}
           </Pressable>
@@ -187,6 +253,18 @@ const styles = StyleSheet.create({
   cardContent: {marginTop: spacing.sm, gap: 6},
   itemLabel: {color: colors.textMuted, fontSize: 12},
   itemValue: {color: colors.text, fontSize: 13, fontWeight: '600'},
+  cityPillRow: {flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs},
+  cityPill: {
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+  },
+  cityPillActive: {borderColor: colors.accent, backgroundColor: colors.accentMuted},
+  cityPillText: {color: colors.text, fontSize: 12, fontWeight: '700'},
+  cityPillTextActive: {color: colors.accent},
   signOutButton: {
     marginTop: spacing.sm,
     backgroundColor: '#2B1010',

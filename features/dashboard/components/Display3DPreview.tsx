@@ -17,10 +17,21 @@ type Props = {
   onSelectSlot: (id: string) => void;
   onReorderSlot: (id: string) => void;
   onDragStateChange?: (dragging: boolean) => void;
+  showHint?: boolean;
+  brightness?: number;
 };
 
-export default function Display3DPreview({slots, onSelectSlot, onReorderSlot, onDragStateChange}: Props) {
+export default function Display3DPreview({
+  slots,
+  onSelectSlot,
+  onReorderSlot,
+  onDragStateChange,
+  showHint = true,
+  brightness = 100,
+}: Props) {
   const compact = slots.length > 1;
+  const safeBrightness = Math.max(0, Math.min(100, brightness));
+  const brightnessOverlayOpacity = ((100 - safeBrightness) / 100) * 0.65;
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [dragOffsetY, setDragOffsetY] = useState(0);
   const dragStartYRef = useRef<Record<string, number>>({});
@@ -92,18 +103,21 @@ export default function Display3DPreview({slots, onSelectSlot, onReorderSlot, on
                 </Text>
               </View>
               <View style={styles.slotBody}>
-                <Text style={[styles.slotTitle, compact && styles.slotTitleCompact, {color: slot.textColor}]} numberOfLines={1}>
+                <Text style={[styles.slotTitle, compact && styles.slotTitleCompact]} numberOfLines={1}>
                   {slot.stopName}
                 </Text>
               </View>
-              <Text style={[styles.slotTimes, compact && styles.slotTimesCompact, {color: slot.textColor}]} numberOfLines={1}>
+              <Text style={[styles.slotTimes, compact && styles.slotTimesCompact]} numberOfLines={1}>
                 {slot.times}
               </Text>
             </Pressable>
           ))}
+          {brightnessOverlayOpacity > 0 ? (
+            <View pointerEvents="none" style={[styles.brightnessOverlay, {opacity: brightnessOverlayOpacity}]} />
+          ) : null}
         </View>
       </View>
-      <Text style={styles.hint}>Tap to edit. Hold and drag up or down to reorder.</Text>
+      {showHint ? <Text style={styles.hint}>Tap to edit. Hold and drag up or down to reorder.</Text> : null}
     </View>
   );
 }
@@ -208,5 +222,10 @@ const styles = StyleSheet.create({
   slotTitleCompact: {fontSize: 17},
   slotTimes: {color: '#D7E3EF', fontSize: 18, fontWeight: '700', minWidth: 60, textAlign: 'right'},
   slotTimesCompact: {fontSize: 16, minWidth: 56},
+  brightnessOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: '#000000',
+    borderRadius: radii.md,
+  },
   hint: {color: colors.textMuted, fontSize: 11, paddingLeft: 2},
 });

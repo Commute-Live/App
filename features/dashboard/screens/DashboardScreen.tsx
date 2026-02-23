@@ -1,7 +1,7 @@
 import React, {useEffect, useMemo, useRef, useState} from 'react';
-import {Animated, Easing, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View} from 'react-native';
+import {Alert, Animated, Easing, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View} from 'react-native';
 import {SafeAreaView} from 'react-native-safe-area-context';
-import {useRouter} from 'expo-router';
+import {useLocalSearchParams, useRouter} from 'expo-router';
 import {colors, radii, spacing} from '../../../theme';
 import DashboardPreviewSection from '../components/DashboardPreviewSection';
 
@@ -28,8 +28,19 @@ type CityConfig = {
 
 const DEFAULT_TEXT_COLOR = '#E9ECEF';
 const DEFAULT_NEXT_STOPS = 3;
-const MAX_NEXT_STOPS = 5;
+const MAX_NEXT_STOPS = 3;
 const DEFAULT_LAYOUT_SLOTS = 2;
+const TIME_OPTIONS = ['00:00', '05:00', '06:00', '07:00', '08:00', '09:00', '10:00', '17:00', '18:00', '20:00', '22:00', '23:00'];
+const DAY_OPTIONS = [
+  {id: 'mon', label: 'Mon'},
+  {id: 'tue', label: 'Tue'},
+  {id: 'wed', label: 'Wed'},
+  {id: 'thu', label: 'Thu'},
+  {id: 'fri', label: 'Fri'},
+  {id: 'sat', label: 'Sat'},
+  {id: 'sun', label: 'Sun'},
+] as const;
+type DayId = (typeof DAY_OPTIONS)[number]['id'];
 const LAYOUT_OPTIONS = [
   {id: 'layout-1', slots: 1, label: '1 stop'},
   {id: 'layout-2', slots: 2, label: '2 stops'},
@@ -178,14 +189,22 @@ const cityData: Record<CityId, CityConfig> = {
 const Haptics = {selectionAsync: async () => {}, notificationAsync: async (_: any) => {}};
 export default function DashboardScreen() {
   const router = useRouter();
-  const city: CityId = 'new-york';
+  const params = useLocalSearchParams<{city?: string; from?: string}>();
+  const city = normalizeCityIdParam(params.city);
+  const fallbackRoute = params.from === 'presets' ? '/presets' : '/dashboard';
   const headerEnter = useRef(new Animated.Value(0)).current;
   const previewEnter = useRef(new Animated.Value(0)).current;
   const editorEnter = useRef(new Animated.Value(0)).current;
   const [layoutSlots, setLayoutSlots] = useState<number>(DEFAULT_LAYOUT_SLOTS);
-  const [lines, setLines] = useState<LinePick[]>(() => ensureLineCount(seedDefaultLines('new-york'), 'new-york', DEFAULT_LAYOUT_SLOTS));
-  const [selectedLineId, setSelectedLineId] = useState<string>('line-1');
+  const [lines, setLines] = useState<LinePick[]>(() => ensureLineCount(seedDefaultLines(city), city, DEFAULT_LAYOUT_SLOTS));
+  const [selectedLineId, setSelectedLineId] = useState<string>('');
   const [stationSearch, setStationSearch] = useState<Record<string, string>>({});
+  const [slotEditorExpanded, setSlotEditorExpanded] = useState(false);
+  const [scheduleExpanded, setScheduleExpanded] = useState(false);
+  const [customDisplayScheduleEnabled, setCustomDisplayScheduleEnabled] = useState(false);
+  const [displaySchedule, setDisplaySchedule] = useState({start: '06:00', end: '09:00'});
+  const [displayDays, setDisplayDays] = useState<DayId[]>(['mon', 'tue', 'wed', 'thu', 'fri']);
+  const [presetName, setPresetName] = useState('Display 1');
   const [saving, setSaving] = useState(false);
   const [saveDone, setSaveDone] = useState(false);
   const [openLayoutPicker, setOpenLayoutPicker] = useState(false);
@@ -238,22 +257,27 @@ export default function DashboardScreen() {
     ]).start();
   }, [editorEnter, headerEnter, previewEnter]);
 
-  const snapshotRef = useRef({city, layoutSlots, lines});
+  const snapshotRef = useRef({city, layoutSlots, lines, displaySchedule, displayDays, presetName, customDisplayScheduleEnabled});
   const isDirty = useMemo(() => {
     const snap = snapshotRef.current;
     return (
       snap.city !== city ||
       snap.layoutSlots !== layoutSlots ||
+      snap.presetName !== presetName ||
+      snap.customDisplayScheduleEnabled !== customDisplayScheduleEnabled ||
+      snap.displaySchedule.start !== displaySchedule.start ||
+      snap.displaySchedule.end !== displaySchedule.end ||
+      JSON.stringify(snap.displayDays) !== JSON.stringify(displayDays) ||
       JSON.stringify(snap.lines) !== JSON.stringify(lines)
     );
-  }, [city, layoutSlots, lines]);
+  }, [city, customDisplayScheduleEnabled, displayDays, displaySchedule.end, displaySchedule.start, layoutSlots, lines, presetName]);
 
   const handleSave = () => {
     if (!isDirty || saving) return;
     setSaving(true);
     setSaveDone(false);
     setTimeout(() => {
-      snapshotRef.current = {city, layoutSlots, lines};
+      snapshotRef.current = {city, layoutSlots, lines, displaySchedule, displayDays, presetName, customDisplayScheduleEnabled};
       setSaving(false);
       setSaveDone(true);
       void Haptics.notificationAsync?.('success');
@@ -263,10 +287,32 @@ export default function DashboardScreen() {
 
   const handleBackPress = () => {
     if (isDirty) {
-      setShowDiscardConfirm(true);
+      Alert.alert(
+        'Unsaved changes?',
+        'Leave without saving? Your changes will be lost.',
+        [
+          {text: 'Cancel', style: 'cancel'},
+          {
+            text: 'Leave',
+            style: 'destructive',
+            onPress: () => {
+              if ((router as any).canGoBack?.()) {
+                router.back();
+                return;
+              }
+              router.replace(fallbackRoute);
+            },
+          },
+        ],
+        {cancelable: true},
+      );
       return;
     }
-    router.replace('/settings');
+    if ((router as any).canGoBack?.()) {
+      router.back();
+      return;
+    }
+    router.replace(fallbackRoute);
   };
 
   const applyLayout = (slots: number) => {
@@ -281,6 +327,31 @@ export default function DashboardScreen() {
   const updateLine = (id: string, next: Partial<LinePick>) => {
     setLines(prev => prev.map(line => (line.id === id ? normalizeLine(city, {...line, ...next}) : line)));
   };
+  const handleSelectSlotForEdit = (id: string) => {
+    if (slotEditorExpanded && selectedLineId === id) {
+      setSlotEditorExpanded(false);
+      setSelectedLineId('');
+      return;
+    }
+    setSelectedLineId(id);
+    setSlotEditorExpanded(true);
+  };
+  const toggleSlotEditor = () => {
+    setSlotEditorExpanded(prev => {
+      const next = !prev;
+      if (!next) {
+        setSelectedLineId('');
+        return next;
+      }
+      if (!selectedLineId) {
+        setSelectedLineId(lines[0]?.id ?? '');
+      }
+      return next;
+    });
+  };
+  const toggleScheduleEditor = () => {
+    setScheduleExpanded(prev => !prev);
+  };
   const reorderLineByHold = (id: string) => {
     setLines(prev => {
       const idx = prev.findIndex(line => line.id === id);
@@ -294,7 +365,7 @@ export default function DashboardScreen() {
     void Haptics.selectionAsync();
   };
 
-  const selectedLine = lines.find(line => line.id === selectedLineId) ?? lines[0] ?? null;
+  const selectedLine = lines.find(line => line.id === selectedLineId) ?? null;
   const selectedLineIndex = selectedLine ? lines.findIndex(line => line.id === selectedLine.id) : -1;
   const previewSlots = useMemo(
     () =>
@@ -369,6 +440,8 @@ export default function DashboardScreen() {
         <Animated.View style={headerAnimatedStyle}>
           <TopBar
             layoutSlots={layoutSlots}
+            presetName={presetName}
+            onPresetNameChange={setPresetName}
             onLayoutOpen={() => setOpenLayoutPicker(true)}
             onBackPress={handleBackPress}
           />
@@ -377,7 +450,7 @@ export default function DashboardScreen() {
         <Animated.View style={previewAnimatedStyle}>
           <DashboardPreviewSection
             slots={previewSlots}
-            onSelectSlot={setSelectedLineId}
+            onSelectSlot={handleSelectSlotForEdit}
             onReorderSlot={reorderLineByHold}
             onDragStateChange={setPreviewDragging}
           />
@@ -396,24 +469,80 @@ export default function DashboardScreen() {
 
         <Animated.View style={editorAnimatedStyle}>
           <View style={styles.card}>
-            {selectedLine ? (
-              <>
-                <View style={styles.editorHeader}>
-                  <Text style={styles.sectionLabel}>Edit Slot {selectedLineIndex + 1}</Text>
-                  <Text style={styles.editorMeta}>{modeLabel(selectedLine.mode)} mode</Text>
+            <View style={styles.collapsibleSection}>
+              <Pressable style={styles.collapsibleHeader} onPress={toggleSlotEditor}>
+                <Text style={styles.sectionLabel}>
+                  {selectedLine ? `Configure Stop ${selectedLineIndex + 1}` : 'Configure Stop'}
+                </Text>
+                <View style={styles.collapsibleArrowBubble}>
+                  <Text style={styles.collapsibleArrow}>{slotEditorExpanded ? '▲' : '▼'}</Text>
                 </View>
-                <SlotEditor
-                  city={city}
-                  line={selectedLine}
-                  stationSearch={stationSearch[selectedLine.id] ?? ''}
-                  onStationSearch={text => setStationSearch(prev => ({...prev, [selectedLine.id]: text}))}
-                  recents={cityData[city].recents}
-                  onChange={updateLine}
-                />
-              </>
-            ) : (
-              <Text style={styles.emptyHint}>Select a slot in the preview to start editing.</Text>
-            )}
+              </Pressable>
+              {slotEditorExpanded ? (
+                selectedLine ? (
+                  <View style={styles.collapsibleBody}>
+                    <SlotEditor
+                      city={city}
+                      line={selectedLine}
+                      stationSearch={stationSearch[selectedLine.id] ?? ''}
+                      onStationSearch={text => setStationSearch(prev => ({...prev, [selectedLine.id]: text}))}
+                      recents={cityData[city].recents}
+                      onChange={updateLine}
+                    />
+                  </View>
+                ) : (
+                  <Text style={styles.emptyHint}>Select a slot in the preview to start editing.</Text>
+                )
+              ) : null}
+            </View>
+
+            <View style={styles.collapsibleSection}>
+              <Pressable style={styles.collapsibleHeader} onPress={toggleScheduleEditor}>
+                <Text style={styles.sectionLabel}>Display Schedule</Text>
+                <View style={styles.collapsibleArrowBubble}>
+                  <Text style={styles.collapsibleArrow}>{scheduleExpanded ? '▲' : '▼'}</Text>
+                </View>
+              </Pressable>
+              {scheduleExpanded ? (
+                <View style={styles.collapsibleBody}>
+                  <View style={styles.sectionBlock}>
+                    <Text style={styles.sectionHint}>Turn on custom schedule to choose specific days and times. Turn it off to display 24/7.</Text>
+                    <Pressable
+                      style={styles.scheduleToggleRow}
+                      onPress={() => setCustomDisplayScheduleEnabled(prev => !prev)}>
+                      <Text style={styles.scheduleToggleLabel}>Custom Schedule</Text>
+                      <View style={[styles.scheduleToggle, customDisplayScheduleEnabled && styles.scheduleToggleOn]}>
+                        <View
+                          style={[
+                            styles.scheduleToggleThumb,
+                            customDisplayScheduleEnabled && styles.scheduleToggleThumbOn,
+                          ]}
+                        />
+                      </View>
+                    </Pressable>
+                  </View>
+                  {customDisplayScheduleEnabled ? (
+                    <ScheduleTimingEditor
+                      start={displaySchedule.start}
+                      end={displaySchedule.end}
+                      days={displayDays}
+                      onStartChange={start => setDisplaySchedule(prev => ({...prev, start}))}
+                      onEndChange={end => setDisplaySchedule(prev => ({...prev, end}))}
+                      onToggleDay={day =>
+                        setDisplayDays(prev =>
+                          prev.includes(day) ? prev.filter(item => item !== day) : [...prev, day],
+                        )
+                      }
+                    />
+                  ) : (
+                    <View style={styles.schedule24x7Card}>
+                      <Text style={styles.schedule24x7Title}>Always On</Text>
+                      <Text style={styles.schedule24x7Body}>This display will show 24/7 and ignore custom day/time scheduling.</Text>
+                    </View>
+                  )}
+                </View>
+              ) : null}
+            </View>
           </View>
         </Animated.View>
       </ScrollView>
@@ -424,7 +553,11 @@ export default function DashboardScreen() {
         onStay={() => setShowDiscardConfirm(false)}
         onLeave={() => {
           setShowDiscardConfirm(false);
-          router.replace('/settings');
+          if ((router as any).canGoBack?.()) {
+            router.back();
+            return;
+          }
+          router.replace(fallbackRoute);
         }}
       />
     </SafeAreaView>
@@ -433,24 +566,79 @@ export default function DashboardScreen() {
 
 function TopBar({
   layoutSlots,
+  presetName,
+  onPresetNameChange,
   onLayoutOpen,
   onBackPress,
 }: {
   layoutSlots: number;
+  presetName: string;
+  onPresetNameChange: (value: string) => void;
   onLayoutOpen: () => void;
   onBackPress: () => void;
 }) {
+  const [renameOpen, setRenameOpen] = useState(false);
+  const [draftName, setDraftName] = useState(presetName);
+
+  useEffect(() => {
+    setDraftName(presetName);
+  }, [presetName]);
+
+  const commitName = () => {
+    const next = draftName.trim() || 'Display 1';
+    onPresetNameChange(next);
+    setRenameOpen(false);
+  };
+
   return (
-    <View style={styles.topBar}>
-      <Pressable style={styles.backButton} onPress={onBackPress}>
-        <Text style={styles.backButtonText}>Back</Text>
-      </Pressable>
-      <Pressable style={styles.layoutPillTopRight} onPress={onLayoutOpen}>
-        <Text style={styles.layoutIcon}>[]</Text>
-        <Text style={styles.layoutPillTopRightText}>
-          {LAYOUT_OPTIONS.find(option => option.slots === layoutSlots)?.label ?? 'Layout'} v
-        </Text>
-      </Pressable>
+    <View style={styles.topBarWrap}>
+      <View style={styles.topBar}>
+        <View style={styles.topBarSideLeft}>
+          <Pressable style={styles.backButton} onPress={onBackPress}>
+            <Text style={styles.backButtonText}>Back</Text>
+          </Pressable>
+        </View>
+
+        <View style={styles.topBarCenter}>
+          <View style={styles.presetNameRow}>
+            <Text style={styles.presetNameTitle} numberOfLines={1}>
+              {presetName}
+            </Text>
+            <Pressable
+              style={styles.presetNameEditButton}
+              onPress={() => setRenameOpen(prev => !prev)}>
+              <Text style={styles.presetNameEditEmoji}>✏️</Text>
+            </Pressable>
+          </View>
+        </View>
+
+        <View style={styles.topBarSideRight}>
+          <Pressable style={styles.layoutPillTopRight} onPress={onLayoutOpen}>
+            <Text style={styles.layoutIcon}>[]</Text>
+            <Text style={styles.layoutPillTopRightText}>
+              {LAYOUT_OPTIONS.find(option => option.slots === layoutSlots)?.label ?? 'Layout'} v
+            </Text>
+          </Pressable>
+        </View>
+      </View>
+
+      {renameOpen ? (
+        <View style={styles.renameRow}>
+          <TextInput
+            value={draftName}
+            onChangeText={setDraftName}
+            placeholder="Display name"
+            placeholderTextColor={colors.textMuted}
+            style={styles.renameInput}
+            autoFocus
+            returnKeyType="done"
+            onSubmitEditing={commitName}
+          />
+          <Pressable style={styles.renameActionButton} onPress={commitName}>
+            <Text style={styles.renameActionButtonText}>Save</Text>
+          </Pressable>
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -506,6 +694,8 @@ function SlotEditor({
   const routes = cityModes[line.mode]?.routes ?? [];
   const station = stations.find(s => s.id === line.stationId) ?? stations[0];
   const allowedRoutes = station ? routes.filter(r => station.lines.includes(r.id)) : routes;
+  const canDecreaseNextStops = line.nextStops > 1;
+  const canIncreaseNextStops = line.nextStops < MAX_NEXT_STOPS;
 
   useEffect(() => {
     switchAnim.setValue(0);
@@ -583,15 +773,17 @@ function SlotEditor({
           <Text style={styles.sectionLabel}>Next Arrivals To Show</Text>
           <View style={styles.stepperRow}>
             <Pressable
-              style={styles.stepperButton}
+              disabled={!canDecreaseNextStops}
+              style={[styles.stepperButton, !canDecreaseNextStops && styles.stepperButtonDisabled]}
               onPress={() => onChange(line.id, {nextStops: clampNextStops(line.nextStops - 1)})}>
-              <Text style={styles.stepperButtonText}>-</Text>
+              <Text style={[styles.stepperButtonText, !canDecreaseNextStops && styles.stepperButtonTextDisabled]}>-</Text>
             </Pressable>
             <Text style={styles.stepperValue}>{line.nextStops}</Text>
             <Pressable
-              style={styles.stepperButton}
+              disabled={!canIncreaseNextStops}
+              style={[styles.stepperButton, !canIncreaseNextStops && styles.stepperButtonDisabled]}
               onPress={() => onChange(line.id, {nextStops: clampNextStops(line.nextStops + 1)})}>
-              <Text style={styles.stepperButtonText}>+</Text>
+              <Text style={[styles.stepperButtonText, !canIncreaseNextStops && styles.stepperButtonTextDisabled]}>+</Text>
             </Pressable>
           </View>
           <Text style={styles.sectionHint}>This controls how many upcoming times appear for this slot.</Text>
@@ -750,6 +942,82 @@ function DirectionToggle({value, onChange}: {value: Direction; onChange: (direct
   );
 }
 
+function ScheduleTimingEditor({
+  start,
+  end,
+  days,
+  onStartChange,
+  onEndChange,
+  onToggleDay,
+}: {
+  start: string;
+  end: string;
+  days: DayId[];
+  onStartChange: (next: string) => void;
+  onEndChange: (next: string) => void;
+  onToggleDay: (day: DayId) => void;
+}) {
+  return (
+    <View style={styles.sectionBlock}>
+      <Text style={styles.sectionHint}>Choose when this display is allowed to show.</Text>
+      <View style={styles.dayPillRow}>
+        {DAY_OPTIONS.map(day => {
+          const active = days.includes(day.id);
+          return (
+            <Pressable
+              key={day.id}
+              style={[styles.dayPill, active && styles.dayPillActive]}
+              onPress={() => onToggleDay(day.id)}>
+              <Text style={[styles.dayPillText, active && styles.dayPillTextActive]}>{day.label}</Text>
+            </Pressable>
+          );
+        })}
+      </View>
+      <View style={styles.timeRangeRow}>
+        <TimeStepper
+          label="From"
+          value={start}
+          onPrev={() => onStartChange(cycleTimeOption(start, -1))}
+          onNext={() => onStartChange(cycleTimeOption(start, 1))}
+        />
+        <TimeStepper
+          label="To"
+          value={end}
+          onPrev={() => onEndChange(cycleTimeOption(end, -1))}
+          onNext={() => onEndChange(cycleTimeOption(end, 1))}
+        />
+      </View>
+    </View>
+  );
+}
+
+function TimeStepper({
+  label,
+  value,
+  onPrev,
+  onNext,
+}: {
+  label: string;
+  value: string;
+  onPrev: () => void;
+  onNext: () => void;
+}) {
+  return (
+    <View style={styles.timeStepper}>
+      <Text style={styles.timeStepperLabel}>{label}</Text>
+      <View style={styles.timeStepperControls}>
+        <Pressable style={styles.timeAdjustButton} onPress={onPrev}>
+          <Text style={styles.timeAdjustButtonText}>-</Text>
+        </Pressable>
+        <Text style={styles.timeValue}>{value}</Text>
+        <Pressable style={styles.timeAdjustButton} onPress={onNext}>
+          <Text style={styles.timeAdjustButtonText}>+</Text>
+        </Pressable>
+      </View>
+    </View>
+  );
+}
+
 function SaveBar({dirty, loading, success, onPress}: {dirty: boolean; loading: boolean; success: boolean; onPress: () => void}) {
   return (
     <View style={styles.saveBar}>
@@ -794,8 +1062,9 @@ function SimplePicker({
     </Modal>
   );
 }
-function modeLabel(mode: ModeId) {
-  return mode === 'train' ? 'Subway' : 'Bus';
+function normalizeCityIdParam(value: string | undefined): CityId {
+  if (value === 'philadelphia' || value === 'boston' || value === 'chicago' || value === 'new-york') return value;
+  return 'new-york';
 }
 
 function hasMode(city: CityId, mode: ModeId) {
@@ -902,6 +1171,13 @@ function clampNextStops(value: number) {
   return Math.min(MAX_NEXT_STOPS, Math.max(1, Math.round(value)));
 }
 
+function cycleTimeOption(current: string, delta: 1 | -1) {
+  const index = TIME_OPTIONS.indexOf(current);
+  const safeIndex = index === -1 ? 0 : index;
+  const nextIndex = (safeIndex + delta + TIME_OPTIONS.length) % TIME_OPTIONS.length;
+  return TIME_OPTIONS[nextIndex];
+}
+
 function normalizeHexColor(value: string | undefined | null): string | null {
   if (typeof value !== 'string') return null;
   const trimmed = value.trim();
@@ -924,11 +1200,84 @@ function buildNextArrivalTimes(firstMinutes: number, count: number): string[] {
 const styles = StyleSheet.create({
   container: {flex: 1, backgroundColor: colors.background},
   scroll: {padding: spacing.lg, paddingBottom: 140, gap: spacing.md},
+  topBarWrap: {gap: spacing.xs},
   topBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
     gap: spacing.xs,
+  },
+  topBarSideLeft: {
+    width: 88,
+    alignItems: 'flex-start',
+    justifyContent: 'center',
+  },
+  topBarSideRight: {
+    width: 116,
+    alignItems: 'flex-end',
+    justifyContent: 'center',
+  },
+  topBarCenter: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minWidth: 0,
+  },
+  presetNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    maxWidth: '100%',
+  },
+  presetNameTitle: {color: colors.text, fontSize: 16, fontWeight: '900', textAlign: 'center', maxWidth: 180},
+  presetNameEditButton: {
+    paddingHorizontal: 2,
+    paddingVertical: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  presetNameEditEmoji: {fontSize: 14},
+  renameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.card,
+    padding: spacing.xs,
+  },
+  renameInput: {
+    flex: 1,
+    minHeight: 40,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    color: colors.text,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+  },
+  renameActionButton: {
+    minHeight: 40,
+    borderRadius: radii.md,
+    backgroundColor: colors.accentMuted,
+    borderWidth: 1,
+    borderColor: colors.accent,
+    paddingHorizontal: spacing.sm,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  renameActionButtonText: {color: colors.text, fontSize: 12, fontWeight: '800'},
+  renameCancelButton: {
+    minHeight: 40,
+    borderRadius: radii.md,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingHorizontal: spacing.sm,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   backButton: {
     borderRadius: radii.md,
@@ -1045,11 +1394,10 @@ const styles = StyleSheet.create({
   previewArea: {fontSize: 12, opacity: 0.75},
   previewTimes: {fontSize: 12, fontWeight: '700'},
   card: {
-    backgroundColor: colors.card,
+    backgroundColor: 'transparent',
     borderRadius: radii.lg,
-    borderWidth: 1,
-    borderColor: colors.border,
-    padding: spacing.md,
+    borderWidth: 0,
+    padding: 0,
     gap: spacing.sm,
   },
   sectionLabel: {color: colors.text, fontSize: 14, fontWeight: '800'},
@@ -1092,9 +1440,81 @@ const styles = StyleSheet.create({
   layoutPillTextActive: {color: colors.accent},
   layoutHint: {color: colors.textMuted, fontSize: 12},
   editorHeader: {flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center'},
-  editorMeta: {color: colors.textMuted, fontSize: 12, fontWeight: '700'},
   sectionBlock: {gap: spacing.xs},
   sectionHint: {color: colors.textMuted, fontSize: 12},
+  schedule24x7Card: {
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    padding: spacing.sm,
+    gap: 4,
+  },
+  schedule24x7Title: {color: colors.text, fontSize: 13, fontWeight: '800'},
+  schedule24x7Body: {color: colors.textMuted, fontSize: 12},
+  scheduleToggleRow: {
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.sm,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.sm,
+  },
+  scheduleToggleLabel: {color: colors.text, fontSize: 13, fontWeight: '800'},
+  scheduleToggle: {
+    width: 44,
+    height: 26,
+    borderRadius: 13,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.background,
+    padding: 2,
+    justifyContent: 'center',
+  },
+  scheduleToggleOn: {
+    borderColor: colors.accent,
+    backgroundColor: colors.accentMuted,
+  },
+  scheduleToggleThumb: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: colors.textMuted,
+  },
+  scheduleToggleThumbOn: {
+    backgroundColor: colors.accent,
+    transform: [{translateX: 18}],
+  },
+  collapsibleSection: {
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.card,
+    padding: spacing.sm,
+    gap: spacing.xs,
+  },
+  collapsibleHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.xs,
+  },
+  collapsibleArrowBubble: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  collapsibleArrow: {color: colors.textMuted, fontSize: 12, fontWeight: '800'},
+  collapsibleBody: {paddingTop: 2, gap: spacing.sm},
   selectorField: {
     borderRadius: radii.md,
     borderWidth: 1,
@@ -1200,7 +1620,51 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   stepperButtonText: {color: colors.text, fontSize: 18, fontWeight: '800'},
+  stepperButtonDisabled: {opacity: 0.45},
+  stepperButtonTextDisabled: {color: colors.textMuted},
   stepperValue: {color: colors.text, fontSize: 20, fontWeight: '900', minWidth: 20, textAlign: 'center'},
+  timeRangeRow: {flexDirection: 'row', gap: spacing.xs},
+  dayPillRow: {flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs, justifyContent: 'center'},
+  dayPill: {
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.background,
+    minWidth: 54,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: spacing.xs,
+    paddingVertical: spacing.xs,
+  },
+  dayPillActive: {
+    borderColor: colors.accent,
+    backgroundColor: colors.accentMuted,
+  },
+  dayPillText: {color: colors.textMuted, fontSize: 12, fontWeight: '700'},
+  dayPillTextActive: {color: colors.accent},
+  timeStepper: {
+    flex: 1,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.background,
+    padding: spacing.xs,
+    gap: 6,
+  },
+  timeStepperLabel: {color: colors.textMuted, fontSize: 11, fontWeight: '700'},
+  timeStepperControls: {flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.xs},
+  timeAdjustButton: {
+    width: 34,
+    height: 34,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  timeAdjustButtonText: {color: colors.text, fontSize: 18, fontWeight: '800'},
+  timeValue: {color: colors.text, fontSize: 13, fontWeight: '800'},
   saveBar: {
     position: 'absolute',
     left: 0,

@@ -8,6 +8,8 @@ type Props = {
   onSelectSlot: (id: string) => void;
   onReorderSlot: (id: string) => void;
   onDragStateChange?: (dragging: boolean) => void;
+  showHint?: boolean;
+  brightness?: number;
 };
 
 export default function DashboardPreviewSection({
@@ -15,6 +17,8 @@ export default function DashboardPreviewSection({
   onSelectSlot,
   onReorderSlot,
   onDragStateChange,
+  showHint,
+  brightness,
 }: Props) {
   return (
     <View style={styles.previewSection}>
@@ -23,6 +27,8 @@ export default function DashboardPreviewSection({
         onSelectSlot={onSelectSlot}
         onReorderSlot={onReorderSlot}
         onDragStateChange={onDragStateChange}
+        showHint={showHint}
+        brightness={brightness}
       />
     </View>
   );

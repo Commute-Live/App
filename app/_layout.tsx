@@ -26,6 +26,8 @@ function AppNavigator() {
     <Stack
       screenOptions={{
         headerShown: false,
+        animation: 'slide_from_right',
+        animationTypeForReplace: 'push',
         contentStyle: {backgroundColor: colors.background},
       }}>
       <Stack.Screen name="index" />
@@ -33,7 +35,10 @@ function AppNavigator() {
       <Stack.Screen name="login" />
       <Stack.Screen name="sign-up" />
       <Stack.Screen name="register-device" />
-      <Stack.Screen name="dashboard" />
+      <Stack.Screen name="dashboard" options={{animation: 'none'}} />
+      <Stack.Screen name="presets" options={{animation: 'none'}} />
+      <Stack.Screen name="settings" options={{animation: 'none'}} />
+      <Stack.Screen name="preset-editor" options={{animation: 'slide_from_right'}} />
       <Stack.Screen name="paired-online" />
       <Stack.Screen name="setup-intro" />
       <Stack.Screen name="reconnect-help" />

@@ -1,0 +1,500 @@
+import React, {useEffect, useMemo, useState} from 'react';
+import {Pressable, ScrollView, StyleSheet, Text, View} from 'react-native';
+import {SafeAreaView} from 'react-native-safe-area-context';
+import {BottomNav, type BottomNavItem} from '../../../components/BottomNav';
+import {colors, radii, spacing} from '../../../theme';
+import DashboardPreviewSection from '../components/DashboardPreviewSection';
+import type {Display3DSlot} from '../components/Display3DPreview';
+
+type CityId = 'new-york' | 'philadelphia' | 'boston' | 'chicago';
+type DayId = 'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat' | 'sun';
+type Device = {id: string; name: string; online: boolean; city: CityId};
+type PresetItem = {
+  id: string;
+  name: string;
+  city: CityId;
+  enabled: boolean;
+  displayStart: string;
+  displayEnd: string;
+  displayDays: DayId[];
+  offStart: string;
+  offEnd: string;
+  slots: Display3DSlot[];
+};
+
+const CITY_LABELS: Record<CityId, string> = {
+  'new-york': 'NYC',
+  philadelphia: 'Philly',
+  boston: 'Boston',
+  chicago: 'Chicago',
+};
+
+const NAV_ITEMS: BottomNavItem[] = [
+  {key: 'home', label: 'Home', icon: 'home-outline', route: '/dashboard'},
+  {key: 'presets', label: 'Displays', icon: 'albums-outline', route: '/presets'},
+  {key: 'settings', label: 'Settings', icon: 'settings-outline', route: '/settings'},
+];
+const TIME_OPTIONS = ['00:00', '05:00', '06:00', '07:00', '08:00', '09:00', '10:00', '17:00', '18:00', '20:00', '22:00', '23:00'];
+
+const DEVICES: Device[] = [
+  {id: 'device-1', name: 'Bedroom Display', online: true, city: 'new-york'},
+  {id: 'device-2', name: 'Kitchen Display', online: false, city: 'philadelphia'},
+  {id: 'device-3', name: 'Office Display', online: true, city: 'chicago'},
+];
+
+const PRESETS: PresetItem[] = [
+  {
+    id: 'preset-1',
+    name: 'Morning Commute',
+    city: 'new-york',
+    enabled: true,
+    displayStart: '06:00',
+    displayEnd: '09:00',
+    displayDays: ['mon', 'tue', 'wed', 'thu', 'fri'],
+    offStart: '23:00',
+    offEnd: '05:00',
+    slots: [
+      {id: 'slot-1', color: '#0039A6', textColor: '#E9ECEF', routeLabel: 'A', selected: false, stopName: 'Hoyt-Schermerhorn', times: '2, 5, 8'},
+      {id: 'slot-2', color: '#FCCC0A', textColor: '#0C0C0C', routeLabel: 'N', selected: false, stopName: 'Times Sq - 42 St', times: '4, 7, 10'},
+    ],
+  },
+  {
+    id: 'preset-2',
+    name: 'Weekend Late',
+    city: 'new-york',
+    enabled: false,
+    displayStart: '10:00',
+    displayEnd: '22:00',
+    displayDays: ['sat', 'sun'],
+    offStart: '00:00',
+    offEnd: '07:00',
+    slots: [{id: 'slot-1', color: '#EE352E', textColor: '#E9ECEF', routeLabel: '2', selected: false, stopName: '149 St-Grand Concourse', times: '3, 6, 9'}],
+  },
+  {
+    id: 'preset-3',
+    name: 'Philly Workday',
+    city: 'philadelphia',
+    enabled: true,
+    displayStart: '07:00',
+    displayEnd: '18:00',
+    displayDays: ['mon', 'tue', 'wed', 'thu', 'fri'],
+    offStart: '22:00',
+    offEnd: '06:00',
+    slots: [
+      {id: 'slot-1', color: '#0061AA', textColor: '#E9ECEF', routeLabel: 'Tr', selected: false, stopName: '30th Street Station', times: '5, 8, 11'},
+      {id: 'slot-2', color: '#FF8200', textColor: '#E9ECEF', routeLabel: 'Me', selected: false, stopName: 'Suburban Station', times: '4, 9, 12'},
+    ],
+  },
+  {
+    id: 'preset-4',
+    name: 'Loop Rush',
+    city: 'chicago',
+    enabled: true,
+    displayStart: '06:00',
+    displayEnd: '10:00',
+    displayDays: ['mon', 'tue', 'wed', 'thu', 'fri'],
+    offStart: '23:00',
+    offEnd: '05:00',
+    slots: [{id: 'slot-1', color: '#00A1DE', textColor: '#E9ECEF', routeLabel: 'Blu', selected: false, stopName: 'Clark/Lake', times: '2, 5, 9'}],
+  },
+  {
+    id: 'preset-5',
+    name: 'Queens Express',
+    city: 'new-york',
+    enabled: true,
+    displayStart: '07:00',
+    displayEnd: '10:00',
+    displayDays: ['mon', 'tue', 'wed', 'thu', 'fri'],
+    offStart: '23:00',
+    offEnd: '05:00',
+    slots: [
+      {id: 'slot-1', color: '#0039A6', textColor: '#E9ECEF', routeLabel: 'E', selected: false, stopName: 'Jackson Hts-Roosevelt Av', times: '1, 4, 7'},
+      {id: 'slot-2', color: '#B933AD', textColor: '#E9ECEF', routeLabel: '7', selected: false, stopName: 'Flushing-Main St', times: '3, 6, 10'},
+    ],
+  },
+  {
+    id: 'preset-6',
+    name: 'Brooklyn Late Night',
+    city: 'new-york',
+    enabled: false,
+    displayStart: '21:00',
+    displayEnd: '23:00',
+    displayDays: ['fri', 'sat'],
+    offStart: '23:30',
+    offEnd: '06:00',
+    slots: [{id: 'slot-1', color: '#0039A6', textColor: '#E9ECEF', routeLabel: 'A', selected: false, stopName: 'Hoyt-Schermerhorn', times: '6, 12, 17'}],
+  },
+];
+
+export default function DashboardHomeScreen() {
+  const [selectedDeviceId, setSelectedDeviceId] = useState<string>(DEVICES[0].id);
+  const [carouselIndex, setCarouselIndex] = useState(0);
+  const [quietHoursEnabled, setQuietHoursEnabled] = useState(true);
+  const [quietHours, setQuietHours] = useState({start: '23:00', end: '05:00'});
+
+  const selectedDevice = DEVICES.find(device => device.id === selectedDeviceId) ?? DEVICES[0];
+  const cityPresets = useMemo(
+    () => PRESETS.filter(preset => preset.city === selectedDevice.city),
+    [selectedDevice.city],
+  );
+  const enabledPresets = useMemo(
+    () => cityPresets.filter(preset => preset.enabled),
+    [cityPresets],
+  );
+  const carouselPresets = enabledPresets.length > 0 ? enabledPresets : cityPresets;
+
+  useEffect(() => {
+    setCarouselIndex(0);
+  }, [selectedDeviceId]);
+
+  useEffect(() => {
+    if (carouselPresets.length <= 1) return;
+    const timer = setInterval(() => {
+      setCarouselIndex(prev => (prev + 1) % carouselPresets.length);
+    }, 3500);
+    return () => clearInterval(timer);
+  }, [carouselPresets.length]);
+
+  const activePreset = carouselPresets[carouselIndex] ?? null;
+
+  const moveCarousel = (direction: 1 | -1) => {
+    if (carouselPresets.length === 0) return;
+    setCarouselIndex(prev => (prev + direction + carouselPresets.length) % carouselPresets.length);
+  };
+
+  return (
+    <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
+      <ScrollView contentContainerStyle={styles.scroll}>
+        <View style={styles.header}>
+          <Text style={styles.title}>Home</Text>
+          <Text style={styles.subtitle}>Device status and what will be displayed next.</Text>
+        </View>
+
+        <View style={styles.card}>
+          <View style={styles.deviceHeaderRow}>
+            <View style={styles.deviceHeaderText}>
+              <Text style={styles.deviceName}>{selectedDevice.name}</Text>
+              <Text style={styles.deviceSubMeta}>City: {CITY_LABELS[selectedDevice.city]}</Text>
+            </View>
+            <View style={[styles.onlineChip, selectedDevice.online ? styles.onlineChipOn : styles.onlineChipOff]}>
+              <View style={[styles.onlineDot, selectedDevice.online ? styles.onlineDotOn : styles.onlineDotOff]} />
+              <Text style={styles.onlineChipText}>{selectedDevice.online ? 'Online' : 'Offline'}</Text>
+            </View>
+          </View>
+
+          {DEVICES.length > 1 ? (
+            <>
+              <Text style={styles.switcherLabel}>Switch Device</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.deviceSwitcherRow}>
+                {DEVICES.map(device => {
+                  const active = device.id === selectedDevice.id;
+                  return (
+                    <Pressable
+                      key={device.id}
+                      style={[styles.devicePill, active && styles.devicePillActive]}
+                      onPress={() => setSelectedDeviceId(device.id)}>
+                      <Text style={[styles.devicePillText, active && styles.devicePillTextActive]}>{device.name}</Text>
+                    </Pressable>
+                  );
+                })}
+              </ScrollView>
+            </>
+          ) : null}
+
+        </View>
+
+        <View style={styles.heroCard}>
+          <View style={styles.heroTopRow}>
+            <View style={styles.heroTitleWrap}>
+              <View style={styles.heroBrandRow}>
+                <View style={styles.mtaBadge}>
+                  <Text style={styles.mtaBadgeText}>MTA</Text>
+                </View>
+                <Text style={styles.heroBrandText}>Live Transit Preview</Text>
+              </View>
+              <Text style={styles.heroLabel}>Preview Carousel</Text>
+              <Text style={styles.heroTitle}>{activePreset?.name ?? 'No displays yet'}</Text>
+              <Text style={styles.heroMeta}>
+                {activePreset ? describeDisplayWindow(activePreset) : 'Create a display to preview it here'}
+              </Text>
+            </View>
+            <View style={styles.heroArrowRow}>
+              <Pressable style={styles.heroArrowButton} onPress={() => moveCarousel(-1)}>
+                <Text style={styles.heroArrowText}>‹</Text>
+              </Pressable>
+              <Pressable style={styles.heroArrowButton} onPress={() => moveCarousel(1)}>
+                <Text style={styles.heroArrowText}>›</Text>
+              </Pressable>
+            </View>
+          </View>
+
+          {activePreset ? (
+            <>
+              <DashboardPreviewSection
+                slots={activePreset.slots}
+                onSelectSlot={() => {}}
+                onReorderSlot={() => {}}
+                onDragStateChange={() => {}}
+                showHint={false}
+              />
+              <View style={styles.heroFooter}>
+                <Text style={styles.heroHint}>
+                  {carouselPresets.length > 1 ? `Looping ${carouselPresets.length} displays. Use arrows to move manually.` : 'Only one display available for this device/city.'}
+                </Text>
+                <View style={styles.heroDots}>
+                  {carouselPresets.map((preset, index) => (
+                    <Pressable
+                      key={preset.id}
+                      style={[styles.heroDot, index === carouselIndex && styles.heroDotActive]}
+                      onPress={() => setCarouselIndex(index)}
+                    />
+                  ))}
+                </View>
+              </View>
+            </>
+          ) : (
+            <View style={styles.emptyHeroState}>
+              <Text style={styles.emptyHeroText}>No displays for {CITY_LABELS[selectedDevice.city]} yet.</Text>
+            </View>
+          )}
+        </View>
+
+        <View style={styles.card}>
+          <View style={styles.quietHeaderRow}>
+            <View style={styles.deviceHeaderText}>
+              <Text style={styles.sectionLabel}>Quiet Hours</Text>
+              <Text style={styles.quietSubtext}>Sleep window overrides all other displays.</Text>
+            </View>
+            <Pressable
+              style={[styles.stateChip, quietHoursEnabled ? styles.onlineChipOn : styles.stateChipOff]}
+              onPress={() => setQuietHoursEnabled(prev => !prev)}>
+              <Text style={styles.stateChipText}>{quietHoursEnabled ? 'On' : 'Off'}</Text>
+            </Pressable>
+          </View>
+
+          <View style={styles.quietRangeRow}>
+            <TimeAdjustField
+              label="Sleep From"
+              value={quietHours.start}
+              onPrev={() => setQuietHours(prev => ({...prev, start: cycleTimeOption(prev.start, -1)}))}
+              onNext={() => setQuietHours(prev => ({...prev, start: cycleTimeOption(prev.start, 1)}))}
+            />
+            <TimeAdjustField
+              label="Wake At"
+              value={quietHours.end}
+              onPrev={() => setQuietHours(prev => ({...prev, end: cycleTimeOption(prev.end, -1)}))}
+              onNext={() => setQuietHours(prev => ({...prev, end: cycleTimeOption(prev.end, 1)}))}
+            />
+          </View>
+        </View>
+      </ScrollView>
+
+      <BottomNav items={NAV_ITEMS} />
+    </SafeAreaView>
+  );
+}
+
+function describeDisplayWindow(preset: PresetItem) {
+  return `${formatDayList(preset.displayDays)} ${preset.displayStart}-${preset.displayEnd}`;
+}
+
+function TimeAdjustField({
+  label,
+  value,
+  onPrev,
+  onNext,
+}: {
+  label: string;
+  value: string;
+  onPrev: () => void;
+  onNext: () => void;
+}) {
+  return (
+    <View style={styles.timeField}>
+      <Text style={styles.timeFieldLabel}>{label}</Text>
+      <View style={styles.timeFieldControls}>
+        <Pressable style={styles.timeFieldButton} onPress={onPrev}>
+          <Text style={styles.timeFieldButtonText}>-</Text>
+        </Pressable>
+        <Text style={styles.timeFieldValue}>{value}</Text>
+        <Pressable style={styles.timeFieldButton} onPress={onNext}>
+          <Text style={styles.timeFieldButtonText}>+</Text>
+        </Pressable>
+      </View>
+    </View>
+  );
+}
+
+function formatDayList(days: DayId[]) {
+  const weekday: DayId[] = ['mon', 'tue', 'wed', 'thu', 'fri'];
+  const weekend: DayId[] = ['sat', 'sun'];
+  if (days.length === 7) return 'Every day';
+  if (weekday.every(day => days.includes(day)) && days.length === weekday.length) return 'Mon-Fri';
+  if (weekend.every(day => days.includes(day)) && days.length === weekend.length) return 'Sat-Sun';
+  const labels: Record<DayId, string> = {mon: 'Mon', tue: 'Tue', wed: 'Wed', thu: 'Thu', fri: 'Fri', sat: 'Sat', sun: 'Sun'};
+  return days.map(day => labels[day]).join(', ');
+}
+
+function cycleTimeOption(current: string, delta: 1 | -1) {
+  const index = TIME_OPTIONS.indexOf(current);
+  const safeIndex = index === -1 ? 0 : index;
+  const nextIndex = (safeIndex + delta + TIME_OPTIONS.length) % TIME_OPTIONS.length;
+  return TIME_OPTIONS[nextIndex];
+}
+
+const styles = StyleSheet.create({
+  container: {flex: 1, backgroundColor: colors.background},
+  scroll: {padding: spacing.lg, paddingBottom: 120, gap: spacing.md},
+  header: {gap: 4, alignItems: 'center'},
+  title: {color: colors.text, fontSize: 24, fontWeight: '900', textAlign: 'center'},
+  subtitle: {color: colors.textMuted, fontSize: 13, textAlign: 'center', maxWidth: 300},
+  card: {
+    backgroundColor: colors.card,
+    borderRadius: radii.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.md,
+    gap: spacing.sm,
+  },
+  sectionLabel: {color: colors.text, fontSize: 13, fontWeight: '800'},
+  deviceHeaderRow: {flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: spacing.sm},
+  deviceHeaderText: {flex: 1},
+  deviceName: {color: colors.text, fontSize: 16, fontWeight: '900', marginTop: 2},
+  deviceSubMeta: {color: colors.textMuted, fontSize: 11, marginTop: 3},
+  onlineChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 6,
+  },
+  onlineChipOn: {backgroundColor: '#0E2B21', borderColor: '#1B5E4A'},
+  onlineChipOff: {backgroundColor: colors.surface, borderColor: colors.border},
+  onlineDot: {width: 8, height: 8, borderRadius: 4},
+  onlineDotOn: {backgroundColor: '#34D399'},
+  onlineDotOff: {backgroundColor: colors.textMuted},
+  onlineChipText: {color: colors.text, fontSize: 12, fontWeight: '800'},
+  deviceSwitcherRow: {gap: spacing.xs},
+  switcherLabel: {color: colors.textMuted, fontSize: 11, fontWeight: '700', textTransform: 'uppercase'},
+  devicePill: {
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+  },
+  devicePillActive: {borderColor: colors.accent, backgroundColor: colors.accentMuted},
+  devicePillText: {color: colors.text, fontSize: 12, fontWeight: '700'},
+  devicePillTextActive: {color: colors.accent},
+  heroCard: {
+    backgroundColor: colors.card,
+    borderRadius: radii.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.md,
+    gap: spacing.sm,
+  },
+  heroTopRow: {flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: spacing.sm},
+  heroTitleWrap: {flex: 1},
+  heroBrandRow: {flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4},
+  mtaBadge: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: '#005BBB',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#3B82F6',
+  },
+  mtaBadgeText: {color: '#FFFFFF', fontSize: 11, fontWeight: '900'},
+  heroBrandText: {color: colors.text, fontSize: 12, fontWeight: '800'},
+  heroLabel: {color: colors.textMuted, fontSize: 11, fontWeight: '700', textTransform: 'uppercase'},
+  heroTitle: {color: colors.text, fontSize: 16, fontWeight: '900', marginTop: 2},
+  heroMeta: {color: colors.textMuted, fontSize: 12, marginTop: 2},
+  heroArrowRow: {flexDirection: 'row', gap: spacing.xs},
+  heroArrowButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  heroArrowText: {color: colors.text, fontSize: 22, fontWeight: '700', marginTop: -2},
+  heroFooter: {gap: spacing.xs},
+  heroHint: {color: colors.textMuted, fontSize: 11},
+  heroDots: {flexDirection: 'row', gap: 6, alignSelf: 'flex-start'},
+  heroDot: {width: 8, height: 8, borderRadius: 4, backgroundColor: colors.border},
+  heroDotActive: {backgroundColor: colors.accent},
+  emptyHeroState: {
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    padding: spacing.md,
+  },
+  emptyHeroText: {color: colors.textMuted, fontSize: 12},
+  actionsRow: {flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs},
+  secondaryButton: {
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  secondaryButtonText: {color: colors.text, fontSize: 12, fontWeight: '700'},
+  ghostButton: {
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: 'transparent',
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+  },
+  ghostButtonText: {color: colors.textMuted, fontSize: 12, fontWeight: '700'},
+  quietHeaderRow: {flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: spacing.sm},
+  quietSubtext: {color: colors.textMuted, fontSize: 11, marginTop: 2},
+  stateChip: {
+    borderRadius: radii.md,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 6,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+  },
+  stateChipOff: {backgroundColor: colors.surface, borderColor: colors.border},
+  stateChipText: {color: colors.text, fontSize: 11, fontWeight: '800'},
+  quietRangeRow: {flexDirection: 'row', gap: spacing.xs},
+  timeField: {
+    flex: 1,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    padding: spacing.xs,
+    gap: 6,
+  },
+  timeFieldLabel: {color: colors.textMuted, fontSize: 11, fontWeight: '700'},
+  timeFieldControls: {flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.xs},
+  timeFieldButton: {
+    width: 28,
+    height: 28,
+    borderRadius: radii.sm,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.background,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  timeFieldButtonText: {color: colors.text, fontSize: 16, fontWeight: '800'},
+  timeFieldValue: {color: colors.text, fontSize: 13, fontWeight: '800'},
+});
