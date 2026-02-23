@@ -92,11 +92,11 @@ export default function Display3DPreview({slots, onSelectSlot, onReorderSlot, on
                 </Text>
               </View>
               <View style={styles.slotBody}>
-                <Text style={[styles.slotTitle, compact && styles.slotTitleCompact]} numberOfLines={1}>
+                <Text style={[styles.slotTitle, compact && styles.slotTitleCompact, {color: slot.textColor}]} numberOfLines={1}>
                   {slot.stopName}
                 </Text>
               </View>
-              <Text style={[styles.slotTimes, compact && styles.slotTimesCompact]} numberOfLines={1}>
+              <Text style={[styles.slotTimes, compact && styles.slotTimesCompact, {color: slot.textColor}]} numberOfLines={1}>
                 {slot.times}
               </Text>
             </Pressable>

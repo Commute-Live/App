@@ -1,9 +1,9 @@
 import React, {useEffect, useMemo, useRef, useState} from 'react';
-import {Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View} from 'react-native';
+import {Animated, Easing, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View} from 'react-native';
 import {SafeAreaView} from 'react-native-safe-area-context';
 import {useRouter} from 'expo-router';
 import {colors, radii, spacing} from '../../../theme';
-import Display3DPreview from '../components/Display3DPreview';
+import DashboardPreviewSection from '../components/DashboardPreviewSection';
 
 type CityId = 'new-york' | 'philadelphia' | 'boston' | 'chicago';
 type ModeId = 'train' | 'bus';
@@ -34,7 +34,6 @@ const LAYOUT_OPTIONS = [
   {id: 'layout-1', slots: 1, label: '1 stop'},
   {id: 'layout-2', slots: 2, label: '2 stops'},
 ];
-const TEXT_COLOR_SWATCHES = ['#E9ECEF', '#5CE1E6', '#FBBF24', '#FCA5A5', '#86EFAC', '#C4B5FD'];
 
 const cityData: Record<CityId, CityConfig> = {
   'new-york': {
@@ -45,6 +44,17 @@ const cityData: Record<CityId, CityConfig> = {
           {id: 'tsq', name: 'Times Sq - 42 St', area: 'Manhattan', lines: ['N', 'Q', 'R', '1', '2', '3', '7']},
           {id: 'hoyt', name: 'Hoyt-Schermerhorn', area: 'Brooklyn', lines: ['A', 'C', 'G']},
           {id: '149', name: '149 St-Grand Concourse', area: 'Bronx', lines: ['2', '5', '4']},
+          {id: 'gct', name: 'Grand Central - 42 St', area: 'Manhattan', lines: ['4', '5', '6', '7']},
+          {id: 'fulton', name: 'Fulton St', area: 'Manhattan', lines: ['A', 'C', '2', '3', '4', '5']},
+          {id: 'atl', name: 'Atlantic Av-Barclays Ctr', area: 'Brooklyn', lines: ['2', '3', '4', '5', 'B', 'D', 'N', 'Q', 'R']},
+          {id: '34h', name: '34 St-Herald Sq', area: 'Manhattan', lines: ['B', 'D', 'N', 'Q', 'R']},
+          {id: '59c', name: '59 St-Columbus Circle', area: 'Manhattan', lines: ['A', 'B', 'C', 'D', '1']},
+          {id: '14u', name: '14 St-Union Sq', area: 'Manhattan', lines: ['4', '5', '6', 'N', 'Q', 'R']},
+          {id: 'w4', name: 'W 4 St-Wash Sq', area: 'Manhattan', lines: ['A', 'C', 'B', 'D']},
+          {id: 'jkf', name: 'Jackson Hts-Roosevelt Av', area: 'Queens', lines: ['E', 'F', 'R', '7']},
+          {id: 'fls', name: 'Flushing-Main St', area: 'Queens', lines: ['7']},
+          {id: '125', name: '125 St', area: 'Manhattan', lines: ['4', '5', '6']},
+          {id: '96b', name: '96 St', area: 'Upper West Side', lines: ['1', '2', '3']},
         ],
         routes: [
           {id: '1', label: '1', color: '#EE352E'},
@@ -68,12 +78,25 @@ const cityData: Record<CityId, CityConfig> = {
         stations: [
           {id: 'm15', name: '1 Av & E 14 St', area: 'Manhattan', lines: ['M15', 'M15-SBS']},
           {id: 'bx12', name: 'Fordham Rd & Grand Concourse', area: 'Bronx', lines: ['Bx12', 'Bx12-SBS']},
+          {id: 'm14a', name: '14 St & 1 Av', area: 'Manhattan', lines: ['M14A-SBS']},
+          {id: 'm14d', name: '14 St & 8 Av', area: 'Manhattan', lines: ['M14D-SBS']},
+          {id: 'm34', name: '34 St & 5 Av', area: 'Manhattan', lines: ['M34', 'M34A-SBS']},
+          {id: 'q44', name: 'Main St & Archer Av', area: 'Queens', lines: ['Q44-SBS']},
+          {id: 'b41', name: 'Flatbush Av & Nostrand Av', area: 'Brooklyn', lines: ['B41']},
+          {id: 's79', name: 'Hylan Blvd & Richmond Av', area: 'Staten Island', lines: ['S79-SBS']},
         ],
         routes: [
           {id: 'M15', label: 'M15', color: '#00933C'},
           {id: 'M15-SBS', label: 'M15', color: '#00933C', textColor: '#0A0A0A'},
           {id: 'Bx12', label: 'Bx12', color: '#0039A6'},
           {id: 'Bx12-SBS', label: 'Bx12', color: '#0039A6', textColor: '#0A0A0A'},
+          {id: 'M14A-SBS', label: 'M14A', color: '#0039A6', textColor: '#0A0A0A'},
+          {id: 'M14D-SBS', label: 'M14D', color: '#0039A6', textColor: '#0A0A0A'},
+          {id: 'M34', label: 'M34', color: '#00933C'},
+          {id: 'M34A-SBS', label: 'M34A', color: '#00933C', textColor: '#0A0A0A'},
+          {id: 'Q44-SBS', label: 'Q44', color: '#0039A6', textColor: '#0A0A0A'},
+          {id: 'B41', label: 'B41', color: '#EE352E'},
+          {id: 'S79-SBS', label: 'S79', color: '#FCCC0A', textColor: '#0C0C0C'},
         ],
       },
     },
@@ -156,6 +179,9 @@ const Haptics = {selectionAsync: async () => {}, notificationAsync: async (_: an
 export default function DashboardScreen() {
   const router = useRouter();
   const city: CityId = 'new-york';
+  const headerEnter = useRef(new Animated.Value(0)).current;
+  const previewEnter = useRef(new Animated.Value(0)).current;
+  const editorEnter = useRef(new Animated.Value(0)).current;
   const [layoutSlots, setLayoutSlots] = useState<number>(DEFAULT_LAYOUT_SLOTS);
   const [lines, setLines] = useState<LinePick[]>(() => ensureLineCount(seedDefaultLines('new-york'), 'new-york', DEFAULT_LAYOUT_SLOTS));
   const [selectedLineId, setSelectedLineId] = useState<string>('line-1');
@@ -178,6 +204,39 @@ export default function DashboardScreen() {
     }, 1800);
     return () => clearInterval(timer);
   }, []);
+
+  useEffect(() => {
+    headerEnter.setValue(0);
+    previewEnter.setValue(0);
+    editorEnter.setValue(0);
+
+    Animated.parallel([
+      Animated.timing(headerEnter, {
+        toValue: 1,
+        duration: 260,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }),
+      Animated.sequence([
+        Animated.delay(70),
+        Animated.timing(previewEnter, {
+          toValue: 1,
+          duration: 320,
+          easing: Easing.out(Easing.cubic),
+          useNativeDriver: true,
+        }),
+      ]),
+      Animated.sequence([
+        Animated.delay(140),
+        Animated.timing(editorEnter, {
+          toValue: 1,
+          duration: 340,
+          easing: Easing.out(Easing.cubic),
+          useNativeDriver: true,
+        }),
+      ]),
+    ]).start();
+  }, [editorEnter, headerEnter, previewEnter]);
 
   const snapshotRef = useRef({city, layoutSlots, lines});
   const isDirty = useMemo(() => {
@@ -252,7 +311,7 @@ export default function DashboardScreen() {
         return {
           id: line.id,
           color: route?.color ?? '#3A3A3A',
-          textColor: route?.textColor ?? '#FFFFFF',
+          textColor: line.textColor || route?.textColor || '#FFFFFF',
           routeLabel: route?.label ?? '?',
           selected: line.id === selectedLineId,
           stopName,
@@ -261,23 +320,68 @@ export default function DashboardScreen() {
       }),
     [arrivals, city, lines, selectedLineId],
   );
+
+  const headerAnimatedStyle = {
+    opacity: headerEnter,
+    transform: [
+      {
+        translateY: headerEnter.interpolate({
+          inputRange: [0, 1],
+          outputRange: [-12, 0],
+        }),
+      },
+    ],
+  } as const;
+
+  const previewAnimatedStyle = {
+    opacity: previewEnter,
+    transform: [
+      {
+        translateY: previewEnter.interpolate({
+          inputRange: [0, 1],
+          outputRange: [18, 0],
+        }),
+      },
+      {
+        scale: previewEnter.interpolate({
+          inputRange: [0, 1],
+          outputRange: [0.985, 1],
+        }),
+      },
+    ],
+  } as const;
+
+  const editorAnimatedStyle = {
+    opacity: editorEnter,
+    transform: [
+      {
+        translateY: editorEnter.interpolate({
+          inputRange: [0, 1],
+          outputRange: [24, 0],
+        }),
+      },
+    ],
+  } as const;
+
   return (
     <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
       <ScrollView contentContainerStyle={styles.scroll} scrollEnabled={!previewDragging}>
-        <TopBar
-          layoutSlots={layoutSlots}
-          onLayoutOpen={() => setOpenLayoutPicker(true)}
-          onBackPress={handleBackPress}
-        />
+        <Animated.View style={headerAnimatedStyle}>
+          <TopBar
+            layoutSlots={layoutSlots}
+            onLayoutOpen={() => setOpenLayoutPicker(true)}
+            onBackPress={handleBackPress}
+          />
+        </Animated.View>
 
-        <View style={styles.previewSection}>
-          <Display3DPreview
+        <Animated.View style={previewAnimatedStyle}>
+          <DashboardPreviewSection
             slots={previewSlots}
             onSelectSlot={setSelectedLineId}
             onReorderSlot={reorderLineByHold}
             onDragStateChange={setPreviewDragging}
           />
-        </View>
+        </Animated.View>
 
         <SimplePicker
           visible={openLayoutPicker}
@@ -290,26 +394,28 @@ export default function DashboardScreen() {
           onClose={() => setOpenLayoutPicker(false)}
         />
 
-        <View style={styles.card}>
-          {selectedLine ? (
-            <>
-              <View style={styles.editorHeader}>
-                <Text style={styles.sectionLabel}>Edit Slot {selectedLineIndex + 1}</Text>
-                <Text style={styles.editorMeta}>{modeLabel(selectedLine.mode)} mode</Text>
-              </View>
-              <SlotEditor
-                city={city}
-                line={selectedLine}
-                stationSearch={stationSearch[selectedLine.id] ?? ''}
-                onStationSearch={text => setStationSearch(prev => ({...prev, [selectedLine.id]: text}))}
-                recents={cityData[city].recents}
-                onChange={updateLine}
-              />
-            </>
-          ) : (
-            <Text style={styles.emptyHint}>Select a slot in the preview to start editing.</Text>
-          )}
-        </View>
+        <Animated.View style={editorAnimatedStyle}>
+          <View style={styles.card}>
+            {selectedLine ? (
+              <>
+                <View style={styles.editorHeader}>
+                  <Text style={styles.sectionLabel}>Edit Slot {selectedLineIndex + 1}</Text>
+                  <Text style={styles.editorMeta}>{modeLabel(selectedLine.mode)} mode</Text>
+                </View>
+                <SlotEditor
+                  city={city}
+                  line={selectedLine}
+                  stationSearch={stationSearch[selectedLine.id] ?? ''}
+                  onStationSearch={text => setStationSearch(prev => ({...prev, [selectedLine.id]: text}))}
+                  recents={cityData[city].recents}
+                  onChange={updateLine}
+                />
+              </>
+            ) : (
+              <Text style={styles.emptyHint}>Select a slot in the preview to start editing.</Text>
+            )}
+          </View>
+        </Animated.View>
       </ScrollView>
 
       <SaveBar dirty={isDirty} loading={saving} success={saveDone} onPress={handleSave} />
@@ -392,6 +498,7 @@ function SlotEditor({
   recents: string[];
   onChange: (id: string, next: Partial<LinePick>) => void;
 }) {
+  const switchAnim = useRef(new Animated.Value(1)).current;
   const cityModes = cityData[city].modes;
   const trainAvailable = !!cityModes.train;
   const busAvailable = !!cityModes.bus;
@@ -400,9 +507,27 @@ function SlotEditor({
   const station = stations.find(s => s.id === line.stationId) ?? stations[0];
   const allowedRoutes = station ? routes.filter(r => station.lines.includes(r.id)) : routes;
 
+  useEffect(() => {
+    switchAnim.setValue(0);
+    Animated.parallel([
+      Animated.timing(switchAnim, {
+        toValue: 1,
+        duration: 140,
+        easing: Easing.out(Easing.quad),
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, [line.direction, line.id, line.mode, line.routeId, line.stationId, switchAnim]);
+
+  const switchAnimatedStyle = {
+    opacity: switchAnim.interpolate({
+      inputRange: [0, 1],
+      outputRange: [0.88, 1],
+    }),
+  } as const;
+
   return (
-    <View style={styles.sectionBlock}>
-      <Text style={styles.sectionLabel}>Transit Type</Text>
+    <Animated.View style={[styles.sectionBlock, switchAnimatedStyle]}>
       <View style={styles.segmented}>
         <Pressable
           style={[styles.segment, line.mode === 'train' && styles.segmentActive, !trainAvailable && styles.segmentDisabled]}
@@ -442,81 +567,37 @@ function SlotEditor({
 
       <DirectionToggle value={line.direction} onChange={direction => onChange(line.id, {direction})} />
 
-      <View style={styles.sectionBlock}>
-        <Text style={styles.sectionLabel}>Custom Name</Text>
-        <TextInput
-          value={line.label}
-          onChangeText={value => onChange(line.id, {label: value})}
-          placeholder={station?.name ?? 'Give this slot a name'}
-          placeholderTextColor={colors.textMuted}
-          style={styles.customInput}
-        />
-      </View>
-
-      <TextColorPicker value={line.textColor} onChange={color => onChange(line.id, {textColor: color})} />
-
-      <View style={styles.sectionBlock}>
-        <Text style={styles.sectionLabel}>Next Arrivals To Show</Text>
-        <View style={styles.stepperRow}>
-          <Pressable
-            style={styles.stepperButton}
-            onPress={() => onChange(line.id, {nextStops: clampNextStops(line.nextStops - 1)})}>
-            <Text style={styles.stepperButtonText}>-</Text>
-          </Pressable>
-          <Text style={styles.stepperValue}>{line.nextStops}</Text>
-          <Pressable
-            style={styles.stepperButton}
-            onPress={() => onChange(line.id, {nextStops: clampNextStops(line.nextStops + 1)})}>
-            <Text style={styles.stepperButtonText}>+</Text>
-          </Pressable>
+      <View style={styles.secondarySectionCard}>
+        <View style={styles.sectionBlock}>
+          <Text style={styles.sectionLabel}>Custom Name</Text>
+          <TextInput
+            value={line.label}
+            onChangeText={value => onChange(line.id, {label: value})}
+            placeholder={station?.name ?? 'Give this slot a name'}
+            placeholderTextColor={colors.textMuted}
+            style={styles.customInput}
+          />
         </View>
-        <Text style={styles.sectionHint}>This controls how many upcoming times appear for this slot.</Text>
-      </View>
-    </View>
-  );
-}
 
-function TextColorPicker({value, onChange}: {value: string; onChange: (next: string) => void}) {
-  const [draft, setDraft] = useState(value);
-
-  useEffect(() => {
-    setDraft(value);
-  }, [value]);
-
-  return (
-    <View style={styles.sectionBlock}>
-      <Text style={styles.sectionLabel}>Text Color</Text>
-      <View style={styles.colorSwatchRow}>
-        {TEXT_COLOR_SWATCHES.map(swatch => {
-          const active = swatch.toUpperCase() === value.toUpperCase();
-          return (
+        <View style={styles.sectionBlock}>
+          <Text style={styles.sectionLabel}>Next Arrivals To Show</Text>
+          <View style={styles.stepperRow}>
             <Pressable
-              key={swatch}
-              style={[styles.colorSwatch, {backgroundColor: swatch}, active && styles.colorSwatchActive]}
-              onPress={() => onChange(swatch)}
-            />
-          );
-        })}
+              style={styles.stepperButton}
+              onPress={() => onChange(line.id, {nextStops: clampNextStops(line.nextStops - 1)})}>
+              <Text style={styles.stepperButtonText}>-</Text>
+            </Pressable>
+            <Text style={styles.stepperValue}>{line.nextStops}</Text>
+            <Pressable
+              style={styles.stepperButton}
+              onPress={() => onChange(line.id, {nextStops: clampNextStops(line.nextStops + 1)})}>
+              <Text style={styles.stepperButtonText}>+</Text>
+            </Pressable>
+          </View>
+          <Text style={styles.sectionHint}>This controls how many upcoming times appear for this slot.</Text>
+        </View>
       </View>
-      <TextInput
-        value={draft}
-        onChangeText={setDraft}
-        onBlur={() => {
-          const normalized = normalizeHexColor(draft);
-          if (normalized) {
-            onChange(normalized);
-            setDraft(normalized);
-            return;
-          }
-          setDraft(value);
-        }}
-        autoCapitalize="characters"
-        autoCorrect={false}
-        placeholder="#E9ECEF"
-        placeholderTextColor={colors.textMuted}
-        style={styles.colorInput}
-      />
-    </View>
+    </Animated.View>
   );
 }
 
@@ -563,40 +644,71 @@ function StationInlinePicker({
   recents: string[];
   onSelect: (id: string) => void;
 }) {
+  const [browseOpen, setBrowseOpen] = useState(false);
   const filtered = useMemo(() => {
     const term = search.trim().toLowerCase();
-    if (!term) return stations;
-    return stations.filter(
-      station =>
-        station.name.toLowerCase().includes(term) ||
-        station.area.toLowerCase().includes(term) ||
-        station.lines.join(' ').toLowerCase().includes(term),
-    );
-  }, [search, stations]);
+    const commonStations = [
+      ...recents
+        .map(recent => stations.find(station => station.name === recent))
+        .filter((station): station is Station => !!station),
+      ...stations,
+    ].filter((station, index, list) => list.findIndex(item => item.id === station.id) === index);
+
+    if (!term) return commonStations.slice(0, 1);
+
+    const scored = stations
+      .map(station => {
+        const name = station.name.toLowerCase();
+        const area = station.area.toLowerCase();
+        const lines = station.lines.join(' ').toLowerCase();
+        let score = 99;
+
+        if (name.startsWith(term)) score = 0;
+        else if (station.lines.some(line => line.toLowerCase() === term)) score = 1;
+        else if (station.lines.some(line => line.toLowerCase().startsWith(term))) score = 2;
+        else if (name.includes(term)) score = 3;
+        else if (area.includes(term)) score = 4;
+        else if (lines.includes(term)) score = 5;
+
+        return {station, score};
+      })
+      .filter(item => item.score < 99)
+      .sort((a, b) => a.score - b.score || a.station.name.localeCompare(b.station.name))
+      .map(item => item.station);
+
+    return scored.length > 0 ? scored : commonStations;
+  }, [recents, search, stations]);
+
+  const visibleStations = browseOpen ? stations : filtered;
 
   return (
     <View style={styles.sectionBlock}>
       <Text style={styles.sectionLabel}>Stop</Text>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.recentsRow}>
-        {recents.map(recent => (
-          <Pressable key={recent} style={styles.recentChip} onPress={() => onSelectByName(recent, stations, onSelect)}>
-            <Text style={styles.recentChipText}>{recent}</Text>
-          </Pressable>
-        ))}
-      </ScrollView>
+      <View style={styles.searchRow}>
+        <TextInput
+          value={search}
+          onChangeText={text => {
+            onSearch(text);
+            if (text.trim()) setBrowseOpen(false);
+          }}
+          placeholder="Search stop"
+          placeholderTextColor={colors.textMuted}
+          style={[styles.searchInput, styles.searchInputInline]}
+        />
+        <Pressable style={styles.searchDropdownButton} onPress={() => setBrowseOpen(prev => !prev)}>
+          <Text style={styles.searchDropdownButtonCaret}>{browseOpen ? '▲' : '▼'}</Text>
+        </Pressable>
+      </View>
 
-      <TextInput
-        value={search}
-        onChangeText={onSearch}
-        placeholder="Search stop"
-        placeholderTextColor={colors.textMuted}
-        style={styles.searchInput}
-      />
-
-      <View style={styles.stationListInline}>
-        {filtered.map((item, idx) => (
+      <ScrollView style={styles.stationListInline} nestedScrollEnabled>
+        {visibleStations.map((item, idx) => (
           <React.Fragment key={item.id}>
-            <Pressable style={styles.stationRow} onPress={() => onSelect(item.id)}>
+            <Pressable
+              style={styles.stationRow}
+              onPress={() => {
+                onSelect(item.id);
+                setBrowseOpen(false);
+              }}>
               <View>
                 <Text style={styles.stationName}>{item.name}</Text>
                 <Text style={styles.stationMeta}>
@@ -607,10 +719,10 @@ function StationInlinePicker({
                 {value === item.id ? 'Selected' : 'Tap'}
               </Text>
             </Pressable>
-            {idx < filtered.length - 1 && <View style={styles.listDivider} />}
+            {idx < visibleStations.length - 1 && <View style={styles.listDivider} />}
           </React.Fragment>
         ))}
-      </View>
+      </ScrollView>
     </View>
   );
 }
@@ -785,11 +897,6 @@ function tickArrivals(prev: Arrival[]): Arrival[] {
   });
 }
 
-function onSelectByName(name: string, stations: Station[], onSelect: (id: string) => void) {
-  const found = stations.find(station => station.name === name);
-  if (found) onSelect(found.id);
-}
-
 function clampNextStops(value: number) {
   if (!Number.isFinite(value)) return DEFAULT_NEXT_STOPS;
   return Math.min(MAX_NEXT_STOPS, Math.max(1, Math.round(value)));
@@ -879,9 +986,6 @@ const styles = StyleSheet.create({
   modalOptionText: {color: colors.text, fontSize: 15, fontWeight: '700'},
   modalOptionTextActive: {color: colors.accent},
   previewWrapper: {marginBottom: spacing.xs},
-  previewSection: {
-    gap: spacing.xs,
-  },
   previewCard: {
     borderRadius: radii.lg,
     overflow: 'hidden',
@@ -1018,17 +1122,7 @@ const styles = StyleSheet.create({
   segmentDisabled: {opacity: 0.4},
   segmentText: {color: colors.textMuted, fontWeight: '700', fontSize: 13},
   segmentTextActive: {color: colors.accent},
-  recentsRow: {flexGrow: 0, marginBottom: spacing.xs},
-  recentChip: {
-    backgroundColor: colors.surface,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
-    borderRadius: radii.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-    marginRight: spacing.xs,
-  },
-  recentChipText: {color: colors.text, fontWeight: '700', fontSize: 12},
+  searchRow: {flexDirection: 'row', alignItems: 'stretch', gap: spacing.xs},
   searchInput: {
     backgroundColor: colors.surface,
     borderRadius: radii.md,
@@ -1038,7 +1132,23 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.xs,
     color: colors.text,
     marginBottom: spacing.xs,
+    minHeight: 40,
   },
+  searchInputInline: {flex: 1, marginBottom: 0},
+  searchDropdownButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.surface,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    minWidth: 38,
+    minHeight: 40,
+  },
+  searchDropdownButtonCaret: {color: colors.textMuted, fontSize: 13, fontWeight: '700'},
   stationListInline: {maxHeight: 220},
   stationRow: {flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: spacing.sm},
   stationName: {color: colors.text, fontSize: 14, fontWeight: '800'},
@@ -1069,23 +1179,14 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
     color: colors.text,
   },
-  colorSwatchRow: {flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs},
-  colorSwatch: {
-    width: 26,
-    height: 26,
-    borderRadius: 13,
-    borderWidth: 2,
-    borderColor: colors.border,
-  },
-  colorSwatchActive: {borderColor: colors.accent},
-  colorInput: {
-    backgroundColor: colors.surface,
+  secondarySectionCard: {
+    marginTop: spacing.xs,
+    gap: spacing.sm,
     borderRadius: radii.md,
     borderWidth: 1,
     borderColor: colors.border,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
-    color: colors.text,
+    backgroundColor: colors.surface,
+    padding: spacing.sm,
   },
   stepperRow: {flexDirection: 'row', alignItems: 'center', gap: spacing.md},
   stepperButton: {
