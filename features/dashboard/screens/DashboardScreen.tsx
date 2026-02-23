@@ -39,6 +39,9 @@ export default function DashboardScreen() {
   const selectedDevice = useSelectedDevice();
   const [selectedCity, setSelectedCity] = useState<CityOption['id']>('new-york');
   const [selectedMode, setSelectedMode] = useState<ModeOption['id']>('train');
+  const [lastCommandJson, setLastCommandJson] = useState<string>('No command published yet.');
+  const [lastCommandTs, setLastCommandTs] = useState<string>('');
+  const [lastCommandError, setLastCommandError] = useState<string>('');
 
   useEffect(() => {
     if (!deviceId && deviceIds.length > 0) {
@@ -101,6 +104,62 @@ export default function DashboardScreen() {
     };
   }, [hasLinkedDevice, selectedDevice.id]);
 
+  useEffect(() => {
+    let cancelled = false;
+    let timer: ReturnType<typeof setInterval> | null = null;
+
+    const loadLastCommand = async () => {
+      if (!selectedDevice.id || !hasLinkedDevice) {
+        if (!cancelled) {
+          setLastCommandJson('No device connected.');
+          setLastCommandTs('');
+          setLastCommandError('');
+        }
+        return;
+      }
+      try {
+        const response = await apiFetch(`/device/${selectedDevice.id}/last-command`);
+        const data = await response.json().catch(() => null);
+        if (!response.ok) {
+          const msg = typeof data?.error === 'string' ? data.error : `Failed to load command (${response.status})`;
+          if (!cancelled) setLastCommandError(msg);
+          return;
+        }
+
+        const event = data?.event;
+        if (!event) {
+          if (!cancelled) {
+            setLastCommandJson('No command published yet.');
+            setLastCommandTs('');
+            setLastCommandError('');
+          }
+          return;
+        }
+
+        const payload = event.payload;
+        const pretty =
+          payload && typeof payload === 'object' ? JSON.stringify(payload, null, 2) : String(payload ?? '');
+        if (!cancelled) {
+          setLastCommandJson(pretty || 'No command payload.');
+          setLastCommandTs(typeof event.ts === 'string' ? event.ts : '');
+          setLastCommandError('');
+        }
+      } catch {
+        if (!cancelled) setLastCommandError('Failed to load latest command payload.');
+      }
+    };
+
+    void loadLastCommand();
+    timer = setInterval(() => {
+      void loadLastCommand();
+    }, 5000);
+
+    return () => {
+      cancelled = true;
+      if (timer) clearInterval(timer);
+    };
+  }, [hasLinkedDevice, selectedDevice.id]);
+
   const availableModes = selectedCity === 'chicago' ? modeOptions.filter(m => m.id === 'train') : modeOptions;
 
   return (
@@ -124,6 +183,17 @@ export default function DashboardScreen() {
               </View>
             </View>
           </View>
+
+          {hasLinkedDevice ? (
+            <View style={styles.sectionCard}>
+              <Text style={styles.sectionTitle}>Latest Payload Sent To ESP</Text>
+              {lastCommandTs ? <Text style={styles.payloadMeta}>Published: {lastCommandTs}</Text> : null}
+              {!!lastCommandError ? <Text style={styles.payloadError}>{lastCommandError}</Text> : null}
+              <View style={styles.payloadBox}>
+                <Text style={styles.payloadText}>{lastCommandJson}</Text>
+              </View>
+            </View>
+          ) : null}
 
           {!hasLinkedDevice ? (
             <View style={styles.sectionCard}>
@@ -258,4 +328,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   addDeviceButtonText: {color: colors.background, fontWeight: '800', fontSize: 14},
+  payloadMeta: {color: colors.textMuted, fontSize: 11, marginTop: -spacing.xs, marginBottom: spacing.xs},
+  payloadError: {color: colors.warning, fontSize: 12, marginBottom: spacing.xs},
+  payloadBox: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radii.md,
+    backgroundColor: colors.surface,
+    padding: spacing.sm,
+  },
+  payloadText: {color: colors.text, fontSize: 11, lineHeight: 16},
 });
