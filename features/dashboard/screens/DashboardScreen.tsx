@@ -4,9 +4,10 @@ import {SafeAreaView} from 'react-native-safe-area-context';
 import {useLocalSearchParams, useRouter} from 'expo-router';
 import {colors, radii, spacing} from '../../../theme';
 import DashboardPreviewSection from '../components/DashboardPreviewSection';
+import {useAppState} from '../../../state/appState';
+import {normalizeCityId, type CityId} from '../../../constants/cities';
 
-type CityId = 'new-york' | 'philadelphia' | 'boston' | 'chicago';
-type ModeId = 'train' | 'bus';
+type ModeId = 'train' | 'bus' | 'trolley' | 'commuter-rail';
 type Direction = 'uptown' | 'downtown';
 type Station = {id: string; name: string; area: string; lines: string[]};
 type Route = {id: string; label: string; color: string; textColor?: string};
@@ -45,6 +46,7 @@ const LAYOUT_OPTIONS = [
   {id: 'layout-1', slots: 1, label: '1 stop'},
   {id: 'layout-2', slots: 2, label: '2 stops'},
 ];
+const MODE_ORDER: ModeId[] = ['train', 'bus', 'trolley', 'commuter-rail'];
 
 const cityData: Record<CityId, CityConfig> = {
   'new-york': {
@@ -110,6 +112,19 @@ const cityData: Record<CityId, CityConfig> = {
           {id: 'S79-SBS', label: 'S79', color: '#FCCC0A', textColor: '#0C0C0C'},
         ],
       },
+      'commuter-rail': {
+        stations: [
+          {id: 'nyp', name: 'Penn Station', area: 'Manhattan', lines: ['LIRR', 'NJT']},
+          {id: 'gctm', name: 'Grand Central Madison', area: 'Manhattan', lines: ['LIRR']},
+          {id: 'gctmn', name: 'Grand Central Terminal', area: 'Manhattan', lines: ['MNR-HUD', 'MNR-HAR']},
+        ],
+        routes: [
+          {id: 'LIRR', label: 'LIRR', color: '#0039A6'},
+          {id: 'NJT', label: 'NJT', color: '#F58220', textColor: '#111111'},
+          {id: 'MNR-HUD', label: 'Hud', color: '#0072CE'},
+          {id: 'MNR-HAR', label: 'Har', color: '#00A3E0'},
+        ],
+      },
     },
   },
   philadelphia: {
@@ -138,6 +153,33 @@ const cityData: Record<CityId, CityConfig> = {
           {id: '47M', label: '47M', color: '#9C27B0'},
         ],
       },
+      trolley: {
+        stations: [
+          {id: '13th', name: '13th St Station', area: 'Center City', lines: ['10', '11', '13', '34', '36']},
+          {id: '40th', name: '40th St Portal', area: 'West Philly', lines: ['11', '13', '34', '36']},
+        ],
+        routes: [
+          {id: '10', label: '10', color: '#009B3A'},
+          {id: '11', label: '11', color: '#E87722'},
+          {id: '13', label: '13', color: '#0061AA'},
+          {id: '34', label: '34', color: '#C8102E'},
+          {id: '36', label: '36', color: '#6CACE4'},
+        ],
+      },
+      'commuter-rail': {
+        stations: [
+          {id: 'suburban-cr', name: 'Suburban Station', area: 'Center City', lines: ['PAO', 'TRN', 'WAR']},
+          {id: 'jeff', name: 'Jefferson Station', area: 'Center City', lines: ['TRE', 'FOX', 'LAN']},
+        ],
+        routes: [
+          {id: 'PAO', label: 'Pao', color: '#0061AA'},
+          {id: 'TRN', label: 'Trn', color: '#FF8200'},
+          {id: 'WAR', label: 'War', color: '#009B3A'},
+          {id: 'TRE', label: 'Tre', color: '#7A3E9D'},
+          {id: 'FOX', label: 'Fox', color: '#009CA6'},
+          {id: 'LAN', label: 'Lan', color: '#C8102E'},
+        ],
+      },
     },
   },
   boston: {
@@ -162,6 +204,20 @@ const cityData: Record<CityId, CityConfig> = {
           {id: 'CT1', label: 'CT1', color: '#DA291C'},
         ],
       },
+      'commuter-rail': {
+        stations: [
+          {id: 'south', name: 'South Station', area: 'Boston', lines: ['Prov', 'Worc', 'King']},
+          {id: 'north', name: 'North Station', area: 'Boston', lines: ['Low', 'Hav', 'Newb']},
+        ],
+        routes: [
+          {id: 'Prov', label: 'Prov', color: '#7A0019'},
+          {id: 'Worc', label: 'Worc', color: '#4B2E83'},
+          {id: 'King', label: 'King', color: '#006747'},
+          {id: 'Low', label: 'Low', color: '#003DA5'},
+          {id: 'Hav', label: 'Hav', color: '#ED8B00'},
+          {id: 'Newb', label: 'Nby', color: '#00843D'},
+        ],
+      },
     },
   },
   chicago: {
@@ -182,6 +238,32 @@ const cityData: Record<CityId, CityConfig> = {
           {id: 'Pink', label: 'Pnk', color: '#E27EA6'},
         ],
       },
+      bus: {
+        stations: [
+          {id: 'j14', name: 'State & Jackson', area: 'Loop', lines: ['J14', '126']},
+          {id: '66', name: 'Chicago & Clark', area: 'Near North', lines: ['66', '22']},
+        ],
+        routes: [
+          {id: 'J14', label: 'J14', color: '#00A1DE'},
+          {id: '126', label: '126', color: '#C60C30'},
+          {id: '66', label: '66', color: '#009B3A'},
+          {id: '22', label: '22', color: '#F9461C'},
+        ],
+      },
+      'commuter-rail': {
+        stations: [
+          {id: 'otc', name: 'Ogilvie Transportation Center', area: 'West Loop', lines: ['UP-NW', 'UP-W', 'UP-N']},
+          {id: 'union', name: 'Chicago Union Station', area: 'West Loop', lines: ['BNSF', 'MD-W', 'HC']},
+        ],
+        routes: [
+          {id: 'UP-NW', label: 'UPNW', color: '#003DA5'},
+          {id: 'UP-W', label: 'UPW', color: '#009B3A'},
+          {id: 'UP-N', label: 'UPN', color: '#00A1DE'},
+          {id: 'BNSF', label: 'BNSF', color: '#F9461C'},
+          {id: 'MD-W', label: 'MDW', color: '#7C2233'},
+          {id: 'HC', label: 'HC', color: '#62361B'},
+        ],
+      },
     },
   },
 };
@@ -189,17 +271,19 @@ const cityData: Record<CityId, CityConfig> = {
 const Haptics = {selectionAsync: async () => {}, notificationAsync: async (_: any) => {}};
 export default function DashboardScreen() {
   const router = useRouter();
-  const params = useLocalSearchParams<{city?: string; from?: string}>();
-  const city = normalizeCityIdParam(params.city);
+  const {state: appState} = useAppState();
+  const params = useLocalSearchParams<{city?: string; from?: string; mode?: string}>();
+  const city = normalizeCityIdParam(params.city ?? appState.selectedCity);
+  const openConfigureStopOnLoad = params.mode === 'new';
   const fallbackRoute = params.from === 'presets' ? '/presets' : '/dashboard';
   const headerEnter = useRef(new Animated.Value(0)).current;
   const previewEnter = useRef(new Animated.Value(0)).current;
   const editorEnter = useRef(new Animated.Value(0)).current;
   const [layoutSlots, setLayoutSlots] = useState<number>(DEFAULT_LAYOUT_SLOTS);
   const [lines, setLines] = useState<LinePick[]>(() => ensureLineCount(seedDefaultLines(city), city, DEFAULT_LAYOUT_SLOTS));
-  const [selectedLineId, setSelectedLineId] = useState<string>('');
+  const [selectedLineId, setSelectedLineId] = useState<string>(openConfigureStopOnLoad ? 'line-1' : '');
   const [stationSearch, setStationSearch] = useState<Record<string, string>>({});
-  const [slotEditorExpanded, setSlotEditorExpanded] = useState(false);
+  const [slotEditorExpanded, setSlotEditorExpanded] = useState(openConfigureStopOnLoad);
   const [scheduleExpanded, setScheduleExpanded] = useState(false);
   const [customDisplayScheduleEnabled, setCustomDisplayScheduleEnabled] = useState(false);
   const [displaySchedule, setDisplaySchedule] = useState({start: '06:00', end: '09:00'});
@@ -688,8 +772,7 @@ function SlotEditor({
 }) {
   const switchAnim = useRef(new Animated.Value(1)).current;
   const cityModes = cityData[city].modes;
-  const trainAvailable = !!cityModes.train;
-  const busAvailable = !!cityModes.bus;
+  const modeOptions = getAvailableModes(city);
   const stations = cityModes[line.mode]?.stations ?? [];
   const routes = cityModes[line.mode]?.routes ?? [];
   const station = stations.find(s => s.id === line.stationId) ?? stations[0];
@@ -719,18 +802,14 @@ function SlotEditor({
   return (
     <Animated.View style={[styles.sectionBlock, switchAnimatedStyle]}>
       <View style={styles.segmented}>
-        <Pressable
-          style={[styles.segment, line.mode === 'train' && styles.segmentActive, !trainAvailable && styles.segmentDisabled]}
-          disabled={!trainAvailable}
-          onPress={() => onChange(line.id, {mode: 'train'})}>
-          <Text style={[styles.segmentText, line.mode === 'train' && styles.segmentTextActive]}>Subway</Text>
-        </Pressable>
-        <Pressable
-          style={[styles.segment, line.mode === 'bus' && styles.segmentActive, !busAvailable && styles.segmentDisabled]}
-          disabled={!busAvailable}
-          onPress={() => onChange(line.id, {mode: 'bus'})}>
-          <Text style={[styles.segmentText, line.mode === 'bus' && styles.segmentTextActive]}>Bus</Text>
-        </Pressable>
+        {modeOptions.map(mode => {
+          const active = line.mode === mode;
+          return (
+            <Pressable key={mode} style={[styles.segment, active && styles.segmentActive]} onPress={() => onChange(line.id, {mode})}>
+              <Text style={[styles.segmentText, active && styles.segmentTextActive]}>{getModeLabel(city, mode)}</Text>
+            </Pressable>
+          );
+        })}
       </View>
 
       <StationInlinePicker
@@ -1063,8 +1142,22 @@ function SimplePicker({
   );
 }
 function normalizeCityIdParam(value: string | undefined): CityId {
-  if (value === 'philadelphia' || value === 'boston' || value === 'chicago' || value === 'new-york') return value;
-  return 'new-york';
+  return normalizeCityId(value);
+}
+
+function getAvailableModes(city: CityId): ModeId[] {
+  const order =
+    city === 'philadelphia'
+      ? (['train', 'trolley', 'bus', 'commuter-rail'] as const)
+      : MODE_ORDER;
+  return order.filter(mode => hasMode(city, mode));
+}
+
+function getModeLabel(city: CityId, mode: ModeId) {
+  if (mode === 'train') return city === 'philadelphia' ? 'Rail' : 'Subway';
+  if (mode === 'bus') return 'Bus';
+  if (mode === 'trolley') return 'Trolley';
+  return 'Commuter Rail';
 }
 
 function hasMode(city: CityId, mode: ModeId) {
@@ -1073,7 +1166,7 @@ function hasMode(city: CityId, mode: ModeId) {
 
 function normalizeMode(city: CityId, mode: ModeId): ModeId {
   if (hasMode(city, mode)) return mode;
-  return 'train';
+  return getAvailableModes(city)[0] ?? 'train';
 }
 
 function newLine(city: CityId, mode: ModeId, id: string): LinePick {
@@ -1116,8 +1209,11 @@ function normalizeLine(city: CityId, line: LinePick): LinePick {
 }
 
 function seedDefaultLines(city: CityId): LinePick[] {
-  const defaults = [newLine(city, 'train', 'line-1')];
-  defaults.push(newLine(city, hasMode(city, 'bus') ? 'bus' : 'train', 'line-2'));
+  const modes = getAvailableModes(city);
+  const primary = modes[0] ?? 'train';
+  const secondary = modes[1] ?? primary;
+  const defaults = [newLine(city, primary, 'line-1')];
+  defaults.push(newLine(city, secondary, 'line-2'));
   return defaults;
 }
 
@@ -1131,7 +1227,8 @@ function ensureLineCount(existing: LinePick[], city: CityId, slots: number): Lin
       continue;
     }
 
-    const mode: ModeId = index === 0 ? 'train' : hasMode(city, 'bus') ? 'bus' : 'train';
+    const availableModes = getAvailableModes(city);
+    const mode: ModeId = availableModes[index] ?? availableModes[0] ?? 'train';
     next.push(newLine(city, mode, id));
   }
   return next;
@@ -1537,10 +1634,10 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     overflow: 'hidden',
   },
-  segment: {flex: 1, paddingVertical: spacing.sm, alignItems: 'center'},
+  segment: {flex: 1, paddingVertical: spacing.sm, alignItems: 'center', justifyContent: 'center', minHeight: 44, paddingHorizontal: 4},
   segmentActive: {backgroundColor: colors.accentMuted},
   segmentDisabled: {opacity: 0.4},
-  segmentText: {color: colors.textMuted, fontWeight: '700', fontSize: 13},
+  segmentText: {color: colors.textMuted, fontWeight: '700', fontSize: 11, textAlign: 'center'},
   segmentTextActive: {color: colors.accent},
   searchRow: {flexDirection: 'row', alignItems: 'stretch', gap: spacing.xs},
   searchInput: {

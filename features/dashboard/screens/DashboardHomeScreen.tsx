@@ -5,8 +5,9 @@ import {BottomNav, type BottomNavItem} from '../../../components/BottomNav';
 import {colors, radii, spacing} from '../../../theme';
 import DashboardPreviewSection from '../components/DashboardPreviewSection';
 import type {Display3DSlot} from '../components/Display3DPreview';
+import {useAppState} from '../../../state/appState';
+import {CITY_BRANDS, CITY_LABELS, CITY_OPTIONS, type CityId} from '../../../constants/cities';
 
-type CityId = 'new-york' | 'philadelphia' | 'boston' | 'chicago';
 type DayId = 'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat' | 'sun';
 type Device = {id: string; name: string; online: boolean; city: CityId};
 type PresetItem = {
@@ -22,13 +23,6 @@ type PresetItem = {
   slots: Display3DSlot[];
 };
 
-const CITY_LABELS: Record<CityId, string> = {
-  'new-york': 'NYC',
-  philadelphia: 'Philly',
-  boston: 'Boston',
-  chicago: 'Chicago',
-};
-
 const NAV_ITEMS: BottomNavItem[] = [
   {key: 'home', label: 'Home', icon: 'home-outline', route: '/dashboard'},
   {key: 'presets', label: 'Displays', icon: 'albums-outline', route: '/presets'},
@@ -40,6 +34,7 @@ const DEVICES: Device[] = [
   {id: 'device-1', name: 'Bedroom Display', online: true, city: 'new-york'},
   {id: 'device-2', name: 'Kitchen Display', online: false, city: 'philadelphia'},
   {id: 'device-3', name: 'Office Display', online: true, city: 'chicago'},
+  {id: 'device-4', name: 'Desk Display', online: true, city: 'boston'},
 ];
 
 const PRESETS: PresetItem[] = [
@@ -98,6 +93,21 @@ const PRESETS: PresetItem[] = [
     slots: [{id: 'slot-1', color: '#00A1DE', textColor: '#E9ECEF', routeLabel: 'Blu', selected: false, stopName: 'Clark/Lake', times: '2, 5, 9'}],
   },
   {
+    id: 'preset-4b',
+    name: 'Boston Core',
+    city: 'boston',
+    enabled: true,
+    displayStart: '06:30',
+    displayEnd: '09:30',
+    displayDays: ['mon', 'tue', 'wed', 'thu', 'fri'],
+    offStart: '23:00',
+    offEnd: '05:30',
+    slots: [
+      {id: 'slot-1', color: '#DA291C', textColor: '#E9ECEF', routeLabel: 'Red', selected: false, stopName: 'Downtown Crossing', times: '3, 6, 9'},
+      {id: 'slot-2', color: '#00843D', textColor: '#E9ECEF', routeLabel: 'Grn', selected: false, stopName: 'Kenmore', times: '4, 8, 12'},
+    ],
+  },
+  {
     id: 'preset-5',
     name: 'Queens Express',
     city: 'new-york',
@@ -127,6 +137,7 @@ const PRESETS: PresetItem[] = [
 ];
 
 export default function DashboardHomeScreen() {
+  const {state: appState} = useAppState();
   const [selectedDeviceId, setSelectedDeviceId] = useState<string>(DEVICES[0].id);
   const [carouselIndex, setCarouselIndex] = useState(0);
   const [quietHoursEnabled, setQuietHoursEnabled] = useState(true);
@@ -142,10 +153,18 @@ export default function DashboardHomeScreen() {
     [cityPresets],
   );
   const carouselPresets = enabledPresets.length > 0 ? enabledPresets : cityPresets;
+  const cityBrand = CITY_BRANDS[selectedDevice.city];
+  const cityAgency = CITY_OPTIONS.find(option => option.id === selectedDevice.city)?.agencyCode ?? CITY_LABELS[selectedDevice.city];
 
   useEffect(() => {
     setCarouselIndex(0);
   }, [selectedDeviceId]);
+
+  useEffect(() => {
+    const preferredDevice = DEVICES.find(device => device.city === appState.selectedCity);
+    if (!preferredDevice) return;
+    setSelectedDeviceId(prev => (prev === preferredDevice.id ? prev : preferredDevice.id));
+  }, [appState.selectedCity]);
 
   useEffect(() => {
     if (carouselPresets.length <= 1) return;
@@ -207,8 +226,8 @@ export default function DashboardHomeScreen() {
           <View style={styles.heroTopRow}>
             <View style={styles.heroTitleWrap}>
               <View style={styles.heroBrandRow}>
-                <View style={styles.mtaBadge}>
-                  <Text style={styles.mtaBadgeText}>MTA</Text>
+                <View style={[styles.mtaBadge, {backgroundColor: cityBrand.badgeBg, borderColor: cityBrand.badgeBorder}]}>
+                  <Text style={[styles.mtaBadgeText, {color: cityBrand.badgeText}]}>{cityAgency}</Text>
                 </View>
                 <Text style={styles.heroBrandText}>Live Transit Preview</Text>
               </View>
@@ -402,15 +421,15 @@ const styles = StyleSheet.create({
   heroBrandRow: {flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4},
   mtaBadge: {
     width: 34,
+    minWidth: 34,
     height: 34,
     borderRadius: 17,
-    backgroundColor: '#005BBB',
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: '#3B82F6',
+    paddingHorizontal: 8,
   },
-  mtaBadgeText: {color: '#FFFFFF', fontSize: 11, fontWeight: '900'},
+  mtaBadgeText: {fontSize: 10, fontWeight: '900'},
   heroBrandText: {color: colors.text, fontSize: 12, fontWeight: '800'},
   heroLabel: {color: colors.textMuted, fontSize: 11, fontWeight: '700', textTransform: 'uppercase'},
   heroTitle: {color: colors.text, fontSize: 16, fontWeight: '900', marginTop: 2},

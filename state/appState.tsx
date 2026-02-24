@@ -1,4 +1,5 @@
 import React, {createContext, useContext, useMemo, useReducer} from 'react';
+import type {CityId} from '../constants/cities';
 
 type LayoutTheme = 'mono' | 'metro' | 'bold';
 type Behavior = 'stationary' | 'scroll' | 'rotate';
@@ -16,6 +17,7 @@ type Action =
   | {type: 'setBrightness'; value: number}
   | {type: 'toggleAutoDim'; value: boolean}
   | {type: 'setDeviceStatus'; status: DeviceStatus}
+  | {type: 'setSelectedCity'; city: CityId}
   | {type: 'setDeviceId'; deviceId: string | null}
   | {type: 'setUserId'; userId: string | null}
   | {type: 'clearAuth'};
@@ -39,6 +41,7 @@ interface AppState {
   autoDim: boolean;
   arrivals: {line: string; destination: string; minutes: number}[];
   deviceStatus: DeviceStatus;
+  selectedCity: CityId;
   deviceId: string | null;
   userId: string | null;
 }
@@ -59,6 +62,7 @@ const initialState: AppState = {
   autoDim: true,
   arrivals: defaultArrivals,
   deviceStatus: 'unknown',
+  selectedCity: 'new-york',
   deviceId: null,
   userId: null,
 };
@@ -93,6 +97,8 @@ function reducer(state: AppState, action: Action): AppState {
       return {...state, autoDim: action.value};
     case 'setDeviceStatus':
       return {...state, deviceStatus: action.status};
+    case 'setSelectedCity':
+      return {...state, selectedCity: action.city};
     case 'setDeviceId':
       return {...state, deviceId: action.deviceId};
     case 'setUserId':
@@ -116,6 +122,7 @@ const AppStateContext = createContext<{
   setBrightness: (value: number) => void;
   toggleAutoDim: (value: boolean) => void;
   setDeviceStatus: (status: DeviceStatus) => void;
+  setSelectedCity: (city: CityId) => void;
   setDeviceId: (deviceId: string | null) => void;
   setUserId: (userId: string | null) => void;
   clearAuth: () => void;
@@ -136,6 +143,7 @@ export const AppStateProvider = ({children}: {children: React.ReactNode}) => {
       setBrightness: (value: number) => dispatch({type: 'setBrightness', value}),
       toggleAutoDim: (value: boolean) => dispatch({type: 'toggleAutoDim', value}),
       setDeviceStatus: (status: DeviceStatus) => dispatch({type: 'setDeviceStatus', status}),
+      setSelectedCity: (city: CityId) => dispatch({type: 'setSelectedCity', city}),
       setDeviceId: (deviceId: string | null) => dispatch({type: 'setDeviceId', deviceId}),
       setUserId: (userId: string | null) => dispatch({type: 'setUserId', userId}),
       clearAuth: () => dispatch({type: 'clearAuth'}),

@@ -6,6 +6,8 @@ import {useRouter} from 'expo-router';
 import {BottomNav, BottomNavItem} from '../../../components/BottomNav';
 import {colors, spacing, radii} from '../../../theme';
 import {useAuth} from '../../../state/authProvider';
+import {useAppState} from '../../../state/appState';
+import {CITY_BRANDS, CITY_LABELS, CITY_OPTIONS} from '../../../constants/cities';
 
 const navItems: BottomNavItem[] = [
   {key: 'home', label: 'Home', icon: 'home-outline', route: '/dashboard'},
@@ -16,9 +18,9 @@ const navItems: BottomNavItem[] = [
 export default function SettingsScreen() {
   const router = useRouter();
   const {signOut, user} = useAuth();
+  const {state: appState, setSelectedCity} = useAppState();
   const [openSection, setOpenSection] = useState<string | null>('Account');
   const [isSigningOut, setIsSigningOut] = useState(false);
-  const [selectedCity, setSelectedCity] = useState<'NYC' | 'Philly' | 'Boston' | 'Chicago'>('NYC');
   const [timeFormat, setTimeFormat] = useState<'ampm' | '24h'>('ampm');
 
   const toggleSection = (key: string) =>
@@ -95,20 +97,41 @@ export default function SettingsScreen() {
             {openSection === 'City' ? (
               <View style={styles.cardContent}>
                 <View style={styles.cityPillRow}>
-                  {(['NYC', 'Philly', 'Boston', 'Chicago'] as const).map(city => {
-                    const active = city === selectedCity;
+                  {CITY_OPTIONS.map(city => {
+                    const active = city.id === appState.selectedCity;
                     return (
                       <Pressable
-                        key={city}
+                        key={city.id}
                         style={[styles.cityPill, active && styles.cityPillActive]}
-                        onPress={() => setSelectedCity(city)}>
-                        <Text style={[styles.cityPillText, active && styles.cityPillTextActive]}>{city}</Text>
+                        onPress={() => setSelectedCity(city.id)}>
+                        <Text style={[styles.cityPillText, active && styles.cityPillTextActive]}>{city.shortLabel}</Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+                <View style={styles.cityPreviewGrid}>
+                  {CITY_OPTIONS.map(city => {
+                    const active = city.id === appState.selectedCity;
+                    const brand = CITY_BRANDS[city.id];
+                    return (
+                      <Pressable
+                        key={`${city.id}-preview`}
+                        style={[styles.cityPreviewCard, active && styles.cityPreviewCardActive]}
+                        onPress={() => setSelectedCity(city.id)}>
+                        <View style={[styles.cityPreviewBadge, {backgroundColor: brand.badgeBg, borderColor: brand.badgeBorder}]}>
+                          <Text style={[styles.cityPreviewBadgeText, {color: brand.badgeText}]}>{city.agencyCode}</Text>
+                        </View>
+                        <Text style={styles.cityPreviewTitle}>{city.label}</Text>
+                        <Text style={styles.cityPreviewBody} numberOfLines={2}>
+                          {city.description}
+                        </Text>
+                        <View style={[styles.cityPreviewAccent, {backgroundColor: brand.accent}]} />
                       </Pressable>
                     );
                   })}
                 </View>
                 <Text style={styles.itemLabel}>Current selection</Text>
-                <Text style={styles.itemValue}>{selectedCity}</Text>
+                <Text style={styles.itemValue}>{CITY_LABELS[appState.selectedCity]}</Text>
               </View>
             ) : null}
           </Pressable>
@@ -265,6 +288,38 @@ const styles = StyleSheet.create({
   cityPillActive: {borderColor: colors.accent, backgroundColor: colors.accentMuted},
   cityPillText: {color: colors.text, fontSize: 12, fontWeight: '700'},
   cityPillTextActive: {color: colors.accent},
+  cityPreviewGrid: {marginTop: spacing.xs, gap: spacing.xs},
+  cityPreviewCard: {
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    padding: spacing.sm,
+    gap: 6,
+    position: 'relative',
+    overflow: 'hidden',
+  },
+  cityPreviewCardActive: {
+    borderColor: colors.accent,
+    backgroundColor: colors.accentMuted,
+  },
+  cityPreviewBadge: {
+    alignSelf: 'flex-start',
+    borderRadius: 999,
+    borderWidth: 1,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  cityPreviewBadgeText: {fontSize: 10, fontWeight: '900', letterSpacing: 0.4},
+  cityPreviewTitle: {color: colors.text, fontSize: 13, fontWeight: '800'},
+  cityPreviewBody: {color: colors.textMuted, fontSize: 11, lineHeight: 15, paddingRight: 12},
+  cityPreviewAccent: {
+    position: 'absolute',
+    right: 0,
+    top: 0,
+    bottom: 0,
+    width: 4,
+  },
   signOutButton: {
     marginTop: spacing.sm,
     backgroundColor: '#2B1010',

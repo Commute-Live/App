@@ -6,8 +6,9 @@ import {BottomNav, type BottomNavItem} from '../../../components/BottomNav';
 import {colors, radii, spacing} from '../../../theme';
 import DashboardPreviewSection from '../components/DashboardPreviewSection';
 import type {Display3DSlot} from '../components/Display3DPreview';
+import {useAppState} from '../../../state/appState';
+import {CITY_BRANDS, CITY_LABELS, CITY_OPTIONS, type CityId} from '../../../constants/cities';
 
-type CityId = 'new-york' | 'philadelphia' | 'boston' | 'chicago';
 type DayId = 'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat' | 'sun';
 
 type PresetItem = {
@@ -30,15 +31,6 @@ const NAV_ITEMS: BottomNavItem[] = [
   {key: 'presets', label: 'Displays', icon: 'albums-outline', route: '/presets'},
   {key: 'settings', label: 'Settings', icon: 'settings-outline', route: '/settings'},
 ];
-
-const CITY_LABELS: Record<CityId, string> = {
-  'new-york': 'New York',
-  philadelphia: 'Philly',
-  boston: 'Boston',
-  chicago: 'Chicago',
-};
-
-const SELECTED_CITY: CityId = 'new-york';
 
 const INITIAL_PRESETS: PresetItem[] = [
   {
@@ -90,6 +82,51 @@ const INITIAL_PRESETS: PresetItem[] = [
     ],
   },
   {
+    id: 'preset-3b',
+    name: 'SEPTA Evening Bus',
+    city: 'philadelphia',
+    pinned: false,
+    enabled: false,
+    brightness: 58,
+    displayStart: '17:00',
+    displayEnd: '20:00',
+    displayDays: ['mon', 'tue', 'wed', 'thu', 'fri'],
+    offStart: '23:00',
+    offEnd: '06:00',
+    slots: [{id: 'slot-1', color: '#0061AA', textColor: '#E9ECEF', routeLabel: '47', selected: false, stopName: '8th & Market', times: '6, 11, 15'}],
+  },
+  {
+    id: 'preset-bos-1',
+    name: 'T + Bus Mix',
+    city: 'boston',
+    pinned: false,
+    enabled: true,
+    brightness: 72,
+    displayStart: '06:30',
+    displayEnd: '10:00',
+    displayDays: ['mon', 'tue', 'wed', 'thu', 'fri'],
+    offStart: '23:00',
+    offEnd: '05:30',
+    slots: [
+      {id: 'slot-1', color: '#DA291C', textColor: '#E9ECEF', routeLabel: 'Red', selected: false, stopName: 'Downtown Crossing', times: '2, 5, 8'},
+      {id: 'slot-2', color: '#003DA5', textColor: '#E9ECEF', routeLabel: '1', selected: false, stopName: 'Mass Ave @ Harvard Bridge', times: '4, 9, 13'},
+    ],
+  },
+  {
+    id: 'preset-chi-1',
+    name: 'Loop Rush',
+    city: 'chicago',
+    pinned: false,
+    enabled: true,
+    brightness: 76,
+    displayStart: '06:00',
+    displayEnd: '10:00',
+    displayDays: ['mon', 'tue', 'wed', 'thu', 'fri'],
+    offStart: '23:00',
+    offEnd: '05:00',
+    slots: [{id: 'slot-1', color: '#00A1DE', textColor: '#E9ECEF', routeLabel: 'Blu', selected: false, stopName: 'Clark/Lake', times: '2, 5, 9'}],
+  },
+  {
     id: 'preset-4',
     name: 'Queens Express AM',
     city: 'new-york',
@@ -126,14 +163,18 @@ const INITIAL_PRESETS: PresetItem[] = [
 
 export default function PresetsScreen() {
   const router = useRouter();
+  const {state: appState} = useAppState();
   const [presets, setPresets] = useState<PresetItem[]>(INITIAL_PRESETS);
+  const selectedCity = appState.selectedCity;
+  const selectedCityOption = CITY_OPTIONS.find(option => option.id === selectedCity) ?? CITY_OPTIONS[0];
+  const selectedCityBrand = CITY_BRANDS[selectedCity];
 
   const visiblePresets = useMemo(
     () =>
       presets
-        .filter(preset => preset.city === SELECTED_CITY)
+        .filter(preset => preset.city === selectedCity)
         .sort((a, b) => Number(b.pinned) - Number(a.pinned) || Number(b.enabled) - Number(a.enabled) || a.name.localeCompare(b.name)),
-    [presets],
+    [presets, selectedCity],
   );
 
   const togglePin = (id: string) => {
@@ -173,9 +214,19 @@ export default function PresetsScreen() {
         <View style={styles.header}>
           <Text style={styles.title}>Displays</Text>
           <Text style={styles.subtitle}>Manage your saved displays and open one to edit.</Text>
+          <View style={styles.cityHeaderCard}>
+            <View style={styles.cityHeaderRow}>
+              <CityBadge city={selectedCity} />
+              <View style={styles.cityHeaderText}>
+                <Text style={styles.cityHeaderTitle}>{selectedCityOption.label} Display Builder</Text>
+                <Text style={styles.cityHeaderBody}>{selectedCityOption.description}</Text>
+              </View>
+            </View>
+            <View style={[styles.cityHeaderAccent, {backgroundColor: selectedCityBrand.accent}]} />
+          </View>
           <Pressable
             style={styles.addButton}
-            onPress={() => router.push({pathname: '/preset-editor', params: {city: SELECTED_CITY, from: 'presets'}})}>
+            onPress={() => router.push({pathname: '/preset-editor', params: {city: selectedCity, from: 'presets', mode: 'new'}})}>
             <Text style={styles.addButtonText}>+ Add Display</Text>
           </Pressable>
         </View>
@@ -183,11 +234,13 @@ export default function PresetsScreen() {
         {visiblePresets.length === 0 ? (
           <View style={styles.card}>
             <Text style={styles.emptyTitle}>No displays yet</Text>
-            <Text style={styles.hint}>Create a display to start scheduling what appears on your device.</Text>
+            <Text style={styles.hint}>Create a {CITY_LABELS[selectedCity]} display to start scheduling what appears on your device.</Text>
           </View>
         ) : (
           visiblePresets.map(preset => (
-            <View key={preset.id} style={styles.presetCard}>
+            <View
+              key={preset.id}
+              style={[styles.presetCard, {borderColor: CITY_BRANDS[preset.city].accentSoft}]}>
               <View style={styles.presetHeader}>
                 <View style={styles.presetHeaderText}>
                   <Text style={styles.presetName}>{preset.name}</Text>
@@ -196,13 +249,7 @@ export default function PresetsScreen() {
                   </Text>
                 </View>
                 <View style={styles.headerActions}>
-                  {preset.city === 'new-york' ? (
-                    <View style={styles.mtaCityBadge}>
-                      <Text style={styles.mtaCityBadgeText}>MTA</Text>
-                    </View>
-                  ) : (
-                    <Text style={styles.cityTag}>{CITY_LABELS[preset.city]}</Text>
-                  )}
+                  <CityBadge city={preset.city} compact />
                   <Pressable style={[styles.statusChip, preset.enabled ? styles.statusChipOn : styles.statusChipOff]} onPress={() => toggleEnabled(preset.id)}>
                     <Text style={styles.statusChipText}>{preset.enabled ? 'On' : 'Off'}</Text>
                   </Pressable>
@@ -235,7 +282,7 @@ export default function PresetsScreen() {
 
               <Pressable
                 style={styles.editButtonFull}
-                onPress={() => router.push({pathname: '/preset-editor', params: {city: preset.city, from: 'presets'}})}>
+                onPress={() => router.push({pathname: '/preset-editor', params: {city: preset.city, from: 'presets', mode: 'edit'}})}>
                 <Text style={styles.editButtonFullText}>Edit Display</Text>
               </Pressable>
               <Pressable style={styles.deleteButton} onPress={() => confirmDeletePreset(preset)}>
@@ -256,6 +303,21 @@ function SummaryRow({label, value}: {label: string; value: string}) {
     <View style={styles.summaryRow}>
       <Text style={styles.summaryLabel}>{label}</Text>
       <Text style={styles.summaryValue}>{value}</Text>
+    </View>
+  );
+}
+
+function CityBadge({city, compact = false}: {city: CityId; compact?: boolean}) {
+  const brand = CITY_BRANDS[city];
+  const agencyCode = CITY_OPTIONS.find(option => option.id === city)?.agencyCode ?? CITY_LABELS[city];
+  return (
+    <View
+      style={[
+        styles.cityBadge,
+        compact && styles.cityBadgeCompact,
+        {backgroundColor: brand.badgeBg, borderColor: brand.badgeBorder},
+      ]}>
+      <Text style={[styles.cityBadgeText, {color: brand.badgeText}]}>{agencyCode}</Text>
     </View>
   );
 }
@@ -318,6 +380,27 @@ const styles = StyleSheet.create({
   header: {gap: spacing.sm, alignItems: 'center'},
   title: {color: colors.text, fontSize: 24, fontWeight: '900', textAlign: 'center'},
   subtitle: {color: colors.textMuted, fontSize: 12, textAlign: 'center', maxWidth: 320},
+  cityHeaderCard: {
+    alignSelf: 'stretch',
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.card,
+    padding: spacing.sm,
+    position: 'relative',
+    overflow: 'hidden',
+  },
+  cityHeaderRow: {flexDirection: 'row', alignItems: 'flex-start', gap: spacing.sm},
+  cityHeaderText: {flex: 1, gap: 2},
+  cityHeaderTitle: {color: colors.text, fontSize: 13, fontWeight: '800'},
+  cityHeaderBody: {color: colors.textMuted, fontSize: 11},
+  cityHeaderAccent: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: 3,
+  },
   addButton: {
     alignSelf: 'stretch',
     backgroundColor: colors.accent,
@@ -347,19 +430,7 @@ const styles = StyleSheet.create({
   presetHeader: {flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: spacing.sm},
   presetHeaderText: {flex: 1},
   presetName: {color: colors.text, fontSize: 16, fontWeight: '900'},
-  cityTag: {
-    color: colors.textMuted,
-    backgroundColor: colors.surface,
-    borderRadius: radii.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    fontSize: 11,
-    fontWeight: '800',
-  },
-  mtaCityBadge: {
-    backgroundColor: '#0039A6',
+  cityBadge: {
     borderRadius: 999,
     borderWidth: 1,
     borderColor: '#2D5DB5',
@@ -369,7 +440,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  mtaCityBadgeText: {color: '#FFFFFF', fontSize: 11, fontWeight: '900', letterSpacing: 0.3},
+  cityBadgeCompact: {
+    minWidth: 38,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  cityBadgeText: {fontSize: 11, fontWeight: '900', letterSpacing: 0.3},
   presetMeta: {color: colors.textMuted, fontSize: 12, marginTop: 2},
   headerActions: {flexDirection: 'row', alignItems: 'center', gap: spacing.xs, flexWrap: 'wrap', justifyContent: 'flex-end'},
   statusChip: {
