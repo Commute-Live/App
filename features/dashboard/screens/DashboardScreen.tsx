@@ -5,13 +5,18 @@ import {useLocalSearchParams, useRouter} from 'expo-router';
 import {colors, radii, spacing} from '../../../theme';
 import DashboardPreviewSection from '../components/DashboardPreviewSection';
 import {useAppState} from '../../../state/appState';
-import {normalizeCityId, type CityId} from '../../../constants/cities';
+import {CITY_LABELS, CITY_BRANDS, normalizeCityId, type CityId} from '../../../constants/cities';
+import {getTransitArrivals, getTransitLines, getTransitStations, getGlobalTransitLines, getTransitStopsForLine} from '../../../lib/transitApi';
+import type {TransitArrival, TransitUiMode, DisplayFormat} from '../../../types/transit';
+import Display3DPreview from '../components/Display3DPreview';
+import type {Display3DSlot} from '../components/Display3DPreview';
+import {CITY_LINE_COLORS, FALLBACK_ROUTE_COLORS, hashLineColor} from '../../../lib/lineColors';
 
-type ModeId = 'train' | 'bus' | 'trolley' | 'commuter-rail';
+type ModeId = 'train' | 'bus' | 'trolley' | 'commuter-rail' | 'ferry';
 type Direction = 'uptown' | 'downtown';
 type Station = {id: string; name: string; area: string; lines: string[]};
 type Route = {id: string; label: string; color: string; textColor?: string};
-type Arrival = {lineId: string; minutes: number; status: 'GOOD' | 'DELAYS'};
+type Arrival = {lineId: string; minutes: number; status: 'GOOD' | 'DELAYS'; destination: string | null};
 type LinePick = {
   id: string;
   mode: ModeId;
@@ -21,11 +26,11 @@ type LinePick = {
   label: string;
   textColor: string;
   nextStops: number;
+  displayFormat: DisplayFormat;
 };
-type CityConfig = {
-  recents: string[];
-  modes: Partial<Record<ModeId, {stations: Station[]; routes: Route[]}>>;
-};
+type StationsByMode = Partial<Record<ModeId, Station[]>>;
+type RoutesByStation = Record<string, Route[]>;
+type EditorStep = 'format' | 'line-transition' | 'lines' | 'stop-transition' | 'stops' | 'done-transition' | 'done';
 
 const DEFAULT_TEXT_COLOR = '#E9ECEF';
 const DEFAULT_NEXT_STOPS = 3;
@@ -46,232 +51,19 @@ const LAYOUT_OPTIONS = [
   {id: 'layout-1', slots: 1, label: '1 stop'},
   {id: 'layout-2', slots: 2, label: '2 stops'},
 ];
-const MODE_ORDER: ModeId[] = ['train', 'bus', 'trolley', 'commuter-rail'];
-
-const cityData: Record<CityId, CityConfig> = {
-  'new-york': {
-    recents: ['Times Sq - 42 St', 'Hoyt-Schermerhorn', '149 St-Grand Concourse'],
-    modes: {
-      train: {
-        stations: [
-          {id: 'tsq', name: 'Times Sq - 42 St', area: 'Manhattan', lines: ['N', 'Q', 'R', '1', '2', '3', '7']},
-          {id: 'hoyt', name: 'Hoyt-Schermerhorn', area: 'Brooklyn', lines: ['A', 'C', 'G']},
-          {id: '149', name: '149 St-Grand Concourse', area: 'Bronx', lines: ['2', '5', '4']},
-          {id: 'gct', name: 'Grand Central - 42 St', area: 'Manhattan', lines: ['4', '5', '6', '7']},
-          {id: 'fulton', name: 'Fulton St', area: 'Manhattan', lines: ['A', 'C', '2', '3', '4', '5']},
-          {id: 'atl', name: 'Atlantic Av-Barclays Ctr', area: 'Brooklyn', lines: ['2', '3', '4', '5', 'B', 'D', 'N', 'Q', 'R']},
-          {id: '34h', name: '34 St-Herald Sq', area: 'Manhattan', lines: ['B', 'D', 'N', 'Q', 'R']},
-          {id: '59c', name: '59 St-Columbus Circle', area: 'Manhattan', lines: ['A', 'B', 'C', 'D', '1']},
-          {id: '14u', name: '14 St-Union Sq', area: 'Manhattan', lines: ['4', '5', '6', 'N', 'Q', 'R']},
-          {id: 'w4', name: 'W 4 St-Wash Sq', area: 'Manhattan', lines: ['A', 'C', 'B', 'D']},
-          {id: 'jkf', name: 'Jackson Hts-Roosevelt Av', area: 'Queens', lines: ['E', 'F', 'R', '7']},
-          {id: 'fls', name: 'Flushing-Main St', area: 'Queens', lines: ['7']},
-          {id: '125', name: '125 St', area: 'Manhattan', lines: ['4', '5', '6']},
-          {id: '96b', name: '96 St', area: 'Upper West Side', lines: ['1', '2', '3']},
-        ],
-        routes: [
-          {id: '1', label: '1', color: '#EE352E'},
-          {id: '2', label: '2', color: '#EE352E'},
-          {id: '3', label: '3', color: '#EE352E'},
-          {id: '4', label: '4', color: '#00933C'},
-          {id: '5', label: '5', color: '#00933C'},
-          {id: '6', label: '6', color: '#00933C'},
-          {id: '7', label: '7', color: '#B933AD'},
-          {id: 'A', label: 'A', color: '#0039A6'},
-          {id: 'C', label: 'C', color: '#0039A6'},
-          {id: 'E', label: 'E', color: '#0039A6'},
-          {id: 'B', label: 'B', color: '#FF6319'},
-          {id: 'D', label: 'D', color: '#FF6319'},
-          {id: 'N', label: 'N', color: '#FCCC0A', textColor: '#0C0C0C'},
-          {id: 'Q', label: 'Q', color: '#FCCC0A', textColor: '#0C0C0C'},
-          {id: 'R', label: 'R', color: '#FCCC0A', textColor: '#0C0C0C'},
-        ],
-      },
-      bus: {
-        stations: [
-          {id: 'm15', name: '1 Av & E 14 St', area: 'Manhattan', lines: ['M15', 'M15-SBS']},
-          {id: 'bx12', name: 'Fordham Rd & Grand Concourse', area: 'Bronx', lines: ['Bx12', 'Bx12-SBS']},
-          {id: 'm14a', name: '14 St & 1 Av', area: 'Manhattan', lines: ['M14A-SBS']},
-          {id: 'm14d', name: '14 St & 8 Av', area: 'Manhattan', lines: ['M14D-SBS']},
-          {id: 'm34', name: '34 St & 5 Av', area: 'Manhattan', lines: ['M34', 'M34A-SBS']},
-          {id: 'q44', name: 'Main St & Archer Av', area: 'Queens', lines: ['Q44-SBS']},
-          {id: 'b41', name: 'Flatbush Av & Nostrand Av', area: 'Brooklyn', lines: ['B41']},
-          {id: 's79', name: 'Hylan Blvd & Richmond Av', area: 'Staten Island', lines: ['S79-SBS']},
-        ],
-        routes: [
-          {id: 'M15', label: 'M15', color: '#00933C'},
-          {id: 'M15-SBS', label: 'M15', color: '#00933C', textColor: '#0A0A0A'},
-          {id: 'Bx12', label: 'Bx12', color: '#0039A6'},
-          {id: 'Bx12-SBS', label: 'Bx12', color: '#0039A6', textColor: '#0A0A0A'},
-          {id: 'M14A-SBS', label: 'M14A', color: '#0039A6', textColor: '#0A0A0A'},
-          {id: 'M14D-SBS', label: 'M14D', color: '#0039A6', textColor: '#0A0A0A'},
-          {id: 'M34', label: 'M34', color: '#00933C'},
-          {id: 'M34A-SBS', label: 'M34A', color: '#00933C', textColor: '#0A0A0A'},
-          {id: 'Q44-SBS', label: 'Q44', color: '#0039A6', textColor: '#0A0A0A'},
-          {id: 'B41', label: 'B41', color: '#EE352E'},
-          {id: 'S79-SBS', label: 'S79', color: '#FCCC0A', textColor: '#0C0C0C'},
-        ],
-      },
-      'commuter-rail': {
-        stations: [
-          {id: 'nyp', name: 'Penn Station', area: 'Manhattan', lines: ['LIRR', 'NJT']},
-          {id: 'gctm', name: 'Grand Central Madison', area: 'Manhattan', lines: ['LIRR']},
-          {id: 'gctmn', name: 'Grand Central Terminal', area: 'Manhattan', lines: ['MNR-HUD', 'MNR-HAR']},
-        ],
-        routes: [
-          {id: 'LIRR', label: 'LIRR', color: '#0039A6'},
-          {id: 'NJT', label: 'NJT', color: '#F58220', textColor: '#111111'},
-          {id: 'MNR-HUD', label: 'Hud', color: '#0072CE'},
-          {id: 'MNR-HAR', label: 'Har', color: '#00A3E0'},
-        ],
-      },
-    },
-  },
-  philadelphia: {
-    recents: ['30th Street', 'Suburban Station'],
-    modes: {
-      train: {
-        stations: [
-          {id: '30th', name: '30th Street Station', area: 'University City', lines: ['TR', 'ME', 'AP']},
-          {id: 'suburban', name: 'Suburban Station', area: 'Center City', lines: ['ME', 'AP']},
-        ],
-        routes: [
-          {id: 'TR', label: 'Tr', color: '#0061AA'},
-          {id: 'ME', label: 'Me', color: '#FF8200'},
-          {id: 'AP', label: 'Ap', color: '#009B3A'},
-        ],
-      },
-      bus: {
-        stations: [
-          {id: '15', name: 'Girard & Front', area: 'Fishtown', lines: ['15', '5']},
-          {id: '47', name: '8th & Market', area: 'Center City', lines: ['47', '47M']},
-        ],
-        routes: [
-          {id: '15', label: '15', color: '#0061AA'},
-          {id: '5', label: '5', color: '#009B3A'},
-          {id: '47', label: '47', color: '#FF8200'},
-          {id: '47M', label: '47M', color: '#9C27B0'},
-        ],
-      },
-      trolley: {
-        stations: [
-          {id: '13th', name: '13th St Station', area: 'Center City', lines: ['10', '11', '13', '34', '36']},
-          {id: '40th', name: '40th St Portal', area: 'West Philly', lines: ['11', '13', '34', '36']},
-        ],
-        routes: [
-          {id: '10', label: '10', color: '#009B3A'},
-          {id: '11', label: '11', color: '#E87722'},
-          {id: '13', label: '13', color: '#0061AA'},
-          {id: '34', label: '34', color: '#C8102E'},
-          {id: '36', label: '36', color: '#6CACE4'},
-        ],
-      },
-      'commuter-rail': {
-        stations: [
-          {id: 'suburban-cr', name: 'Suburban Station', area: 'Center City', lines: ['PAO', 'TRN', 'WAR']},
-          {id: 'jeff', name: 'Jefferson Station', area: 'Center City', lines: ['TRE', 'FOX', 'LAN']},
-        ],
-        routes: [
-          {id: 'PAO', label: 'Pao', color: '#0061AA'},
-          {id: 'TRN', label: 'Trn', color: '#FF8200'},
-          {id: 'WAR', label: 'War', color: '#009B3A'},
-          {id: 'TRE', label: 'Tre', color: '#7A3E9D'},
-          {id: 'FOX', label: 'Fox', color: '#009CA6'},
-          {id: 'LAN', label: 'Lan', color: '#C8102E'},
-        ],
-      },
-    },
-  },
-  boston: {
-    recents: ['Downtown Crossing'],
-    modes: {
-      train: {
-        stations: [
-          {id: 'dc', name: 'Downtown Crossing', area: 'Boston', lines: ['Red', 'Orange']},
-          {id: 'kenmore', name: 'Kenmore', area: 'Boston', lines: ['Green']},
-        ],
-        routes: [
-          {id: 'Red', label: 'Red', color: '#DA291C'},
-          {id: 'Orange', label: 'Org', color: '#ED8B00'},
-          {id: 'Green', label: 'Grn', color: '#00843D'},
-          {id: 'Blue', label: 'Blu', color: '#003DA5'},
-        ],
-      },
-      bus: {
-        stations: [{id: '1', name: 'Mass Ave @ Harvard Bridge', area: 'Cambridge', lines: ['1', 'CT1']}],
-        routes: [
-          {id: '1', label: '1', color: '#003DA5'},
-          {id: 'CT1', label: 'CT1', color: '#DA291C'},
-        ],
-      },
-      'commuter-rail': {
-        stations: [
-          {id: 'south', name: 'South Station', area: 'Boston', lines: ['Prov', 'Worc', 'King']},
-          {id: 'north', name: 'North Station', area: 'Boston', lines: ['Low', 'Hav', 'Newb']},
-        ],
-        routes: [
-          {id: 'Prov', label: 'Prov', color: '#7A0019'},
-          {id: 'Worc', label: 'Worc', color: '#4B2E83'},
-          {id: 'King', label: 'King', color: '#006747'},
-          {id: 'Low', label: 'Low', color: '#003DA5'},
-          {id: 'Hav', label: 'Hav', color: '#ED8B00'},
-          {id: 'Newb', label: 'Nby', color: '#00843D'},
-        ],
-      },
-    },
-  },
-  chicago: {
-    recents: ['Clark/Lake', 'Fullerton'],
-    modes: {
-      train: {
-        stations: [
-          {id: 'clk', name: 'Clark/Lake', area: 'Loop', lines: ['Blue', 'Green', 'Orange', 'Pink']},
-          {id: 'ful', name: 'Fullerton', area: 'Lincoln Park', lines: ['Red', 'Brown', 'Purple']},
-        ],
-        routes: [
-          {id: 'Red', label: 'Red', color: '#C60C30'},
-          {id: 'Blue', label: 'Blu', color: '#00A1DE'},
-          {id: 'Green', label: 'Grn', color: '#009B3A'},
-          {id: 'Brown', label: 'Brn', color: '#62361B'},
-          {id: 'Orange', label: 'Org', color: '#F9461C'},
-          {id: 'Purple', label: 'Pur', color: '#522398'},
-          {id: 'Pink', label: 'Pnk', color: '#E27EA6'},
-        ],
-      },
-      bus: {
-        stations: [
-          {id: 'j14', name: 'State & Jackson', area: 'Loop', lines: ['J14', '126']},
-          {id: '66', name: 'Chicago & Clark', area: 'Near North', lines: ['66', '22']},
-        ],
-        routes: [
-          {id: 'J14', label: 'J14', color: '#00A1DE'},
-          {id: '126', label: '126', color: '#C60C30'},
-          {id: '66', label: '66', color: '#009B3A'},
-          {id: '22', label: '22', color: '#F9461C'},
-        ],
-      },
-      'commuter-rail': {
-        stations: [
-          {id: 'otc', name: 'Ogilvie Transportation Center', area: 'West Loop', lines: ['UP-NW', 'UP-W', 'UP-N']},
-          {id: 'union', name: 'Chicago Union Station', area: 'West Loop', lines: ['BNSF', 'MD-W', 'HC']},
-        ],
-        routes: [
-          {id: 'UP-NW', label: 'UPNW', color: '#003DA5'},
-          {id: 'UP-W', label: 'UPW', color: '#009B3A'},
-          {id: 'UP-N', label: 'UPN', color: '#00A1DE'},
-          {id: 'BNSF', label: 'BNSF', color: '#F9461C'},
-          {id: 'MD-W', label: 'MDW', color: '#7C2233'},
-          {id: 'HC', label: 'HC', color: '#62361B'},
-        ],
-      },
-    },
-  },
+const MODE_ORDER: ModeId[] = ['train', 'bus', 'trolley', 'commuter-rail', 'ferry'];
+const LIVE_SUPPORTED_CITIES: CityId[] = ['new-york', 'philadelphia', 'boston', 'chicago'];
+const CITY_MODE_ORDER: Record<CityId, ModeId[]> = {
+  'new-york': ['train', 'bus', 'commuter-rail'],
+  philadelphia: ['train', 'trolley', 'bus'],
+  boston: ['train', 'bus', 'commuter-rail', 'ferry'],
+  chicago: ['train', 'bus'],
 };
 
 const Haptics = {selectionAsync: async () => {}, notificationAsync: async (_: any) => {}};
 export default function DashboardScreen() {
   const router = useRouter();
-  const {state: appState} = useAppState();
+  const {state: appState, setPreset, setSelectedStations, setArrivals: setAppArrivals} = useAppState();
   const params = useLocalSearchParams<{city?: string; from?: string; mode?: string}>();
   const city = normalizeCityIdParam(params.city ?? appState.selectedCity);
   const openConfigureStopOnLoad = params.mode === 'new';
@@ -279,11 +71,13 @@ export default function DashboardScreen() {
   const headerEnter = useRef(new Animated.Value(0)).current;
   const previewEnter = useRef(new Animated.Value(0)).current;
   const editorEnter = useRef(new Animated.Value(0)).current;
+  const liveSupported = isLiveCitySupported(city);
   const [layoutSlots, setLayoutSlots] = useState<number>(DEFAULT_LAYOUT_SLOTS);
-  const [lines, setLines] = useState<LinePick[]>(() => ensureLineCount(seedDefaultLines(city), city, DEFAULT_LAYOUT_SLOTS));
+  const [lines, setLines] = useState<LinePick[]>(() => ensureLineCount([], city, DEFAULT_LAYOUT_SLOTS, {}, {}));
   const [selectedLineId, setSelectedLineId] = useState<string>(openConfigureStopOnLoad ? 'line-1' : '');
   const [stationSearch, setStationSearch] = useState<Record<string, string>>({});
-  const [slotEditorExpanded, setSlotEditorExpanded] = useState(openConfigureStopOnLoad);
+  const [layoutExpanded, setLayoutExpanded] = useState(openConfigureStopOnLoad);
+  const [slotEditorExpanded, setSlotEditorExpanded] = useState(false);
   const [scheduleExpanded, setScheduleExpanded] = useState(false);
   const [customDisplayScheduleEnabled, setCustomDisplayScheduleEnabled] = useState(false);
   const [displaySchedule, setDisplaySchedule] = useState({start: '06:00', end: '09:00'});
@@ -294,19 +88,185 @@ export default function DashboardScreen() {
   const [openLayoutPicker, setOpenLayoutPicker] = useState(false);
   const [previewDragging, setPreviewDragging] = useState(false);
   const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
+  const [stationsByMode, setStationsByMode] = useState<StationsByMode>({});
+  const [stationsLoadingByMode, setStationsLoadingByMode] = useState<Partial<Record<ModeId, boolean>>>({});
+  const [stationsByLine, setStationsByLine] = useState<Partial<Record<string, Station[]>>>({});
+  const [stationsLoadingByLine, setStationsLoadingByLine] = useState<Partial<Record<string, boolean>>>({});
+  const [routesByStation, setRoutesByStation] = useState<RoutesByStation>({});
+  const [routesLoadingByStation, setRoutesLoadingByStation] = useState<Record<string, boolean>>({});
+  const [arrivals, setArrivals] = useState<Arrival[]>([]);
+  const [liveStatusText, setLiveStatusText] = useState('');
+  const [editorStep, setEditorStep] = useState<EditorStep>(openConfigureStopOnLoad ? 'lines' : 'done');
+  const [transitionLabel, setTransitionLabel] = useState('');
+  const [linesByMode, setLinesByMode] = useState<Partial<Record<ModeId, Route[]>>>({});
+  const [linesLoadingByMode, setLinesLoadingByMode] = useState<Partial<Record<ModeId, boolean>>>({});
+  const stepAnim = useRef(new Animated.Value(1)).current;
+  const stationsByLineRef = useRef(new Set<string>());
+  const linesRequestedRef = useRef(new Set<string>());
+  const stationsRequestedRef = useRef(new Set<string>());
+  const routesRequestedRef = useRef(new Set<string>());
 
-  const [arrivals, setArrivals] = useState<Arrival[]>(() => seedArrivals(lines));
+  useEffect(() => {
+    setStationsByMode({});
+    setStationsLoadingByMode({});
+    setStationsByLine({});
+    setStationsLoadingByLine({});
+    setRoutesByStation({});
+    setRoutesLoadingByStation({});
+    setStationSearch({});
+    setLiveStatusText('');
+    setArrivals([]);
+    setLinesByMode({});
+    setLinesLoadingByMode({});
+    linesRequestedRef.current.clear();
+    stationsRequestedRef.current.clear();
+    routesRequestedRef.current.clear();
+    stationsByLineRef.current.clear();
+    setLines(prev => ensureLineCount(prev, city, layoutSlots, {}, {}));
+  }, [city, layoutSlots]);
+
+  useEffect(() => {
+    setLines(prev => {
+      const normalized = ensureLineCount(prev, city, layoutSlots, stationsByMode, routesByStation);
+      return areSameLinePicks(prev, normalized) ? prev : normalized;
+    });
+  }, [city, layoutSlots, routesByStation, stationsByMode]);
+
+  useEffect(() => {
+    if (!liveSupported) return;
+    const requestedModes = [...new Set(lines.map(line => normalizeMode(city, line.mode)))];
+    requestedModes.forEach(mode => {
+      const key = `${city}:${mode}`;
+      if (stationsRequestedRef.current.has(key)) return;
+      stationsRequestedRef.current.add(key);
+      setStationsLoadingByMode(prev => ({...prev, [mode]: true}));
+      void loadStationsForCityMode(city, mode)
+        .then(stations => {
+          setStationsByMode(prev => ({...prev, [mode]: stations}));
+        })
+        .catch(() => {
+          setLiveStatusText('Unable to load stops right now.');
+          setStationsByMode(prev => ({...prev, [mode]: []}));
+        })
+        .finally(() => {
+          setStationsLoadingByMode(prev => ({...prev, [mode]: false}));
+        });
+    });
+  }, [city, lines, liveSupported]); // stationsRequestedRef guards against duplicates
+
+  useEffect(() => {
+    if (!liveSupported) return;
+    const uniqueModes = [...new Set(lines.map(line => normalizeMode(city, line.mode)))];
+    uniqueModes.forEach(mode => {
+      const key = `${city}:${mode}`;
+      if (linesRequestedRef.current.has(key)) return;
+      linesRequestedRef.current.add(key);
+      setLinesLoadingByMode(prev => ({...prev, [mode]: true}));
+      void loadGlobalLinesForCityMode(city, mode)
+        .then(routes => {
+          setLinesByMode(prev => ({...prev, [mode]: routes}));
+        })
+        .catch(() => {
+          setLinesByMode(prev => ({...prev, [mode]: []}));
+        })
+        .finally(() => {
+          setLinesLoadingByMode(prev => ({...prev, [mode]: false}));
+        });
+    });
+  }, [city, lines, liveSupported]); // linesRequestedRef guards against duplicates — no cancellation needed
+
+  const selectedLine = lines.find(line => line.id === selectedLineId) ?? null;
+  const selectedLineIndex = selectedLine ? lines.findIndex(line => line.id === selectedLine.id) : -1;
+
+  useEffect(() => {
+    if (!liveSupported || !selectedLine?.routeId) return;
+    const safeMode = normalizeMode(city, selectedLine.mode);
+    const routeId = selectedLine.routeId;
+    const key = `${city}:${safeMode}:${routeId}`;
+    if (stationsByLineRef.current.has(key)) return;
+    stationsByLineRef.current.add(key);
+    setStationsLoadingByLine(prev => ({...prev, [routeId]: true}));
+    void loadStopsForLine(city, safeMode, routeId)
+      .then(stations => setStationsByLine(prev => ({...prev, [routeId]: stations})))
+      .catch(() => setStationsByLine(prev => ({...prev, [routeId]: []})))
+      .finally(() => setStationsLoadingByLine(prev => ({...prev, [routeId]: false})));
+  }, [city, liveSupported, selectedLine?.routeId, selectedLine?.mode]);
+
+  useEffect(() => {
+    if (!liveSupported) return;
+    const pending = lines
+      .map(line => ({mode: normalizeMode(city, line.mode), stationId: line.stationId}))
+      .filter(item => item.stationId.length > 0);
+
+    pending.forEach(item => {
+      const key = routeLookupKey(item.mode, item.stationId);
+      if (routesRequestedRef.current.has(key)) return;
+      routesRequestedRef.current.add(key);
+      setRoutesLoadingByStation(prev => ({...prev, [key]: true}));
+      void loadRoutesForStation(city, item.mode, item.stationId)
+        .then(routes => {
+          setRoutesByStation(prev => ({...prev, [key]: routes}));
+        })
+        .catch(() => {
+          setRoutesByStation(prev => ({...prev, [key]: []}));
+        })
+        .finally(() => {
+          setRoutesLoadingByStation(prev => ({...prev, [key]: false}));
+        });
+    });
+  }, [city, lines, liveSupported]); // routesRequestedRef guards against duplicates
 
   useEffect(() => {
     setArrivals(prev => syncArrivals(prev, lines));
   }, [lines]);
 
+  const activeLiveSelections = useMemo(
+    () => lines.filter(line => line.stationId.trim().length > 0 && line.routeId.trim().length > 0),
+    [lines],
+  );
+  const activeSelectionKey = useMemo(
+    () =>
+      activeLiveSelections
+        .map(line => `${line.id}:${line.mode}:${line.stationId}:${line.routeId}:${line.direction}`)
+        .join('|'),
+    [activeLiveSelections],
+  );
+
   useEffect(() => {
+    if (!liveSupported || activeLiveSelections.length === 0) return;
+    let cancelled = false;
+
+    const pollLiveArrivals = async () => {
+      try {
+        const updates = await Promise.all(
+          activeLiveSelections.map(async line => {
+            const liveArrival = await loadArrivalForSelection(city, line);
+            if (!liveArrival) return null;
+            return {lineId: line.id, ...liveArrival};
+          }),
+        );
+        if (cancelled) return;
+        const valid = updates.filter((item): item is Arrival => !!item);
+        if (valid.length === 0) return;
+        setArrivals(prev => mergeArrivals(prev, valid, lines));
+        setLiveStatusText('');
+      } catch {
+        if (!cancelled) {
+          setLiveStatusText('Unable to refresh arrivals.');
+        }
+      }
+    };
+
+    void pollLiveArrivals();
     const timer = setInterval(() => {
-      setArrivals(prev => tickArrivals(prev));
-    }, 1800);
-    return () => clearInterval(timer);
-  }, []);
+      void pollLiveArrivals();
+    }, 10000);
+
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [activeSelectionKey, activeLiveSelections, city, lines, liveSupported]);
 
   useEffect(() => {
     headerEnter.setValue(0);
@@ -362,6 +322,31 @@ export default function DashboardScreen() {
     setSaveDone(false);
     setTimeout(() => {
       snapshotRef.current = {city, layoutSlots, lines, displaySchedule, displayDays, presetName, customDisplayScheduleEnabled};
+      setPreset(presetName.trim() || 'Display 1');
+      setSelectedStations(
+        lines
+          .map(line => {
+            const mode = normalizeMode(city, line.mode);
+            const stations = stationsByMode[mode] ?? [];
+            return stations.find(station => station.id === line.stationId)?.name ?? line.label.trim();
+          })
+          .filter(name => name.length > 0),
+      );
+      setAppArrivals(
+        lines
+          .map(line => {
+            const mode = normalizeMode(city, line.mode);
+            const routes = routesByStation[routeLookupKey(mode, line.stationId)] ?? [];
+            const route = routes.find(item => item.id === line.routeId);
+            const arrival = arrivals.find(item => item.lineId === line.id);
+            return {
+              line: route?.label ?? line.routeId,
+              destination: arrival?.destination ?? (line.label.trim() || 'Selected stop'),
+              minutes: arrival?.minutes ?? 0,
+            };
+          })
+          .filter(item => item.line.trim().length > 0),
+      );
       setSaving(false);
       setSaveDone(true);
       void Haptics.notificationAsync?.('success');
@@ -403,23 +388,39 @@ export default function DashboardScreen() {
     const safeSlots = slots === 1 ? 1 : 2;
     if (safeSlots === layoutSlots) return;
     setLayoutSlots(safeSlots);
-    setLines(prev => ensureLineCount(prev, city, safeSlots));
+    setLines(prev => ensureLineCount(prev, city, safeSlots, stationsByMode, routesByStation));
     setSelectedLineId('line-1');
     void Haptics.selectionAsync();
   };
 
   const updateLine = (id: string, next: Partial<LinePick>) => {
-    setLines(prev => prev.map(line => (line.id === id ? normalizeLine(city, {...line, ...next}) : line)));
+    setLines(prev =>
+      prev.map(line =>
+        line.id === id ? normalizeLine(city, {...line, ...next}, stationsByMode, routesByStation) : line,
+      ),
+    );
   };
+
   const handleSelectSlotForEdit = (id: string) => {
     if (slotEditorExpanded && selectedLineId === id) {
       setSlotEditorExpanded(false);
       setSelectedLineId('');
       return;
     }
+    const line = lines.find(l => l.id === id);
     setSelectedLineId(id);
+    setLayoutExpanded(false);
     setSlotEditorExpanded(true);
+    setEditorStep(line && line.stationId && line.routeId ? 'done' : 'lines');
   };
+
+  const toggleLayoutEditor = () => {
+    setLayoutExpanded(prev => {
+      if (!prev) setSlotEditorExpanded(false);
+      return !prev;
+    });
+  };
+
   const toggleSlotEditor = () => {
     setSlotEditorExpanded(prev => {
       const next = !prev;
@@ -427,12 +428,16 @@ export default function DashboardScreen() {
         setSelectedLineId('');
         return next;
       }
+      setLayoutExpanded(false);
       if (!selectedLineId) {
-        setSelectedLineId(lines[0]?.id ?? '');
+        const firstLine = lines[0];
+        setSelectedLineId(firstLine?.id ?? '');
+        setEditorStep(firstLine && firstLine.stationId && firstLine.routeId ? 'done' : 'lines');
       }
       return next;
     });
   };
+
   const toggleScheduleEditor = () => {
     setScheduleExpanded(prev => !prev);
   };
@@ -449,20 +454,54 @@ export default function DashboardScreen() {
     void Haptics.selectionAsync();
   };
 
-  const selectedLine = lines.find(line => line.id === selectedLineId) ?? null;
-  const selectedLineIndex = selectedLine ? lines.findIndex(line => line.id === selectedLine.id) : -1;
+  const playStepTransition = (message: string, next: EditorStep, delayMs = 700) => {
+    const transitionStep: EditorStep =
+      next === 'lines' ? 'line-transition' :
+      next === 'stops' ? 'stop-transition' : 'done-transition';
+    setTransitionLabel(message);
+    setEditorStep(transitionStep);
+    setTimeout(() => setEditorStep(next), delayMs);
+  };
+
   const previewSlots = useMemo(
     () =>
       lines.map(line => {
-        const cityStations = cityData[city].modes[line.mode]?.stations ?? [];
-        const cityRoutes = cityData[city].modes[line.mode]?.routes ?? [];
+        const safeMode = normalizeMode(city, line.mode);
+        const cityStations = stationsByMode[safeMode] ?? [];
         const station = cityStations.find(item => item.id === line.stationId);
-        const route = cityRoutes.find(item => item.id === line.routeId);
+        const lineRoutes = routesByStation[routeLookupKey(safeMode, line.stationId)] ?? [];
+        const route = lineRoutes.find(item => item.id === line.routeId);
         const arrival = arrivals.find(item => item.lineId === line.id);
-        const stopName = line.label.trim() || station?.name || 'Select stop';
-        const times = buildNextArrivalTimes(arrival?.minutes ?? 7, line.nextStops)
-          .map(item => item.replace('m', ''))
-          .join(', ');
+
+        const headsign = arrival?.destination ?? station?.name ?? (line.label.trim() || '—');
+        const directionLabel = line.direction === 'uptown' ? 'Uptown' : 'Downtown';
+        const t0 = arrival?.minutes != null ? String(arrival.minutes) : '—';
+        const allTimes = buildNextArrivalTimes(arrival?.minutes ?? 0, 3);
+        const subTimes = allTimes.slice(1).map(t => t.replace('m', '')).join(', ');
+
+        let stopName: string;
+        let subLine: string | undefined;
+
+        switch (line.displayFormat) {
+          case 'direction-single':
+            stopName = directionLabel;
+            break;
+          case 'both-single':
+            stopName = directionLabel;
+            subLine = headsign;
+            break;
+          case 'headsign-multi':
+            stopName = headsign;
+            subLine = subTimes;
+            break;
+          case 'direction-multi':
+            stopName = directionLabel;
+            subLine = subTimes;
+            break;
+          default: // 'headsign-single'
+            stopName = headsign;
+        }
+
         return {
           id: line.id,
           color: route?.color ?? '#3A3A3A',
@@ -470,10 +509,11 @@ export default function DashboardScreen() {
           routeLabel: route?.label ?? '?',
           selected: line.id === selectedLineId,
           stopName,
-          times,
+          subLine,
+          times: t0,
         };
       }),
-    [arrivals, city, lines, selectedLineId],
+    [arrivals, city, lines, routesByStation, selectedLineId, stationsByMode],
   );
 
   const headerAnimatedStyle = {
@@ -540,6 +580,16 @@ export default function DashboardScreen() {
           />
         </Animated.View>
 
+        {!liveSupported ? (
+          <View style={styles.liveDisabledCard}>
+            <Text style={styles.liveDisabledTitle}>Live Transit Unavailable</Text>
+            <Text style={styles.liveDisabledBody}>
+              Real-time transit is currently supported in New York and Philadelphia only. {CITY_LABELS[city]} does
+              not support live stop/line lookups yet.
+            </Text>
+          </View>
+        ) : null}
+
         <SimplePicker
           visible={openLayoutPicker}
           options={LAYOUT_OPTIONS.map(option => ({id: String(option.slots), label: option.label}))}
@@ -554,6 +604,35 @@ export default function DashboardScreen() {
         <Animated.View style={editorAnimatedStyle}>
           <View style={styles.card}>
             <View style={styles.collapsibleSection}>
+              <Pressable style={styles.collapsibleHeader} onPress={toggleLayoutEditor}>
+                <Text style={styles.sectionLabel}>Choose Layout</Text>
+                <View style={styles.collapsibleArrowBubble}>
+                  <Text style={styles.collapsibleArrow}>{layoutExpanded ? '▲' : '▼'}</Text>
+                </View>
+              </Pressable>
+
+              {layoutExpanded ? (
+                <View style={styles.collapsibleBody}>
+                  <FormatPickerStep
+                    city={city}
+                    selectedFormat={selectedLine?.displayFormat ?? lines[0]?.displayFormat}
+                    onSelect={format => {
+                      const targetId = selectedLine?.id ?? lines[0]?.id;
+                      if (targetId) updateLine(targetId, {displayFormat: format});
+                      setLayoutExpanded(false);
+                      setSlotEditorExpanded(true);
+                      if (!selectedLineId) {
+                        const firstLine = lines[0];
+                        setSelectedLineId(firstLine?.id ?? '');
+                        setEditorStep(firstLine && firstLine.stationId && firstLine.routeId ? 'done' : 'lines');
+                      }
+                    }}
+                  />
+                </View>
+              ) : null}
+            </View>
+
+            <View style={styles.collapsibleSection}>
               <Pressable style={styles.collapsibleHeader} onPress={toggleSlotEditor}>
                 <Text style={styles.sectionLabel}>
                   {selectedLine ? `Configure Stop ${selectedLineIndex + 1}` : 'Configure Stop'}
@@ -562,17 +641,86 @@ export default function DashboardScreen() {
                   <Text style={styles.collapsibleArrow}>{slotEditorExpanded ? '▲' : '▼'}</Text>
                 </View>
               </Pressable>
+
               {slotEditorExpanded ? (
                 selectedLine ? (
                   <View style={styles.collapsibleBody}>
-                    <SlotEditor
-                      city={city}
-                      line={selectedLine}
-                      stationSearch={stationSearch[selectedLine.id] ?? ''}
-                      onStationSearch={text => setStationSearch(prev => ({...prev, [selectedLine.id]: text}))}
-                      recents={cityData[city].recents}
-                      onChange={updateLine}
-                    />
+                    {(editorStep === 'line-transition' || editorStep === 'stop-transition' || editorStep === 'done-transition') && (
+                      <StepTransitionMessage
+                        message={transitionLabel}
+                        badgeLabel={
+                          editorStep !== 'line-transition'
+                            ? (linesByMode[normalizeMode(city, selectedLine.mode)] ?? []).find(r => r.id === selectedLine.routeId)?.label
+                            : undefined
+                        }
+                        badgeColor={
+                          editorStep !== 'line-transition'
+                            ? (linesByMode[normalizeMode(city, selectedLine.mode)] ?? []).find(r => r.id === selectedLine.routeId)?.color
+                            : undefined
+                        }
+                      />
+                    )}
+
+                    {editorStep === 'lines' && (
+                      <LinePickerStep
+                        city={city}
+                        selectedMode={normalizeMode(city, selectedLine.mode)}
+                        linesByMode={linesByMode}
+                        linesLoadingByMode={linesLoadingByMode}
+                        selectedRouteId={selectedLine.routeId}
+                        onModeChange={mode => updateLine(selectedLine.id, {mode, stationId: '', routeId: ''})}
+                        onSelectLine={routeId => {
+                          const safeMode = normalizeMode(city, selectedLine.mode);
+                          const route = (linesByMode[safeMode] ?? []).find(r => r.id === routeId);
+                          updateLine(selectedLine.id, {routeId, stationId: ''});
+                          playStepTransition(
+                            `Loading stops for the ${route?.label ?? routeId}…`,
+                            'stops',
+                            800,
+                          );
+                        }}
+                        onBack={() => { setSlotEditorExpanded(false); setLayoutExpanded(true); }}
+                      />
+                    )}
+
+                    {editorStep === 'stops' && (
+                      <StopPickerStep
+                        selectedRoute={(linesByMode[normalizeMode(city, selectedLine.mode)] ?? []).find(r => r.id === selectedLine.routeId)}
+                        stations={stationsByLine[selectedLine.routeId] ?? []}
+                        loading={!!stationsLoadingByLine[selectedLine.routeId]}
+                        selectedStationId={selectedLine.stationId}
+                        selectedRouteId={selectedLine.routeId}
+                        search={stationSearch[selectedLine.id] ?? ''}
+                        onSearch={text => setStationSearch(prev => ({...prev, [selectedLine.id]: text}))}
+                        onSelectStation={id => {
+                          updateLine(selectedLine.id, {stationId: id});
+                          playStepTransition('All set! Loading arrivals…', 'done', 600);
+                        }}
+                        onBack={() => setEditorStep('lines')}
+                      />
+                    )}
+
+                    {editorStep === 'done' && (
+                      <DoneStep
+                        city={city}
+                        line={selectedLine}
+                        selectedRoute={
+                          (routesByStation[routeLookupKey(normalizeMode(city, selectedLine.mode), selectedLine.stationId)] ?? []).find(
+                            r => r.id === selectedLine.routeId,
+                          )
+                        }
+                        selectedStation={
+                          (stationsByMode[normalizeMode(city, selectedLine.mode)] ?? []).find(
+                            s => s.id === selectedLine.stationId,
+                          )
+                        }
+                        arrival={arrivals.find(a => a.lineId === selectedLine.id)}
+                        liveStatusText={liveStatusText}
+                        onChangeLine={() => setEditorStep('lines')}
+                        onChangeStop={() => setEditorStep('stops')}
+                        onChange={updateLine}
+                      />
+                    )}
                   </View>
                 ) : (
                   <Text style={styles.emptyHint}>Select a slot in the preview to start editing.</Text>
@@ -755,122 +903,6 @@ function ConfirmDiscardModal({
     </Modal>
   );
 }
-function SlotEditor({
-  city,
-  line,
-  stationSearch,
-  onStationSearch,
-  recents,
-  onChange,
-}: {
-  city: CityId;
-  line: LinePick;
-  stationSearch: string;
-  onStationSearch: (value: string) => void;
-  recents: string[];
-  onChange: (id: string, next: Partial<LinePick>) => void;
-}) {
-  const switchAnim = useRef(new Animated.Value(1)).current;
-  const cityModes = cityData[city].modes;
-  const modeOptions = getAvailableModes(city);
-  const stations = cityModes[line.mode]?.stations ?? [];
-  const routes = cityModes[line.mode]?.routes ?? [];
-  const station = stations.find(s => s.id === line.stationId) ?? stations[0];
-  const allowedRoutes = station ? routes.filter(r => station.lines.includes(r.id)) : routes;
-  const canDecreaseNextStops = line.nextStops > 1;
-  const canIncreaseNextStops = line.nextStops < MAX_NEXT_STOPS;
-
-  useEffect(() => {
-    switchAnim.setValue(0);
-    Animated.parallel([
-      Animated.timing(switchAnim, {
-        toValue: 1,
-        duration: 140,
-        easing: Easing.out(Easing.quad),
-        useNativeDriver: true,
-      }),
-    ]).start();
-  }, [line.direction, line.id, line.mode, line.routeId, line.stationId, switchAnim]);
-
-  const switchAnimatedStyle = {
-    opacity: switchAnim.interpolate({
-      inputRange: [0, 1],
-      outputRange: [0.88, 1],
-    }),
-  } as const;
-
-  return (
-    <Animated.View style={[styles.sectionBlock, switchAnimatedStyle]}>
-      <View style={styles.segmented}>
-        {modeOptions.map(mode => {
-          const active = line.mode === mode;
-          return (
-            <Pressable key={mode} style={[styles.segment, active && styles.segmentActive]} onPress={() => onChange(line.id, {mode})}>
-              <Text style={[styles.segmentText, active && styles.segmentTextActive]}>{getModeLabel(city, mode)}</Text>
-            </Pressable>
-          );
-        })}
-      </View>
-
-      <StationInlinePicker
-        stations={stations}
-        value={line.stationId}
-        search={stationSearch}
-        onSearch={onStationSearch}
-        recents={recents}
-        onSelect={id => onChange(line.id, {stationId: id})}
-      />
-
-      <View style={styles.sectionBlock}>
-        <Text style={styles.sectionLabel}>Route</Text>
-        {allowedRoutes.length === 0 ? (
-          <Text style={styles.sectionHint}>No routes for this stop yet.</Text>
-        ) : (
-          <RouteGridPicker
-            routes={allowedRoutes}
-            selected={line.routeId ? [line.routeId] : []}
-            onToggle={id => onChange(line.id, {routeId: id})}
-          />
-        )}
-      </View>
-
-      <DirectionToggle value={line.direction} onChange={direction => onChange(line.id, {direction})} />
-
-      <View style={styles.secondarySectionCard}>
-        <View style={styles.sectionBlock}>
-          <Text style={styles.sectionLabel}>Custom Name</Text>
-          <TextInput
-            value={line.label}
-            onChangeText={value => onChange(line.id, {label: value})}
-            placeholder={station?.name ?? 'Give this slot a name'}
-            placeholderTextColor={colors.textMuted}
-            style={styles.customInput}
-          />
-        </View>
-
-        <View style={styles.sectionBlock}>
-          <Text style={styles.sectionLabel}>Next Arrivals To Show</Text>
-          <View style={styles.stepperRow}>
-            <Pressable
-              disabled={!canDecreaseNextStops}
-              style={[styles.stepperButton, !canDecreaseNextStops && styles.stepperButtonDisabled]}
-              onPress={() => onChange(line.id, {nextStops: clampNextStops(line.nextStops - 1)})}>
-              <Text style={[styles.stepperButtonText, !canDecreaseNextStops && styles.stepperButtonTextDisabled]}>-</Text>
-            </Pressable>
-            <Text style={styles.stepperValue}>{line.nextStops}</Text>
-            <Pressable
-              disabled={!canIncreaseNextStops}
-              style={[styles.stepperButton, !canIncreaseNextStops && styles.stepperButtonDisabled]}
-              onPress={() => onChange(line.id, {nextStops: clampNextStops(line.nextStops + 1)})}>
-              <Text style={[styles.stepperButtonText, !canIncreaseNextStops && styles.stepperButtonTextDisabled]}>+</Text>
-            </Pressable>
-          </View>
-          <Text style={styles.sectionHint}>This controls how many upcoming times appear for this slot.</Text>
-        </View>
-      </View>
-    </Animated.View>
-  );
-}
 
 function RouteGridPicker({
   routes,
@@ -896,104 +928,6 @@ function RouteGridPicker({
           </Pressable>
         );
       })}
-    </View>
-  );
-}
-
-function StationInlinePicker({
-  stations,
-  value,
-  search,
-  onSearch,
-  recents,
-  onSelect,
-}: {
-  stations: Station[];
-  value: string;
-  search: string;
-  onSearch: (value: string) => void;
-  recents: string[];
-  onSelect: (id: string) => void;
-}) {
-  const [browseOpen, setBrowseOpen] = useState(false);
-  const filtered = useMemo(() => {
-    const term = search.trim().toLowerCase();
-    const commonStations = [
-      ...recents
-        .map(recent => stations.find(station => station.name === recent))
-        .filter((station): station is Station => !!station),
-      ...stations,
-    ].filter((station, index, list) => list.findIndex(item => item.id === station.id) === index);
-
-    if (!term) return commonStations.slice(0, 1);
-
-    const scored = stations
-      .map(station => {
-        const name = station.name.toLowerCase();
-        const area = station.area.toLowerCase();
-        const lines = station.lines.join(' ').toLowerCase();
-        let score = 99;
-
-        if (name.startsWith(term)) score = 0;
-        else if (station.lines.some(line => line.toLowerCase() === term)) score = 1;
-        else if (station.lines.some(line => line.toLowerCase().startsWith(term))) score = 2;
-        else if (name.includes(term)) score = 3;
-        else if (area.includes(term)) score = 4;
-        else if (lines.includes(term)) score = 5;
-
-        return {station, score};
-      })
-      .filter(item => item.score < 99)
-      .sort((a, b) => a.score - b.score || a.station.name.localeCompare(b.station.name))
-      .map(item => item.station);
-
-    return scored.length > 0 ? scored : commonStations;
-  }, [recents, search, stations]);
-
-  const visibleStations = browseOpen ? stations : filtered;
-
-  return (
-    <View style={styles.sectionBlock}>
-      <Text style={styles.sectionLabel}>Stop</Text>
-      <View style={styles.searchRow}>
-        <TextInput
-          value={search}
-          onChangeText={text => {
-            onSearch(text);
-            if (text.trim()) setBrowseOpen(false);
-          }}
-          placeholder="Search stop"
-          placeholderTextColor={colors.textMuted}
-          style={[styles.searchInput, styles.searchInputInline]}
-        />
-        <Pressable style={styles.searchDropdownButton} onPress={() => setBrowseOpen(prev => !prev)}>
-          <Text style={styles.searchDropdownButtonCaret}>{browseOpen ? '▲' : '▼'}</Text>
-        </Pressable>
-      </View>
-
-      <ScrollView style={styles.stationListInline} nestedScrollEnabled>
-        {visibleStations.map((item, idx) => (
-          <React.Fragment key={item.id}>
-            <Pressable
-              style={styles.stationRow}
-              onPress={() => {
-                onSelect(item.id);
-                setBrowseOpen(false);
-              }}>
-              <View>
-                <Text style={styles.stationName}>{item.name}</Text>
-                <Text style={styles.stationMeta}>
-                  {item.area} - {item.lines.join(' / ')}
-                </Text>
-              </View>
-              <Text style={[styles.chevron, value === item.id && styles.chevronSelected]}>
-                {value === item.id ? 'Selected' : 'Tap'}
-              </Text>
-            </Pressable>
-            {idx < visibleStations.length - 1 && <View style={styles.listDivider} />}
-          </React.Fragment>
-        ))}
-      </ScrollView>
     </View>
   );
 }
@@ -1141,15 +1075,545 @@ function SimplePicker({
     </Modal>
   );
 }
+
+const FORMAT_GROUPS: Array<{
+  label: string;
+  options: Array<{id: DisplayFormat; name: string; desc: string}>;
+}> = [
+  {
+    label: 'Single arrival',
+    options: [
+      {id: 'headsign-single',  name: 'Destination',  desc: 'Train headsign and next arrival'},
+      {id: 'direction-single', name: 'Direction',     desc: 'Uptown / Downtown and next arrival'},
+    ],
+  },
+  {
+    label: 'Dual line',
+    options: [
+      {id: 'both-single', name: 'Direction + Destination', desc: 'Direction above, headsign below'},
+    ],
+  },
+  {
+    label: 'Multiple arrivals',
+    options: [
+      {id: 'headsign-multi',  name: 'Destination + Times', desc: 'Headsign with next 2 arrivals'},
+      {id: 'direction-multi', name: 'Direction + Times',   desc: 'Direction with next 2 arrivals'},
+    ],
+  },
+];
+
+// Skeleton: neutral = gray shapes; accent = the element unique to this format vs the baseline
+function FormatSkeleton({format, accent}: {format: DisplayFormat; accent: string}) {
+  const hasDirectionPill = format === 'direction-single' || format === 'both-single' || format === 'direction-multi';
+  const hasSecondLine    = format === 'both-single';
+  const hasNextTimes     = format === 'headsign-multi' || format === 'direction-multi';
+  // Accent rule: only highlight the element that distinguishes this format from headsign-single
+  const accentDirPill  = hasDirectionPill;
+  const accentSecondLine = hasSecondLine;
+  const accentChips    = hasNextTimes;
+
+  return (
+    <View style={styles.fmtSkel}>
+      <View style={styles.fmtSkelRow}>
+        <View style={styles.fmtSkelBadge} />
+        <View style={styles.fmtSkelBody}>
+          {hasDirectionPill ? (
+            <View style={styles.fmtSkelDirRow}>
+              <View style={[styles.fmtSkelDirPill, accentDirPill && {backgroundColor: accent + '28', borderColor: accent}]}>
+                <Text style={[styles.fmtSkelDirArrow, accentDirPill && {color: accent}]}>↑↓</Text>
+              </View>
+              <View style={styles.fmtSkelBarShort} />
+            </View>
+          ) : (
+            <View style={styles.fmtSkelBarFull} />
+          )}
+          {hasSecondLine ? (
+            <View style={[styles.fmtSkelBarSecond, accentSecondLine && {backgroundColor: accent + '50'}]} />
+          ) : null}
+        </View>
+        <View style={styles.fmtSkelEta} />
+      </View>
+      {hasNextTimes ? (
+        <View style={styles.fmtSkelChipRow}>
+          {[0, 1, 2].map(i => (
+            <View
+              key={i}
+              style={[
+                styles.fmtSkelChip,
+                accentChips && {borderColor: accent, backgroundColor: accent + '18'},
+              ]}
+            />
+          ))}
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
+function FormatPickerStep({
+  city,
+  selectedFormat,
+  onSelect,
+}: {
+  city: CityId;
+  selectedFormat: DisplayFormat;
+  onSelect: (format: DisplayFormat) => void;
+}) {
+  const brand = CITY_BRANDS[city];
+  const allOptions = FORMAT_GROUPS.flatMap(g => g.options);
+  const scaleAnims = useRef(allOptions.map(() => new Animated.Value(1))).current;
+
+  const handlePress = (format: DisplayFormat, globalIndex: number) => {
+    Animated.sequence([
+      Animated.timing(scaleAnims[globalIndex], {toValue: 0.96, duration: 80, useNativeDriver: true}),
+      Animated.spring(scaleAnims[globalIndex], {toValue: 1, tension: 200, friction: 10, useNativeDriver: true}),
+    ]).start(() => onSelect(format));
+  };
+
+  let globalIndex = 0;
+  return (
+    <ScrollView showsVerticalScrollIndicator={false} style={styles.stepScrollView}>
+      <Text style={styles.stepTitle}>How should it look?</Text>
+      <Text style={styles.stepSubtitle}>Choose a display format for this slot.</Text>
+      <View style={styles.formatCardList}>
+        {FORMAT_GROUPS.map((group, gi) => (
+          <View key={group.label} style={[styles.formatGroup, gi > 0 && styles.formatGroupSpaced]}>
+            <View style={styles.formatGroupHeader}>
+              <View style={styles.formatGroupLine} />
+              <Text style={styles.formatGroupLabel}>{group.label.toUpperCase()}</Text>
+              <View style={styles.formatGroupLine} />
+            </View>
+            {group.options.map(option => {
+              const idx = globalIndex++;
+              const isSelected = option.id === selectedFormat;
+              return (
+                <Animated.View key={option.id} style={{transform: [{scale: scaleAnims[idx]}]}}>
+                  <Pressable
+                    style={[styles.formatCard, isSelected && {borderColor: brand.accent, borderWidth: 2}]}
+                    onPress={() => handlePress(option.id, idx)}>
+                    <FormatSkeleton format={option.id} accent={brand.accent} />
+                    <View style={[styles.formatCardDivider, isSelected && {backgroundColor: brand.accent, opacity: 0.3}]} />
+                    <View style={styles.formatCardInfo}>
+                      <Text style={[styles.formatCardName, isSelected && {color: brand.accent}]}>{option.name}</Text>
+                      <Text style={styles.formatCardDesc}>{option.desc}</Text>
+                    </View>
+                    {isSelected ? <View style={[styles.formatCardCheck, {backgroundColor: brand.accent}]}><Text style={styles.formatCardCheckText}>✓</Text></View> : null}
+                  </Pressable>
+                </Animated.View>
+              );
+            })}
+          </View>
+        ))}
+      </View>
+    </ScrollView>
+  );
+}
+
+function StepTransitionMessage({
+  message,
+  badgeLabel,
+  badgeColor,
+}: {
+  message: string;
+  badgeLabel?: string;
+  badgeColor?: string;
+}) {
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const scaleAnim = useRef(new Animated.Value(0.9)).current;
+
+  useEffect(() => {
+    Animated.parallel([
+      Animated.spring(fadeAnim, {toValue: 1, tension: 140, friction: 12, useNativeDriver: true}),
+      Animated.spring(scaleAnim, {toValue: 1, tension: 140, friction: 12, useNativeDriver: true}),
+    ]).start();
+  }, [fadeAnim, scaleAnim]);
+
+  return (
+    <Animated.View style={[styles.transitionContainer, {opacity: fadeAnim, transform: [{scale: scaleAnim}]}]}>
+      {badgeLabel ? (
+        <View style={[styles.transitionBadge, {backgroundColor: badgeColor ?? '#333'}]}>
+          <Text style={styles.transitionBadgeText}>{badgeLabel}</Text>
+        </View>
+      ) : (
+        <View style={styles.transitionSpinnerPlaceholder} />
+      )}
+      <Text style={styles.transitionMessage}>{message}</Text>
+      <View style={styles.transitionDots}>
+        <View style={styles.transitionDot} />
+        <View style={styles.transitionDot} />
+        <View style={styles.transitionDot} />
+      </View>
+    </Animated.View>
+  );
+}
+
+function LinePickerStep({
+  city,
+  selectedMode,
+  linesByMode,
+  linesLoadingByMode,
+  selectedRouteId,
+  onModeChange,
+  onSelectLine,
+  onBack,
+}: {
+  city: CityId;
+  selectedMode: ModeId;
+  linesByMode: Partial<Record<ModeId, Route[]>>;
+  linesLoadingByMode: Partial<Record<ModeId, boolean>>;
+  selectedRouteId: string;
+  onModeChange: (mode: ModeId) => void;
+  onSelectLine: (routeId: string) => void;
+  onBack: () => void;
+}) {
+  const modeOptions = getAvailableModes(city);
+  const allRoutes = linesByMode[selectedMode] ?? [];
+  const isLoading = !!linesLoadingByMode[selectedMode];
+  const [lineSearch, setLineSearch] = useState('');
+  const pulseAnims = useRef<Record<string, Animated.Value>>({}).current;
+
+  // Show search bar when there are many lines (buses especially)
+  const showSearch = allRoutes.length > 15;
+
+  const routes = useMemo(() => {
+    const term = lineSearch.trim().toLowerCase();
+    if (!term) return allRoutes;
+    return allRoutes.filter(r =>
+      r.label.toLowerCase().includes(term) || r.id.toLowerCase().includes(term),
+    );
+  }, [allRoutes, lineSearch]);
+
+  // Reset search when mode changes
+  useEffect(() => { setLineSearch(''); }, [selectedMode]);
+
+  const getPulseAnim = (id: string) => {
+    if (!pulseAnims[id]) pulseAnims[id] = new Animated.Value(1);
+    return pulseAnims[id];
+  };
+
+  const handleSelectLine = (routeId: string) => {
+    const anim = getPulseAnim(routeId);
+    Animated.sequence([
+      Animated.spring(anim, {toValue: 1.15, tension: 200, friction: 8, useNativeDriver: true}),
+      Animated.spring(anim, {toValue: 1, tension: 200, friction: 8, useNativeDriver: true}),
+    ]).start(() => onSelectLine(routeId));
+  };
+
+  return (
+    <View style={styles.stepContainer}>
+      <View style={styles.stepNavRow}>
+        <Pressable style={styles.stepBackButton} onPress={onBack}>
+          <Text style={styles.stepBackText}>← Back</Text>
+        </Pressable>
+      </View>
+      <Text style={styles.stepTitle}>Pick a line</Text>
+      <View style={styles.segmented}>
+        {modeOptions.map(mode => {
+          const active = selectedMode === mode;
+          return (
+            <Pressable
+              key={mode}
+              style={[styles.segment, active && styles.segmentActive]}
+              onPress={() => onModeChange(mode)}>
+              <Text style={[styles.segmentText, active && styles.segmentTextActive]}>{getModeLabel(city, mode)}</Text>
+            </Pressable>
+          );
+        })}
+      </View>
+      {showSearch && !isLoading ? (
+        <TextInput
+          value={lineSearch}
+          onChangeText={setLineSearch}
+          placeholder="Filter lines…"
+          placeholderTextColor={colors.textMuted}
+          style={styles.stepSearchInput}
+          autoCorrect={false}
+          autoCapitalize="characters"
+        />
+      ) : null}
+      {isLoading ? (
+        <View style={styles.lineGridSkeleton}>
+          {Array.from({length: 12}).map((_, i) => (
+            <View key={i} style={styles.lineGridSkeletonTile} />
+          ))}
+        </View>
+      ) : (
+        <ScrollView showsVerticalScrollIndicator={false} style={styles.lineGridScroll} keyboardShouldPersistTaps="handled">
+          <View style={styles.lineGrid}>
+            {routes.map(route => {
+              const isSelected = route.id === selectedRouteId;
+              const anim = getPulseAnim(route.id);
+              return (
+                <Animated.View key={route.id} style={{transform: [{scale: anim}]}}>
+                  <Pressable
+                    style={[styles.lineBadgeTile, isSelected && styles.lineBadgeTileActive]}
+                    onPress={() => handleSelectLine(route.id)}>
+                    <View style={[styles.lineBadgeCircle, {backgroundColor: route.color}]}>
+                      <Text style={[styles.lineBadgeText, {color: route.textColor ?? '#fff'}]}>{route.label}</Text>
+                    </View>
+                  </Pressable>
+                </Animated.View>
+              );
+            })}
+            {routes.length === 0 && !isLoading ? (
+              <Text style={styles.sectionHint}>
+                {lineSearch ? `No lines matching "${lineSearch}".` : 'No lines available for this mode.'}
+              </Text>
+            ) : null}
+          </View>
+        </ScrollView>
+      )}
+    </View>
+  );
+}
+
+function StopPickerStep({
+  selectedRoute,
+  stations,
+  loading,
+  selectedStationId,
+  selectedRouteId,
+  search,
+  onSearch,
+  onSelectStation,
+  onBack,
+}: {
+  selectedRoute: Route | undefined;
+  stations: Station[];
+  loading: boolean;
+  selectedStationId: string;
+  selectedRouteId: string;
+  search: string;
+  onSearch: (text: string) => void;
+  onSelectStation: (id: string) => void;
+  onBack: () => void;
+}) {
+  const checkAnims = useRef<Record<string, Animated.Value>>({}).current;
+
+  const getCheckAnim = (id: string) => {
+    if (!checkAnims[id]) checkAnims[id] = new Animated.Value(0);
+    return checkAnims[id];
+  };
+
+  const handleSelect = (id: string) => {
+    const anim = getCheckAnim(id);
+    Animated.sequence([
+      Animated.spring(anim, {toValue: 1.2, tension: 200, friction: 8, useNativeDriver: true}),
+      Animated.spring(anim, {toValue: 1, tension: 200, friction: 8, useNativeDriver: true}),
+    ]).start(() => onSelectStation(id));
+  };
+
+  const term = search.trim().toLowerCase();
+  const filtered = useMemo(() => {
+    if (!term) return stations;
+    return stations.filter(s =>
+      s.name.toLowerCase().includes(term) || s.area?.toLowerCase().includes(term),
+    );
+  }, [stations, term]);
+
+  return (
+    <View style={styles.stepContainer}>
+      <View style={styles.stepNavRow}>
+        <Pressable style={styles.stepBackButton} onPress={onBack}>
+          <Text style={styles.stepBackText}>← Back</Text>
+        </Pressable>
+      </View>
+
+      {selectedRoute ? (
+        <View style={styles.stopContextBar}>
+          <View style={[styles.stopContextBadge, {backgroundColor: selectedRoute.color}]}>
+            <Text style={[styles.stopContextBadgeText, {color: selectedRoute.textColor ?? '#fff'}]}>
+              {selectedRoute.label}
+            </Text>
+          </View>
+          <Text style={styles.stopContextLabel}>{selectedRoute.label} line</Text>
+        </View>
+      ) : null}
+
+      <Text style={styles.stepTitle}>Which stop?</Text>
+
+      <TextInput
+        value={search}
+        onChangeText={onSearch}
+        placeholder="Search stops…"
+        placeholderTextColor={colors.textMuted}
+        style={styles.stepSearchInput}
+      />
+
+      {loading ? (
+        <Text style={styles.sectionHint}>Loading stops…</Text>
+      ) : (
+        <ScrollView style={styles.stopListScroll} showsVerticalScrollIndicator={false} nestedScrollEnabled>
+          {filtered.map(station => (
+            <StopRow
+              key={station.id}
+              station={station}
+              selected={station.id === selectedStationId}
+              routeColor={selectedRoute?.color}
+              checkAnim={getCheckAnim(station.id)}
+              showDot
+              onPress={() => handleSelect(station.id)}
+            />
+          ))}
+          {filtered.length === 0 ? <Text style={styles.sectionHint}>No stops found.</Text> : null}
+        </ScrollView>
+      )}
+    </View>
+  );
+}
+
+function StopRow({
+  station,
+  selected,
+  routeColor,
+  checkAnim,
+  showDot,
+  onPress,
+}: {
+  station: Station;
+  selected: boolean;
+  routeColor: string | undefined;
+  checkAnim: Animated.Value;
+  showDot: boolean;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable style={[styles.stopRow, selected && styles.stopRowSelected]} onPress={onPress}>
+      {showDot && routeColor ? <View style={[styles.stopLineDot, {backgroundColor: routeColor}]} /> : <View style={styles.stopLineDotEmpty} />}
+      <View style={styles.stopRowInfo}>
+        <Text style={styles.stationName}>{station.name}</Text>
+        {station.area ? <Text style={styles.stationMeta}>{station.area}</Text> : null}
+      </View>
+      {selected ? (
+        <Animated.View style={[styles.stopCheckmark, {transform: [{scale: checkAnim}]}]}>
+          <Text style={styles.stopCheckmarkText}>✓</Text>
+        </Animated.View>
+      ) : (
+        <Text style={styles.chevron}>Tap</Text>
+      )}
+    </Pressable>
+  );
+}
+
+function DoneStep({
+  city,
+  line,
+  selectedRoute,
+  selectedStation,
+  arrival,
+  liveStatusText,
+  onChangeLine,
+  onChangeStop,
+  onChange,
+}: {
+  city: CityId;
+  line: LinePick;
+  selectedRoute: Route | undefined;
+  selectedStation: Station | undefined;
+  arrival: Arrival | undefined;
+  liveStatusText: string;
+  onChangeLine: () => void;
+  onChangeStop: () => void;
+  onChange: (id: string, next: Partial<LinePick>) => void;
+}) {
+  const canDecreaseNextStops = line.nextStops > 1;
+  const canIncreaseNextStops = line.nextStops < MAX_NEXT_STOPS;
+
+  return (
+    <View style={styles.doneStepContainer}>
+      <View style={styles.contextChipRow}>
+        {selectedRoute ? (
+          <Pressable style={styles.contextChip} onPress={onChangeLine}>
+            <View style={[styles.contextChipBadge, {backgroundColor: selectedRoute.color}]}>
+              <Text style={[styles.contextChipBadgeText, {color: selectedRoute.textColor ?? '#fff'}]}>
+                {selectedRoute.label}
+              </Text>
+            </View>
+            <Text style={styles.contextChipLabel}>{selectedRoute.label} line</Text>
+            <Text style={styles.contextChipX}>✕</Text>
+          </Pressable>
+        ) : (
+          <Pressable style={styles.contextChip} onPress={onChangeLine}>
+            <Text style={styles.contextChipLabel}>Choose line</Text>
+            <Text style={styles.contextChipX}>→</Text>
+          </Pressable>
+        )}
+        {selectedStation ? (
+          <Pressable style={styles.contextChip} onPress={onChangeStop}>
+            <Text style={styles.contextChipLabel} numberOfLines={1}>{selectedStation.name}</Text>
+            <Text style={styles.contextChipX}>✕</Text>
+          </Pressable>
+        ) : (
+          <Pressable style={styles.contextChip} onPress={onChangeStop}>
+            <Text style={styles.contextChipLabel}>Choose stop</Text>
+            <Text style={styles.contextChipX}>→</Text>
+          </Pressable>
+        )}
+      </View>
+
+      {liveStatusText ? <Text style={styles.sectionHint}>{liveStatusText}</Text> : null}
+      {arrival !== undefined && selectedRoute ? (
+        <View style={styles.doneArrivalRow}>
+          <View style={[styles.doneArrivalBadge, {backgroundColor: selectedRoute.color}]}>
+            <Text style={[styles.doneArrivalBadgeText, {color: selectedRoute.textColor ?? '#fff'}]}>
+              {selectedRoute.label}
+            </Text>
+          </View>
+          <View style={styles.doneArrivalInfo}>
+            <Text style={styles.doneArrivalDest}>{arrival.destination ?? selectedStation?.name ?? '—'}</Text>
+            <Text style={styles.doneArrivalTime}>{arrival.minutes != null ? `${arrival.minutes}m` : '—'}</Text>
+          </View>
+        </View>
+      ) : null}
+
+      <DirectionToggle value={line.direction} onChange={direction => onChange(line.id, {direction})} />
+
+      <View style={styles.secondarySectionCard}>
+        <View style={styles.sectionBlock}>
+          <Text style={styles.sectionLabel}>Custom Name</Text>
+          <TextInput
+            value={line.label}
+            onChangeText={value => onChange(line.id, {label: value})}
+            placeholder={selectedStation?.name ?? 'Give this slot a name'}
+            placeholderTextColor={colors.textMuted}
+            style={styles.customInput}
+          />
+        </View>
+
+        <View style={styles.sectionBlock}>
+          <Text style={styles.sectionLabel}>Next Arrivals To Show</Text>
+          <View style={styles.stepperRow}>
+            <Pressable
+              disabled={!canDecreaseNextStops}
+              style={[styles.stepperButton, !canDecreaseNextStops && styles.stepperButtonDisabled]}
+              onPress={() => onChange(line.id, {nextStops: clampNextStops(line.nextStops - 1)})}>
+              <Text style={[styles.stepperButtonText, !canDecreaseNextStops && styles.stepperButtonTextDisabled]}>-</Text>
+            </Pressable>
+            <Text style={styles.stepperValue}>{line.nextStops}</Text>
+            <Pressable
+              disabled={!canIncreaseNextStops}
+              style={[styles.stepperButton, !canIncreaseNextStops && styles.stepperButtonDisabled]}
+              onPress={() => onChange(line.id, {nextStops: clampNextStops(line.nextStops + 1)})}>
+              <Text style={[styles.stepperButtonText, !canIncreaseNextStops && styles.stepperButtonTextDisabled]}>+</Text>
+            </Pressable>
+          </View>
+          <Text style={styles.sectionHint}>This controls how many upcoming times appear for this slot.</Text>
+        </View>
+      </View>
+    </View>
+  );
+}
+
 function normalizeCityIdParam(value: string | undefined): CityId {
   return normalizeCityId(value);
 }
 
+function isLiveCitySupported(city: CityId) {
+  return LIVE_SUPPORTED_CITIES.includes(city);
+}
+
 function getAvailableModes(city: CityId): ModeId[] {
-  const order =
-    city === 'philadelphia'
-      ? (['train', 'trolley', 'bus', 'commuter-rail'] as const)
-      : MODE_ORDER;
+  const order = CITY_MODE_ORDER[city] ?? MODE_ORDER;
   return order.filter(mode => hasMode(city, mode));
 }
 
@@ -1157,11 +1621,13 @@ function getModeLabel(city: CityId, mode: ModeId) {
   if (mode === 'train') return city === 'philadelphia' ? 'Rail' : 'Subway';
   if (mode === 'bus') return 'Bus';
   if (mode === 'trolley') return 'Trolley';
+  if (mode === 'ferry') return 'Ferry';
   return 'Commuter Rail';
 }
 
 function hasMode(city: CityId, mode: ModeId) {
-  return !!cityData[city].modes[mode];
+  const order = CITY_MODE_ORDER[city] ?? MODE_ORDER;
+  return order.includes(mode);
 }
 
 function normalizeMode(city: CityId, mode: ModeId): ModeId {
@@ -1169,77 +1635,235 @@ function normalizeMode(city: CityId, mode: ModeId): ModeId {
   return getAvailableModes(city)[0] ?? 'train';
 }
 
-function newLine(city: CityId, mode: ModeId, id: string): LinePick {
-  const safeMode = normalizeMode(city, mode);
-  const stations = cityData[city].modes[safeMode]?.stations ?? [];
-  const routes = cityData[city].modes[safeMode]?.routes ?? [];
-  const firstStation = stations[0];
-  const firstRoute = firstStation ? routes.find(route => firstStation.lines.includes(route.id)) : routes[0];
+function routeLookupKey(mode: ModeId, stationId: string) {
+  return `${mode}:${stationId}`;
+}
 
-  return normalizeLine(city, {
-    id,
-    mode: safeMode,
-    stationId: firstStation?.id ?? '',
-    routeId: firstRoute?.id ?? '',
-    direction: 'uptown',
-    label: '',
-    textColor: DEFAULT_TEXT_COLOR,
-    nextStops: DEFAULT_NEXT_STOPS,
+function areSameLinePicks(left: LinePick[], right: LinePick[]) {
+  if (left.length !== right.length) return false;
+  return left.every((line, idx) => {
+    const other = right[idx];
+    return (
+      line.id === other.id &&
+      line.mode === other.mode &&
+      line.stationId === other.stationId &&
+      line.routeId === other.routeId &&
+      line.direction === other.direction &&
+      line.label === other.label &&
+      line.textColor === other.textColor &&
+      line.nextStops === other.nextStops &&
+      line.displayFormat === other.displayFormat
+    );
   });
 }
 
-function normalizeLine(city: CityId, line: LinePick): LinePick {
+function lineColorFor(routeId: string) {
+  let hash = 0;
+  for (let idx = 0; idx < routeId.length; idx += 1) {
+    hash = (hash * 31 + routeId.charCodeAt(idx)) >>> 0;
+  }
+  return FALLBACK_ROUTE_COLORS[hash % FALLBACK_ROUTE_COLORS.length];
+}
+
+function buildAreaFromName(name: string) {
+  const splitAt = name.indexOf('-');
+  if (splitAt === -1) return '';
+  return name.slice(splitAt + 1).trim();
+}
+
+function toTransitUiMode(mode: ModeId): TransitUiMode {
+  return mode;
+}
+
+async function loadStopsForLine(city: CityId, mode: ModeId, lineId: string): Promise<Station[]> {
+  const response = await getTransitStopsForLine(city, toTransitUiMode(mode), lineId);
+  return response.stations.map(station => ({
+    id: station.id,
+    name: station.name,
+    area: station.area ?? buildAreaFromName(station.name),
+    lines: station.lines,
+  }));
+}
+
+async function loadStationsForCityMode(city: CityId, mode: ModeId): Promise<Station[]> {
+  const response = await getTransitStations(city, toTransitUiMode(mode));
+  return response.stations.map(station => ({
+    id: station.id,
+    name: station.name,
+    area: station.area ?? buildAreaFromName(station.name),
+    lines: station.lines,
+  }));
+}
+
+function resolveRouteColor(city: CityId, lineId: string, apiColor: string | null): string {
+  if (apiColor) return apiColor;
+  return CITY_LINE_COLORS[city]?.[lineId]?.color ?? lineColorFor(lineId);
+}
+
+function resolveRouteTextColor(city: CityId, lineId: string, apiTextColor: string | null): string {
+  if (apiTextColor) return apiTextColor;
+  return CITY_LINE_COLORS[city]?.[lineId]?.textColor ?? '#FFFFFF';
+}
+
+async function loadRoutesForStation(city: CityId, mode: ModeId, stopId: string): Promise<Route[]> {
+  const response = await getTransitLines(city, toTransitUiMode(mode), stopId);
+  return response.lines.map(line => ({
+    id: line.id,
+    label: line.label || line.id,
+    color: resolveRouteColor(city, line.id, line.color),
+    textColor: resolveRouteTextColor(city, line.id, line.textColor),
+  }));
+}
+
+async function loadGlobalLinesForCityMode(city: CityId, mode: ModeId): Promise<Route[]> {
+  const response = await getGlobalTransitLines(city, toTransitUiMode(mode));
+  return response.lines.map(line => ({
+    id: line.id,
+    label: line.label || line.id,
+    color: resolveRouteColor(city, line.id, line.color),
+    textColor: resolveRouteTextColor(city, line.id, line.textColor),
+  }));
+}
+
+function statusFromArrival(arrival: TransitArrival): Arrival['status'] {
+  const raw = (arrival.status ?? '').toUpperCase();
+  if (raw.includes('DELAY')) return 'DELAYS';
+  return 'GOOD';
+}
+
+async function loadArrivalForSelection(city: CityId, line: LinePick): Promise<Omit<Arrival, 'lineId'> | null> {
+  if (!line.stationId.trim() || !line.routeId.trim()) return null;
+  const response = await getTransitArrivals(city, toTransitUiMode(line.mode), line.stationId, [line.routeId]);
+  if (response.arrivals.length === 0) return null;
+
+  const matched = response.arrivals.filter(arrival => arrival.lineId === line.routeId);
+  const candidates = matched.length > 0 ? matched : response.arrivals;
+  const sorted = [...candidates].sort((a, b) => {
+    const left = typeof a.minutes === 'number' ? a.minutes : Number.MAX_SAFE_INTEGER;
+    const right = typeof b.minutes === 'number' ? b.minutes : Number.MAX_SAFE_INTEGER;
+    return left - right;
+  });
+  const nextArrival = sorted[0];
+  if (!nextArrival || typeof nextArrival.minutes !== 'number') return null;
+
+  return {
+    minutes: Math.max(0, Math.round(nextArrival.minutes)),
+    status: statusFromArrival(nextArrival),
+    destination: nextArrival.destination ?? null,
+  };
+}
+
+function mergeArrivals(existing: Arrival[], updates: Arrival[], lines: LinePick[]): Arrival[] {
+  const updateMap = new Map<string, Arrival>();
+  updates.forEach(update => updateMap.set(update.lineId, update));
+  return lines.map(line => {
+    const fallback: Arrival = {lineId: line.id, minutes: 0, status: 'GOOD', destination: null};
+    return updateMap.get(line.id) ?? existing.find(item => item.lineId === line.id) ?? fallback;
+  });
+}
+
+function newLine(
+  city: CityId,
+  mode: ModeId,
+  id: string,
+  stationsByMode: StationsByMode,
+  routesByStation: RoutesByStation,
+): LinePick {
+  const safeMode = normalizeMode(city, mode);
+  const stations = stationsByMode[safeMode] ?? [];
+  const firstStation = stations[0];
+  const routes = firstStation ? routesByStation[routeLookupKey(safeMode, firstStation.id)] ?? [] : [];
+  const firstRoute = routes[0];
+
+  return normalizeLine(
+    city,
+    {
+      id,
+      mode: safeMode,
+      stationId: firstStation?.id ?? '',
+      routeId: firstRoute?.id ?? '',
+      direction: 'uptown',
+      label: '',
+      textColor: DEFAULT_TEXT_COLOR,
+      nextStops: DEFAULT_NEXT_STOPS,
+      displayFormat: 'headsign-single' as DisplayFormat,
+    },
+    stationsByMode,
+    routesByStation,
+  );
+}
+
+function normalizeLine(
+  city: CityId,
+  line: LinePick,
+  stationsByMode: StationsByMode,
+  routesByStation: RoutesByStation,
+): LinePick {
   const safeMode = normalizeMode(city, line.mode);
-  const stations = cityData[city].modes[safeMode]?.stations ?? [];
-  const routes = cityData[city].modes[safeMode]?.routes ?? [];
-  const station = stations.find(item => item.id === line.stationId) ?? stations[0];
-  const allowedRoutes = station ? routes.filter(route => station.lines.includes(route.id)) : routes;
-  const route = allowedRoutes.find(item => item.id === line.routeId) ?? allowedRoutes[0] ?? routes[0];
+  const stations = stationsByMode[safeMode] ?? [];
+
+  // Only snap to first station if the current stationId actually exists in the list.
+  // Preserving an explicit '' (no station chosen yet) intentionally.
+  const station = stations.find(item => item.id === line.stationId);
+  const resolvedStationId = station?.id ?? line.stationId;
+
+  const routeKey = resolvedStationId ? routeLookupKey(safeMode, resolvedStationId) : null;
+  const routes = routeKey ? (routesByStation[routeKey] ?? []) : [];
+  const allowedRoutes = station && station.lines.length > 0 ? routes.filter(route => station.lines.includes(route.id)) : routes;
+
+  // Only snap to first route if routes are loaded for this station.
+  // Otherwise preserve the current routeId (e.g. a globally-picked line).
+  const routesLoaded = routes.length > 0;
+  const routeMatch = allowedRoutes.find(item => item.id === line.routeId);
+  const resolvedRouteId = routeMatch?.id ?? (routesLoaded ? (allowedRoutes[0]?.id ?? routes[0]?.id ?? line.routeId) : line.routeId);
 
   return {
     ...line,
     mode: safeMode,
-    stationId: station?.id ?? '',
-    routeId: route?.id ?? '',
+    stationId: resolvedStationId,
+    routeId: resolvedRouteId,
     direction: line.direction === 'downtown' ? 'downtown' : 'uptown',
     label: line.label ?? '',
     textColor: normalizeHexColor(line.textColor) ?? DEFAULT_TEXT_COLOR,
     nextStops: clampNextStops(line.nextStops),
+    displayFormat: line.displayFormat ?? 'headsign-single',
   };
 }
 
-function seedDefaultLines(city: CityId): LinePick[] {
+function seedDefaultLines(city: CityId, stationsByMode: StationsByMode, routesByStation: RoutesByStation): LinePick[] {
   const modes = getAvailableModes(city);
   const primary = modes[0] ?? 'train';
   const secondary = modes[1] ?? primary;
-  const defaults = [newLine(city, primary, 'line-1')];
-  defaults.push(newLine(city, secondary, 'line-2'));
+  const defaults = [newLine(city, primary, 'line-1', stationsByMode, routesByStation)];
+  defaults.push(newLine(city, secondary, 'line-2', stationsByMode, routesByStation));
   return defaults;
 }
 
-function ensureLineCount(existing: LinePick[], city: CityId, slots: number): LinePick[] {
+function ensureLineCount(
+  existing: LinePick[],
+  city: CityId,
+  slots: number,
+  stationsByMode: StationsByMode,
+  routesByStation: RoutesByStation,
+): LinePick[] {
   const next: LinePick[] = [];
+  const defaults = seedDefaultLines(city, stationsByMode, routesByStation);
   for (let index = 0; index < slots; index += 1) {
     const id = `line-${index + 1}`;
     const fromExisting = existing.find(line => line.id === id);
     if (fromExisting) {
-      next.push(normalizeLine(city, {...fromExisting, id}));
+      next.push(normalizeLine(city, {...fromExisting, id}, stationsByMode, routesByStation));
       continue;
     }
 
-    const availableModes = getAvailableModes(city);
-    const mode: ModeId = availableModes[index] ?? availableModes[0] ?? 'train';
-    next.push(newLine(city, mode, id));
+    const defaultLine = defaults[index] ?? defaults[0];
+    if (defaultLine) {
+      next.push({...defaultLine, id});
+      continue;
+    }
+    next.push(newLine(city, 'train', id, stationsByMode, routesByStation));
   }
   return next;
-}
-
-function seedArrivals(lines: LinePick[]): Arrival[] {
-  return lines.map(line => ({
-    lineId: line.id,
-    minutes: 2 + Math.floor(Math.random() * 8),
-    status: Math.random() > 0.85 ? 'DELAYS' : 'GOOD',
-  }));
 }
 
 function syncArrivals(existing: Arrival[], lines: LinePick[]): Arrival[] {
@@ -1248,18 +1872,10 @@ function syncArrivals(existing: Arrival[], lines: LinePick[]): Arrival[] {
     if (found) return found;
     return {
       lineId: line.id,
-      minutes: 2 + Math.floor(Math.random() * 8),
-      status: Math.random() > 0.85 ? 'DELAYS' : 'GOOD',
+      minutes: 0,
+      status: 'GOOD',
+      destination: null,
     };
-  });
-}
-
-function tickArrivals(prev: Arrival[]): Arrival[] {
-  return prev.map(arrival => {
-    const next = Math.max(0, arrival.minutes - (Math.random() > 0.4 ? 1 : 0));
-    const recycled = next === 0 ? 8 + Math.floor(Math.random() * 4) : next;
-    const status = Math.random() > 0.9 ? 'DELAYS' : 'GOOD';
-    return {...arrival, minutes: recycled, status};
   });
 }
 
@@ -1783,7 +2399,189 @@ const styles = StyleSheet.create({
   saveButtonSuccess: {backgroundColor: colors.success},
   saveButtonText: {color: colors.background, fontWeight: '900', fontSize: 15},
   saveHint: {color: colors.textMuted, fontSize: 12, textAlign: 'center'},
+  liveDisabledCard: {
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.card,
+    padding: spacing.md,
+    gap: spacing.xs,
+  },
+  liveDisabledTitle: {color: colors.text, fontSize: 14, fontWeight: '800'},
+  liveDisabledBody: {color: colors.textMuted, fontSize: 12},
   emptyHint: {color: colors.textMuted, fontSize: 12},
+  // Onboarding step styles
+  stepScrollView: {maxHeight: 480},
+  stepContainer: {gap: spacing.sm},
+  stepNavRow: {flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between'},
+  stepBackButton: {paddingVertical: 4, paddingRight: spacing.sm},
+  stepBackText: {color: colors.textMuted, fontSize: 13, fontWeight: '700'},
+  stepTitle: {color: colors.text, fontSize: 22, fontWeight: '900', marginBottom: 4},
+  stepSubtitle: {color: colors.textMuted, fontSize: 13, marginBottom: spacing.sm},
+  formatCardList: {gap: spacing.sm, paddingBottom: spacing.md},
+  formatCard: {
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.card,
+    padding: spacing.sm,
+    gap: spacing.xs,
+  },
+  // ── Format skeleton ────────────────────────────────────────────────
+  fmtSkel: {paddingVertical: spacing.sm, gap: 7},
+  fmtSkelRow: {flexDirection: 'row', alignItems: 'center', gap: spacing.sm},
+  fmtSkelBadge: {
+    width: 28, height: 28, borderRadius: 14,
+    backgroundColor: '#1C2330', flexShrink: 0,
+  },
+  fmtSkelBody: {flex: 1, gap: 5},
+  fmtSkelBarFull: {height: 9, borderRadius: 3, backgroundColor: '#1C2330'},
+  fmtSkelBarShort: {flex: 1, height: 9, borderRadius: 3, backgroundColor: '#1C2330'},
+  fmtSkelBarSecond: {height: 8, borderRadius: 3, backgroundColor: '#1C2330', width: '55%'},
+  fmtSkelDirRow: {flexDirection: 'row', alignItems: 'center', gap: 6},
+  fmtSkelDirPill: {
+    borderWidth: 1, borderColor: '#1C2330',
+    borderRadius: 5, paddingHorizontal: 6, paddingVertical: 2,
+  },
+  fmtSkelDirArrow: {fontSize: 10, fontWeight: '800', color: '#3A4555'},
+  fmtSkelEta: {width: 22, height: 9, borderRadius: 3, backgroundColor: '#1C2330', flexShrink: 0},
+  fmtSkelChipRow: {
+    flexDirection: 'row', gap: 5,
+    paddingLeft: 36, // indent to align under text body
+  },
+  fmtSkelChip: {
+    width: 30, height: 16, borderRadius: 4,
+    borderWidth: 1, borderColor: '#1C2330', backgroundColor: 'transparent',
+  },
+  // ── Format groups ──────────────────────────────────────────────────
+  formatGroup: {gap: spacing.xs},
+  formatGroupSpaced: {marginTop: spacing.lg},
+  formatGroupHeader: {
+    flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
+    marginBottom: spacing.xs,
+  },
+  formatGroupLine: {flex: 1, height: 1, backgroundColor: colors.border},
+  formatGroupLabel: {
+    color: colors.textMuted, fontSize: 10, fontWeight: '800', letterSpacing: 1.2,
+  },
+  formatCardDivider: {height: 1, backgroundColor: colors.border, marginHorizontal: -spacing.sm},
+  formatCardInfo: {gap: 2},
+  formatCardName: {color: colors.text, fontSize: 14, fontWeight: '800'},
+  formatCardDesc: {color: colors.textMuted, fontSize: 12},
+  formatCardCheck: {
+    position: 'absolute',
+    top: spacing.sm,
+    right: spacing.sm,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  formatCardCheckText: {color: '#fff', fontSize: 12, fontWeight: '900'},
+  transitionContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: spacing.xl,
+    gap: spacing.md,
+  },
+  transitionBadge: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  transitionBadgeText: {color: '#fff', fontSize: 28, fontWeight: '900'},
+  transitionSpinnerPlaceholder: {width: 80, height: 80},
+  transitionMessage: {color: colors.text, fontSize: 16, fontWeight: '700', textAlign: 'center'},
+  transitionDots: {flexDirection: 'row', gap: 6},
+  transitionDot: {width: 6, height: 6, borderRadius: 3, backgroundColor: colors.textMuted},
+  lineGridScroll: {maxHeight: 320},
+  lineGrid: {flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, paddingBottom: spacing.sm},
+  lineGridSkeleton: {flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm},
+  lineGridSkeletonTile: {width: 64, height: 64, borderRadius: radii.md, backgroundColor: colors.surface},
+  lineBadgeTile: {
+    width: 64,
+    height: 64,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.background,
+  },
+  lineBadgeTileActive: {borderColor: colors.accent, backgroundColor: colors.accentMuted},
+  lineBadgeCircle: {width: 52, height: 52, borderRadius: 26, alignItems: 'center', justifyContent: 'center'},
+  lineBadgeText: {fontWeight: '900', fontSize: 18},
+  stepSearchInput: {
+    backgroundColor: colors.surface,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.sm,
+    color: colors.text,
+    fontSize: 14,
+  },
+  stopListScroll: {maxHeight: 360},
+  stopSectionHeader: {color: colors.textMuted, fontSize: 11, fontWeight: '800', textTransform: 'uppercase', paddingVertical: spacing.xs, letterSpacing: 0.5},
+  stopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingVertical: spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  stopRowSelected: {backgroundColor: colors.accentMuted},
+  stopLineDot: {width: 8, height: 8, borderRadius: 4},
+  stopLineDotEmpty: {width: 8, height: 8},
+  stopRowInfo: {flex: 1},
+  stopCheckmark: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: colors.accent,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  stopCheckmarkText: {color: colors.background, fontSize: 12, fontWeight: '900'},
+  stopContextBar: {flexDirection: 'row', alignItems: 'center', gap: spacing.sm},
+  stopContextBadge: {width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center'},
+  stopContextBadgeText: {fontWeight: '900', fontSize: 12},
+  stopContextLabel: {color: colors.textMuted, fontSize: 12, fontWeight: '700'},
+  verifyingBadge: {color: colors.textMuted, fontSize: 11, fontWeight: '700'},
+  doneStepContainer: {gap: spacing.sm},
+  contextChipRow: {flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs},
+  contextChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 6,
+  },
+  contextChipBadge: {width: 20, height: 20, borderRadius: 10, alignItems: 'center', justifyContent: 'center'},
+  contextChipBadgeText: {fontWeight: '900', fontSize: 10},
+  contextChipLabel: {color: colors.text, fontSize: 13, fontWeight: '700', maxWidth: 120},
+  contextChipX: {color: colors.textMuted, fontSize: 11, fontWeight: '700'},
+  doneArrivalRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.card,
+    padding: spacing.sm,
+  },
+  doneArrivalBadge: {width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center'},
+  doneArrivalBadgeText: {fontWeight: '900', fontSize: 16},
+  doneArrivalInfo: {flex: 1, gap: 2},
+  doneArrivalDest: {color: colors.text, fontSize: 14, fontWeight: '800'},
+  doneArrivalTime: {color: colors.textMuted, fontSize: 12, fontWeight: '700'},
 });
-
-

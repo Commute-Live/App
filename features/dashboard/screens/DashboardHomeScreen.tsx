@@ -9,8 +9,7 @@ import {useAppState} from '../../../state/appState';
 import {CITY_BRANDS, CITY_LABELS, CITY_OPTIONS, type CityId} from '../../../constants/cities';
 
 type DayId = 'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat' | 'sun';
-type Device = {id: string; name: string; online: boolean; city: CityId};
-type PresetItem = {
+type LivePreviewItem = {
   id: string;
   name: string;
   city: CityId;
@@ -29,142 +28,53 @@ const NAV_ITEMS: BottomNavItem[] = [
   {key: 'settings', label: 'Settings', icon: 'settings-outline', route: '/settings'},
 ];
 const TIME_OPTIONS = ['00:00', '05:00', '06:00', '07:00', '08:00', '09:00', '10:00', '17:00', '18:00', '20:00', '22:00', '23:00'];
-
-const DEVICES: Device[] = [
-  {id: 'device-1', name: 'Bedroom Display', online: true, city: 'new-york'},
-  {id: 'device-2', name: 'Kitchen Display', online: false, city: 'philadelphia'},
-  {id: 'device-3', name: 'Office Display', online: true, city: 'chicago'},
-  {id: 'device-4', name: 'Desk Display', online: true, city: 'boston'},
-];
-
-const PRESETS: PresetItem[] = [
-  {
-    id: 'preset-1',
-    name: 'Morning Commute',
-    city: 'new-york',
-    enabled: true,
-    displayStart: '06:00',
-    displayEnd: '09:00',
-    displayDays: ['mon', 'tue', 'wed', 'thu', 'fri'],
-    offStart: '23:00',
-    offEnd: '05:00',
-    slots: [
-      {id: 'slot-1', color: '#0039A6', textColor: '#E9ECEF', routeLabel: 'A', selected: false, stopName: 'Hoyt-Schermerhorn', times: '2, 5, 8'},
-      {id: 'slot-2', color: '#FCCC0A', textColor: '#0C0C0C', routeLabel: 'N', selected: false, stopName: 'Times Sq - 42 St', times: '4, 7, 10'},
-    ],
-  },
-  {
-    id: 'preset-2',
-    name: 'Weekend Late',
-    city: 'new-york',
-    enabled: false,
-    displayStart: '10:00',
-    displayEnd: '22:00',
-    displayDays: ['sat', 'sun'],
-    offStart: '00:00',
-    offEnd: '07:00',
-    slots: [{id: 'slot-1', color: '#EE352E', textColor: '#E9ECEF', routeLabel: '2', selected: false, stopName: '149 St-Grand Concourse', times: '3, 6, 9'}],
-  },
-  {
-    id: 'preset-3',
-    name: 'Philly Workday',
-    city: 'philadelphia',
-    enabled: true,
-    displayStart: '07:00',
-    displayEnd: '18:00',
-    displayDays: ['mon', 'tue', 'wed', 'thu', 'fri'],
-    offStart: '22:00',
-    offEnd: '06:00',
-    slots: [
-      {id: 'slot-1', color: '#0061AA', textColor: '#E9ECEF', routeLabel: 'Tr', selected: false, stopName: '30th Street Station', times: '5, 8, 11'},
-      {id: 'slot-2', color: '#FF8200', textColor: '#E9ECEF', routeLabel: 'Me', selected: false, stopName: 'Suburban Station', times: '4, 9, 12'},
-    ],
-  },
-  {
-    id: 'preset-4',
-    name: 'Loop Rush',
-    city: 'chicago',
-    enabled: true,
-    displayStart: '06:00',
-    displayEnd: '10:00',
-    displayDays: ['mon', 'tue', 'wed', 'thu', 'fri'],
-    offStart: '23:00',
-    offEnd: '05:00',
-    slots: [{id: 'slot-1', color: '#00A1DE', textColor: '#E9ECEF', routeLabel: 'Blu', selected: false, stopName: 'Clark/Lake', times: '2, 5, 9'}],
-  },
-  {
-    id: 'preset-4b',
-    name: 'Boston Core',
-    city: 'boston',
-    enabled: true,
-    displayStart: '06:30',
-    displayEnd: '09:30',
-    displayDays: ['mon', 'tue', 'wed', 'thu', 'fri'],
-    offStart: '23:00',
-    offEnd: '05:30',
-    slots: [
-      {id: 'slot-1', color: '#DA291C', textColor: '#E9ECEF', routeLabel: 'Red', selected: false, stopName: 'Downtown Crossing', times: '3, 6, 9'},
-      {id: 'slot-2', color: '#00843D', textColor: '#E9ECEF', routeLabel: 'Grn', selected: false, stopName: 'Kenmore', times: '4, 8, 12'},
-    ],
-  },
-  {
-    id: 'preset-5',
-    name: 'Queens Express',
-    city: 'new-york',
-    enabled: true,
-    displayStart: '07:00',
-    displayEnd: '10:00',
-    displayDays: ['mon', 'tue', 'wed', 'thu', 'fri'],
-    offStart: '23:00',
-    offEnd: '05:00',
-    slots: [
-      {id: 'slot-1', color: '#0039A6', textColor: '#E9ECEF', routeLabel: 'E', selected: false, stopName: 'Jackson Hts-Roosevelt Av', times: '1, 4, 7'},
-      {id: 'slot-2', color: '#B933AD', textColor: '#E9ECEF', routeLabel: '7', selected: false, stopName: 'Flushing-Main St', times: '3, 6, 10'},
-    ],
-  },
-  {
-    id: 'preset-6',
-    name: 'Brooklyn Late Night',
-    city: 'new-york',
-    enabled: false,
-    displayStart: '21:00',
-    displayEnd: '23:00',
-    displayDays: ['fri', 'sat'],
-    offStart: '23:30',
-    offEnd: '06:00',
-    slots: [{id: 'slot-1', color: '#0039A6', textColor: '#E9ECEF', routeLabel: 'A', selected: false, stopName: 'Hoyt-Schermerhorn', times: '6, 12, 17'}],
-  },
-];
+const ALL_DAYS: DayId[] = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
 
 export default function DashboardHomeScreen() {
   const {state: appState} = useAppState();
-  const [selectedDeviceId, setSelectedDeviceId] = useState<string>(DEVICES[0].id);
   const [carouselIndex, setCarouselIndex] = useState(0);
   const [quietHoursEnabled, setQuietHoursEnabled] = useState(true);
   const [quietHours, setQuietHours] = useState({start: '23:00', end: '05:00'});
 
-  const selectedDevice = DEVICES.find(device => device.id === selectedDeviceId) ?? DEVICES[0];
-  const cityPresets = useMemo(
-    () => PRESETS.filter(preset => preset.city === selectedDevice.city),
-    [selectedDevice.city],
+  const selectedDevice = useMemo(
+    () => ({
+      id: appState.deviceId ?? 'current-device',
+      name: appState.deviceId ? `Device ${appState.deviceId}` : 'Current Device',
+      online: appState.deviceStatus === 'pairedOnline',
+      city: appState.selectedCity,
+    }),
+    [appState.deviceId, appState.deviceStatus, appState.selectedCity],
   );
-  const enabledPresets = useMemo(
-    () => cityPresets.filter(preset => preset.enabled),
-    [cityPresets],
+  const liveSlots = useMemo(
+    () => buildLiveSlots(appState.selectedStations, appState.arrivals, selectedDevice.city),
+    [appState.arrivals, appState.selectedStations, selectedDevice.city],
   );
-  const carouselPresets = enabledPresets.length > 0 ? enabledPresets : cityPresets;
+  const carouselPresets = useMemo<LivePreviewItem[]>(
+    () =>
+      liveSlots.length > 0
+        ? [
+            {
+              id: `live-${selectedDevice.city}`,
+              name: appState.preset.trim() || 'Current Display',
+              city: selectedDevice.city,
+              enabled: true,
+              displayStart: '00:00',
+              displayEnd: '23:59',
+              displayDays: ALL_DAYS,
+              offStart: '00:00',
+              offEnd: '00:00',
+              slots: liveSlots,
+            },
+          ]
+        : [],
+    [appState.preset, liveSlots, selectedDevice.city],
+  );
   const cityBrand = CITY_BRANDS[selectedDevice.city];
   const cityAgency = CITY_OPTIONS.find(option => option.id === selectedDevice.city)?.agencyCode ?? CITY_LABELS[selectedDevice.city];
 
   useEffect(() => {
     setCarouselIndex(0);
-  }, [selectedDeviceId]);
-
-  useEffect(() => {
-    const preferredDevice = DEVICES.find(device => device.city === appState.selectedCity);
-    if (!preferredDevice) return;
-    setSelectedDeviceId(prev => (prev === preferredDevice.id ? prev : preferredDevice.id));
-  }, [appState.selectedCity]);
+  }, [selectedDevice.city]);
 
   useEffect(() => {
     if (carouselPresets.length <= 1) return;
@@ -200,26 +110,6 @@ export default function DashboardHomeScreen() {
               <Text style={styles.onlineChipText}>{selectedDevice.online ? 'Online' : 'Offline'}</Text>
             </View>
           </View>
-
-          {DEVICES.length > 1 ? (
-            <>
-              <Text style={styles.switcherLabel}>Switch Device</Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.deviceSwitcherRow}>
-                {DEVICES.map(device => {
-                  const active = device.id === selectedDevice.id;
-                  return (
-                    <Pressable
-                      key={device.id}
-                      style={[styles.devicePill, active && styles.devicePillActive]}
-                      onPress={() => setSelectedDeviceId(device.id)}>
-                      <Text style={[styles.devicePillText, active && styles.devicePillTextActive]}>{device.name}</Text>
-                    </Pressable>
-                  );
-                })}
-              </ScrollView>
-            </>
-          ) : null}
-
         </View>
 
         <View style={styles.heroCard}>
@@ -313,8 +203,41 @@ export default function DashboardHomeScreen() {
   );
 }
 
-function describeDisplayWindow(preset: PresetItem) {
+function describeDisplayWindow(preset: LivePreviewItem) {
   return `${formatDayList(preset.displayDays)} ${preset.displayStart}-${preset.displayEnd}`;
+}
+
+function buildLiveSlots(
+  selectedStations: string[],
+  arrivals: {line: string; destination: string; minutes: number}[],
+  city: CityId,
+): Display3DSlot[] {
+  const stops = selectedStations.length > 0 ? selectedStations : arrivals.map(item => item.destination).filter(Boolean);
+  const count = Math.max(stops.length, arrivals.length);
+  if (count === 0) return [];
+
+  const accent = CITY_BRANDS[city].accent;
+  return Array.from({length: Math.min(2, count)}, (_, index) => {
+    const arrival = arrivals[index];
+    const stopName = stops[index] ?? arrival?.destination ?? `Stop ${index + 1}`;
+    const routeLabel = toRouteLabel(arrival?.line);
+    const minutes = Number.isFinite(arrival?.minutes) ? Math.max(0, Math.round(arrival!.minutes)) : null;
+    return {
+      id: `slot-${index + 1}`,
+      color: accent,
+      textColor: '#041015',
+      routeLabel,
+      selected: false,
+      stopName,
+      times: minutes == null ? '--' : `${minutes}`,
+    };
+  });
+}
+
+function toRouteLabel(line: string | undefined) {
+  if (!line) return '--';
+  const cleaned = line.trim().toUpperCase();
+  return cleaned.length <= 4 ? cleaned : cleaned.slice(0, 4);
 }
 
 function TimeAdjustField({

@@ -9,6 +9,8 @@ type DeviceStatus = 'unknown' | 'notPaired' | 'pairedOffline' | 'pairedOnline';
 type Action =
   | {type: 'addStation'; station: string}
   | {type: 'removeStation'; station: string}
+  | {type: 'setSelectedStations'; stations: string[]}
+  | {type: 'setArrivals'; arrivals: {line: string; destination: string; minutes: number}[]}
   | {type: 'setTheme'; theme: LayoutTheme}
   | {type: 'setBehavior'; behavior: Behavior}
   | {type: 'setDensity'; density: Density}
@@ -46,18 +48,14 @@ interface AppState {
   userId: string | null;
 }
 
-const defaultArrivals = [
-  {line: 'Link', destination: 'Capitol Hill', minutes: 3},
-  {line: 'RapidRide E', destination: 'Aurora Village', minutes: 7},
-  {line: 'Route 62', destination: 'Sand Point', minutes: 12},
-];
+const defaultArrivals: {line: string; destination: string; minutes: number}[] = [];
 
 const initialState: AppState = {
-  selectedStations: ['Westlake Station', 'South Lake Union'],
+  selectedStations: [],
   theme: 'mono',
   behavior: 'stationary',
   density: 'large',
-  preset: 'Morning Commute',
+  preset: 'Default Display',
   brightness: 70,
   autoDim: true,
   arrivals: defaultArrivals,
@@ -74,6 +72,19 @@ function reducer(state: AppState, action: Action): AppState {
       return {...state, selectedStations: [...state.selectedStations, action.station]};
     case 'removeStation':
       return {...state, selectedStations: state.selectedStations.filter(s => s !== action.station)};
+    case 'setSelectedStations':
+      return {...state, selectedStations: [...new Set(action.stations.map(station => station.trim()).filter(Boolean))]};
+    case 'setArrivals':
+      return {
+        ...state,
+        arrivals: action.arrivals
+          .map(arrival => ({
+            line: arrival.line.trim(),
+            destination: arrival.destination.trim(),
+            minutes: Math.max(0, Math.round(arrival.minutes)),
+          }))
+          .filter(arrival => arrival.line.length > 0),
+      };
     case 'setTheme':
       return {...state, theme: action.theme};
     case 'setBehavior':
@@ -114,6 +125,8 @@ const AppStateContext = createContext<{
   state: AppState;
   addStation: (station: string) => void;
   removeStation: (station: string) => void;
+  setSelectedStations: (stations: string[]) => void;
+  setArrivals: (arrivals: {line: string; destination: string; minutes: number}[]) => void;
   setTheme: (theme: LayoutTheme) => void;
   setBehavior: (behavior: Behavior) => void;
   setDensity: (density: Density) => void;
@@ -135,6 +148,9 @@ export const AppStateProvider = ({children}: {children: React.ReactNode}) => {
     () => ({
       addStation: (station: string) => dispatch({type: 'addStation', station}),
       removeStation: (station: string) => dispatch({type: 'removeStation', station}),
+      setSelectedStations: (stations: string[]) => dispatch({type: 'setSelectedStations', stations}),
+      setArrivals: (arrivals: {line: string; destination: string; minutes: number}[]) =>
+        dispatch({type: 'setArrivals', arrivals}),
       setTheme: (theme: LayoutTheme) => dispatch({type: 'setTheme', theme}),
       setBehavior: (behavior: Behavior) => dispatch({type: 'setBehavior', behavior}),
       setDensity: (density: Density) => dispatch({type: 'setDensity', density}),

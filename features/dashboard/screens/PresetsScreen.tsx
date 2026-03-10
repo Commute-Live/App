@@ -1,4 +1,4 @@
-import React, {useState, useMemo} from 'react';
+import React, {useEffect, useMemo, useState} from 'react';
 import {Alert, Pressable, ScrollView, StyleSheet, Text, View, type LayoutChangeEvent, type GestureResponderEvent} from 'react-native';
 import {SafeAreaView} from 'react-native-safe-area-context';
 import {useRouter} from 'expo-router';
@@ -31,161 +31,44 @@ const NAV_ITEMS: BottomNavItem[] = [
   {key: 'presets', label: 'Displays', icon: 'albums-outline', route: '/presets'},
   {key: 'settings', label: 'Settings', icon: 'settings-outline', route: '/settings'},
 ];
-
-const INITIAL_PRESETS: PresetItem[] = [
-  {
-    id: 'preset-1',
-    name: 'Morning Commute',
-    city: 'new-york',
-    pinned: true,
-    enabled: true,
-    brightness: 70,
-    displayStart: '06:00',
-    displayEnd: '09:00',
-    displayDays: ['mon', 'tue', 'wed', 'thu', 'fri'],
-    offStart: '23:00',
-    offEnd: '05:00',
-    slots: [
-      {id: 'slot-1', color: '#0039A6', textColor: '#E9ECEF', routeLabel: 'A', selected: false, stopName: 'Hoyt-Schermerhorn', times: '2, 5, 8'},
-      {id: 'slot-2', color: '#FCCC0A', textColor: '#0C0C0C', routeLabel: 'N', selected: false, stopName: 'Times Sq - 42 St', times: '4, 7, 10'},
-    ],
-  },
-  {
-    id: 'preset-2',
-    name: 'Weekend Late',
-    city: 'new-york',
-    pinned: false,
-    enabled: false,
-    brightness: 45,
-    displayStart: '10:00',
-    displayEnd: '22:00',
-    displayDays: ['sat', 'sun'],
-    offStart: '00:00',
-    offEnd: '07:00',
-    slots: [{id: 'slot-1', color: '#EE352E', textColor: '#E9ECEF', routeLabel: '2', selected: false, stopName: '149 St-Grand Concourse', times: '3, 6, 9'}],
-  },
-  {
-    id: 'preset-3',
-    name: 'Philly Workday',
-    city: 'philadelphia',
-    pinned: false,
-    enabled: true,
-    brightness: 65,
-    displayStart: '07:00',
-    displayEnd: '18:00',
-    displayDays: ['mon', 'tue', 'wed', 'thu', 'fri'],
-    offStart: '22:00',
-    offEnd: '06:00',
-    slots: [
-      {id: 'slot-1', color: '#0061AA', textColor: '#E9ECEF', routeLabel: 'Tr', selected: false, stopName: '30th Street Station', times: '5, 8, 11'},
-      {id: 'slot-2', color: '#FF8200', textColor: '#E9ECEF', routeLabel: 'Me', selected: false, stopName: 'Suburban Station', times: '4, 9, 12'},
-    ],
-  },
-  {
-    id: 'preset-3b',
-    name: 'SEPTA Evening Bus',
-    city: 'philadelphia',
-    pinned: false,
-    enabled: false,
-    brightness: 58,
-    displayStart: '17:00',
-    displayEnd: '20:00',
-    displayDays: ['mon', 'tue', 'wed', 'thu', 'fri'],
-    offStart: '23:00',
-    offEnd: '06:00',
-    slots: [{id: 'slot-1', color: '#0061AA', textColor: '#E9ECEF', routeLabel: '47', selected: false, stopName: '8th & Market', times: '6, 11, 15'}],
-  },
-  {
-    id: 'preset-bos-1',
-    name: 'T + Bus Mix',
-    city: 'boston',
-    pinned: false,
-    enabled: true,
-    brightness: 72,
-    displayStart: '06:30',
-    displayEnd: '10:00',
-    displayDays: ['mon', 'tue', 'wed', 'thu', 'fri'],
-    offStart: '23:00',
-    offEnd: '05:30',
-    slots: [
-      {id: 'slot-1', color: '#DA291C', textColor: '#E9ECEF', routeLabel: 'Red', selected: false, stopName: 'Downtown Crossing', times: '2, 5, 8'},
-      {id: 'slot-2', color: '#003DA5', textColor: '#E9ECEF', routeLabel: '1', selected: false, stopName: 'Mass Ave @ Harvard Bridge', times: '4, 9, 13'},
-    ],
-  },
-  {
-    id: 'preset-chi-1',
-    name: 'Loop Rush',
-    city: 'chicago',
-    pinned: false,
-    enabled: true,
-    brightness: 76,
-    displayStart: '06:00',
-    displayEnd: '10:00',
-    displayDays: ['mon', 'tue', 'wed', 'thu', 'fri'],
-    offStart: '23:00',
-    offEnd: '05:00',
-    slots: [{id: 'slot-1', color: '#00A1DE', textColor: '#E9ECEF', routeLabel: 'Blu', selected: false, stopName: 'Clark/Lake', times: '2, 5, 9'}],
-  },
-  {
-    id: 'preset-4',
-    name: 'Queens Express AM',
-    city: 'new-york',
-    pinned: false,
-    enabled: true,
-    brightness: 82,
-    displayStart: '07:00',
-    displayEnd: '10:00',
-    displayDays: ['mon', 'tue', 'wed', 'thu', 'fri'],
-    offStart: '23:00',
-    offEnd: '05:00',
-    slots: [
-      {id: 'slot-1', color: '#0039A6', textColor: '#E9ECEF', routeLabel: 'E', selected: false, stopName: 'Jackson Hts-Roosevelt Av', times: '1, 4, 7'},
-      {id: 'slot-2', color: '#B933AD', textColor: '#E9ECEF', routeLabel: '7', selected: false, stopName: 'Flushing-Main St', times: '3, 6, 10'},
-    ],
-  },
-  {
-    id: 'preset-5',
-    name: 'Late Night Single Stop',
-    city: 'new-york',
-    pinned: false,
-    enabled: false,
-    brightness: 28,
-    displayStart: '22:00',
-    displayEnd: '23:00',
-    displayDays: ['fri', 'sat'],
-    offStart: '23:30',
-    offEnd: '06:30',
-    slots: [
-      {id: 'slot-1', color: '#FCCC0A', textColor: '#0C0C0C', routeLabel: 'N', selected: false, stopName: 'Atlantic Av-Barclays Ctr', times: '5, 11, 16'},
-    ],
-  },
-];
+const ALL_DAYS: DayId[] = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
 
 export default function PresetsScreen() {
   const router = useRouter();
   const {state: appState} = useAppState();
-  const [presets, setPresets] = useState<PresetItem[]>(INITIAL_PRESETS);
+  const [pinned, setPinned] = useState(false);
+  const [enabled, setEnabled] = useState(true);
+  const [brightness, setBrightness] = useState(70);
+  const [hidden, setHidden] = useState(false);
   const selectedCity = appState.selectedCity;
   const selectedCityOption = CITY_OPTIONS.find(option => option.id === selectedCity) ?? CITY_OPTIONS[0];
   const selectedCityBrand = CITY_BRANDS[selectedCity];
+  const livePreset = useMemo(() => buildLivePreset(appState), [appState]);
+
+  useEffect(() => {
+    setPinned(false);
+    setEnabled(true);
+    setBrightness(Math.max(10, Math.min(100, Math.round(appState.brightness))));
+    setHidden(false);
+  }, [appState.brightness, appState.preset, selectedCity]);
 
   const visiblePresets = useMemo(
-    () =>
-      presets
-        .filter(preset => preset.city === selectedCity)
-        .sort((a, b) => Number(b.pinned) - Number(a.pinned) || Number(b.enabled) - Number(a.enabled) || a.name.localeCompare(b.name)),
-    [presets, selectedCity],
+    () => (livePreset && livePreset.city === selectedCity && !hidden ? [{...livePreset, pinned, enabled, brightness}] : []),
+    [brightness, enabled, hidden, livePreset, pinned, selectedCity],
   );
 
   const togglePin = (id: string) => {
-    setPresets(prev => prev.map(preset => (preset.id === id ? {...preset, pinned: !preset.pinned} : preset)));
+    if (id !== livePreset?.id) return;
+    setPinned(prev => !prev);
   };
 
   const toggleEnabled = (id: string) => {
-    setPresets(prev => prev.map(preset => (preset.id === id ? {...preset, enabled: !preset.enabled} : preset)));
+    if (id !== livePreset?.id) return;
+    setEnabled(prev => !prev);
   };
   const deletePreset = (id: string) => {
-    setPresets(prev => prev.filter(preset => preset.id !== id));
+    if (id !== livePreset?.id) return;
+    setHidden(true);
   };
   const confirmDeletePreset = (preset: PresetItem) => {
     Alert.alert(
@@ -199,13 +82,8 @@ export default function PresetsScreen() {
     );
   };
   const setPresetBrightness = (id: string, brightness: number) => {
-    setPresets(prev =>
-      prev.map(preset =>
-        preset.id === id
-          ? {...preset, brightness: Math.max(10, Math.min(100, Math.round(brightness)))}
-          : preset,
-      ),
-    );
+    if (id !== livePreset?.id) return;
+    setBrightness(Math.max(10, Math.min(100, Math.round(brightness))));
   };
 
   return (
@@ -296,6 +174,58 @@ export default function PresetsScreen() {
       <BottomNav items={NAV_ITEMS} />
     </SafeAreaView>
   );
+}
+
+function buildLivePreset(appState: ReturnType<typeof useAppState>['state']): PresetItem | null {
+  const slots = buildLiveSlots(appState.selectedStations, appState.arrivals, appState.selectedCity);
+  if (slots.length === 0) return null;
+  return {
+    id: `live-${appState.selectedCity}`,
+    name: appState.preset.trim() || 'Current Display',
+    city: appState.selectedCity,
+    pinned: false,
+    enabled: true,
+    brightness: Math.max(10, Math.min(100, Math.round(appState.brightness))),
+    displayStart: '00:00',
+    displayEnd: '23:59',
+    displayDays: ALL_DAYS,
+    offStart: '00:00',
+    offEnd: '00:00',
+    slots,
+  };
+}
+
+function buildLiveSlots(
+  selectedStations: string[],
+  arrivals: {line: string; destination: string; minutes: number}[],
+  city: CityId,
+): Display3DSlot[] {
+  const stops = selectedStations.length > 0 ? selectedStations : arrivals.map(item => item.destination).filter(Boolean);
+  const count = Math.max(stops.length, arrivals.length);
+  if (count === 0) return [];
+
+  const accent = CITY_BRANDS[city].accent;
+  return Array.from({length: Math.min(2, count)}, (_, index) => {
+    const arrival = arrivals[index];
+    const stopName = stops[index] ?? arrival?.destination ?? `Stop ${index + 1}`;
+    const routeLabel = toRouteLabel(arrival?.line);
+    const minutes = Number.isFinite(arrival?.minutes) ? Math.max(0, Math.round(arrival!.minutes)) : null;
+    return {
+      id: `slot-${index + 1}`,
+      color: accent,
+      textColor: '#041015',
+      routeLabel,
+      selected: false,
+      stopName,
+      times: minutes == null ? '--' : `${minutes}`,
+    };
+  });
+}
+
+function toRouteLabel(line: string | undefined) {
+  if (!line) return '--';
+  const cleaned = line.trim().toUpperCase();
+  return cleaned.length <= 4 ? cleaned : cleaned.slice(0, 4);
 }
 
 function SummaryRow({label, value}: {label: string; value: string}) {
