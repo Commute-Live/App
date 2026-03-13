@@ -1,11 +1,11 @@
 export type TransitCity = 'new-york' | 'philadelphia' | 'boston' | 'chicago';
 
 export type DisplayFormat =
-  | 'headsign-single'   // [BADGE] [Woodlawn]         [2m]
-  | 'direction-single'  // [BADGE] [Uptown]            [2m]
-  | 'both-single'       // [BADGE] [Uptown/Woodlawn]   [2m]
-  | 'headsign-multi'    // [BADGE] [Woodlawn/5,10m]    [2m]
-  | 'direction-multi';  // [BADGE] [Uptown/5,10m]      [2m]
+    | 'single-line'   // [BADGE] [Woodlawn]         [2m]
+    | 'two-line'      // [BADGE] [Woodlawn/Uptown]  [2m]
+    | 'times-line';   // [BADGE] [Woodlawn/5,10m]   [2m]
+
+export type DisplayContent = 'destination' | 'direction' | 'custom';
 export type SupportedTransitCity = 'new-york' | 'philadelphia' | 'boston' | 'chicago';
 
 export type TransitUiMode = 'train' | 'bus' | 'commuter-rail' | 'trolley' | 'ferry';

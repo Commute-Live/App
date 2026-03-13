@@ -1,5 +1,5 @@
 import React, {useEffect, useMemo, useRef, useState} from 'react';
-import {Alert, Animated, Easing, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View} from 'react-native';
+import {Alert, Animated, Easing, Keyboard, KeyboardAvoidingView, LayoutAnimation, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, UIManager, View} from 'react-native';
 import {SafeAreaView} from 'react-native-safe-area-context';
 import {useLocalSearchParams, useRouter} from 'expo-router';
 import {colors, radii, spacing} from '../../../theme';
@@ -7,7 +7,7 @@ import DashboardPreviewSection from '../components/DashboardPreviewSection';
 import {useAppState} from '../../../state/appState';
 import {CITY_LABELS, CITY_BRANDS, normalizeCityId, type CityId} from '../../../constants/cities';
 import {getTransitArrivals, getTransitLines, getTransitStations, getGlobalTransitLines, getTransitStopsForLine} from '../../../lib/transitApi';
-import type {TransitArrival, TransitUiMode, DisplayFormat} from '../../../types/transit';
+import type {TransitArrival, TransitUiMode, DisplayContent, DisplayFormat} from '../../../types/transit';
 import Display3DPreview from '../components/Display3DPreview';
 import type {Display3DSlot} from '../components/Display3DPreview';
 import {CITY_LINE_COLORS, FALLBACK_ROUTE_COLORS, hashLineColor} from '../../../lib/lineColors';
@@ -24,17 +24,23 @@ type LinePick = {
   routeId: string;
   direction: Direction;
   label: string;
+  secondaryLabel: string;
   textColor: string;
   nextStops: number;
   displayFormat: DisplayFormat;
+  primaryContent: DisplayContent;
+  secondaryContent: DisplayContent;
 };
 type StationsByMode = Partial<Record<ModeId, Station[]>>;
 type RoutesByStation = Record<string, Route[]>;
 type EditorStep = 'format' | 'line-transition' | 'lines' | 'stop-transition' | 'stops' | 'done-transition' | 'done';
+type RoutePickerItem = {id: string; label: string; displayLabel: string; color: string; textColor?: string; routes: Route[]};
+type RouteGroup = {key: string; title?: string; routes: RoutePickerItem[]};
 
 const DEFAULT_TEXT_COLOR = '#E9ECEF';
 const DEFAULT_NEXT_STOPS = 3;
-const MAX_NEXT_STOPS = 3;
+const MIN_NEXT_STOPS = 2;
+const MAX_NEXT_STOPS = 5;
 const DEFAULT_LAYOUT_SLOTS = 2;
 const TIME_OPTIONS = ['00:00', '05:00', '06:00', '07:00', '08:00', '09:00', '10:00', '17:00', '18:00', '20:00', '22:00', '23:00'];
 const DAY_OPTIONS = [
@@ -46,6 +52,11 @@ const DAY_OPTIONS = [
   {id: 'sat', label: 'Sat'},
   {id: 'sun', label: 'Sun'},
 ] as const;
+const CONTENT_OPTIONS: Array<{id: DisplayContent; label: string; hint: string}> = [
+  {id: 'destination', label: 'Destination', hint: 'Shows the train or bus destination.'},
+  {id: 'direction', label: 'Direction', hint: 'Shows Uptown, Downtown, Northbound, or Southbound.'},
+  {id: 'custom', label: 'Custom', hint: 'Shows your own text.'},
+];
 type DayId = (typeof DAY_OPTIONS)[number]['id'];
 const LAYOUT_OPTIONS = [
   {id: 'layout-1', slots: 1, label: '1 stop'},
@@ -105,6 +116,31 @@ export default function DashboardScreen() {
   const linesRequestedRef = useRef(new Set<string>());
   const stationsRequestedRef = useRef(new Set<string>());
   const routesRequestedRef = useRef(new Set<string>());
+
+  useEffect(() => {
+    if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+      UIManager.setLayoutAnimationEnabledExperimental(true);
+    }
+
+    const keyboardShowEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const keyboardHideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+    const animateKeyboardChange = () => {
+      LayoutAnimation.configureNext({
+        duration: 180,
+        create: {type: LayoutAnimation.Types.easeInEaseOut, property: LayoutAnimation.Properties.opacity},
+        update: {type: LayoutAnimation.Types.easeInEaseOut},
+        delete: {type: LayoutAnimation.Types.easeInEaseOut, property: LayoutAnimation.Properties.opacity},
+      });
+    };
+
+    const showSub = Keyboard.addListener(keyboardShowEvent, animateKeyboardChange);
+    const hideSub = Keyboard.addListener(keyboardHideEvent, animateKeyboardChange);
+
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
 
   useEffect(() => {
     setStationsByMode({});
@@ -326,9 +362,7 @@ export default function DashboardScreen() {
       setSelectedStations(
         lines
           .map(line => {
-            const mode = normalizeMode(city, line.mode);
-            const stations = stationsByMode[mode] ?? [];
-            return stations.find(station => station.id === line.stationId)?.name ?? line.label.trim();
+            return resolveSelectedStationForLine(line, city, stationsByMode, stationsByLine)?.name ?? line.label.trim();
           })
           .filter(name => name.length > 0),
       );
@@ -339,9 +373,10 @@ export default function DashboardScreen() {
             const routes = routesByStation[routeLookupKey(mode, line.stationId)] ?? [];
             const route = routes.find(item => item.id === line.routeId);
             const arrival = arrivals.find(item => item.lineId === line.id);
+            const stationName = resolveSelectedStationForLine(line, city, stationsByMode, stationsByLine)?.name;
             return {
               line: route?.label ?? line.routeId,
-              destination: arrival?.destination ?? (line.label.trim() || 'Selected stop'),
+              destination: arrival?.destination ?? stationName ?? (line.label.trim() || 'Selected stop'),
               minutes: arrival?.minutes ?? 0,
             };
           })
@@ -459,6 +494,10 @@ export default function DashboardScreen() {
       next === 'lines' ? 'line-transition' :
       next === 'stops' ? 'stop-transition' : 'done-transition';
     setTransitionLabel(message);
+    if (delayMs <= 0) {
+      setEditorStep(next);
+      return;
+    }
     setEditorStep(transitionStep);
     setTimeout(() => setEditorStep(next), delayMs);
   };
@@ -467,39 +506,36 @@ export default function DashboardScreen() {
     () =>
       lines.map(line => {
         const safeMode = normalizeMode(city, line.mode);
-        const cityStations = stationsByMode[safeMode] ?? [];
-        const station = cityStations.find(item => item.id === line.stationId);
+        const station = resolveSelectedStationForLine(line, city, stationsByMode, stationsByLine);
         const lineRoutes = routesByStation[routeLookupKey(safeMode, line.stationId)] ?? [];
         const route = lineRoutes.find(item => item.id === line.routeId);
         const arrival = arrivals.find(item => item.lineId === line.id);
 
-        const headsign = arrival?.destination ?? station?.name ?? (line.label.trim() || '—');
+        const destinationLabel = arrival?.destination ?? station?.name ?? '—';
         const directionLabel = line.direction === 'uptown' ? 'Uptown' : 'Downtown';
+        const primaryCustomLabel = line.label.trim();
+        const secondaryCustomLabel = line.secondaryLabel.trim();
         const t0 = arrival?.minutes != null ? String(arrival.minutes) : '—';
-        const allTimes = buildNextArrivalTimes(arrival?.minutes ?? 0, 3);
+        const allTimes = buildNextArrivalTimes(arrival?.minutes ?? 0, line.nextStops);
         const subTimes = allTimes.slice(1).map(t => t.replace('m', '')).join(', ');
 
         let stopName: string;
         let subLine: string | undefined;
 
         switch (line.displayFormat) {
-          case 'direction-single':
-            stopName = directionLabel;
+          case 'single-line':
+            stopName = resolveDisplayContent(line.primaryContent, destinationLabel, directionLabel, primaryCustomLabel);
             break;
-          case 'both-single':
-            stopName = directionLabel;
-            subLine = headsign;
+          case 'two-line':
+            stopName = resolveDisplayContent(line.primaryContent, destinationLabel, directionLabel, primaryCustomLabel);
+            subLine = resolveDisplayContent(line.secondaryContent, destinationLabel, directionLabel, secondaryCustomLabel);
             break;
-          case 'headsign-multi':
-            stopName = headsign;
+          case 'times-line':
+            stopName = resolveDisplayContent(line.primaryContent, destinationLabel, directionLabel, primaryCustomLabel);
             subLine = subTimes;
             break;
-          case 'direction-multi':
-            stopName = directionLabel;
-            subLine = subTimes;
-            break;
-          default: // 'headsign-single'
-            stopName = headsign;
+          default:
+            stopName = destinationLabel;
         }
 
         return {
@@ -513,7 +549,7 @@ export default function DashboardScreen() {
           times: t0,
         };
       }),
-    [arrivals, city, lines, routesByStation, selectedLineId, stationsByMode],
+    [arrivals, city, lines, routesByStation, selectedLineId, stationsByLine, stationsByMode],
   );
 
   const headerAnimatedStyle = {
@@ -560,7 +596,11 @@ export default function DashboardScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
-      <ScrollView contentContainerStyle={styles.scroll} scrollEnabled={!previewDragging}>
+      <KeyboardAvoidingView
+        style={styles.keyboardAvoid}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 12 : 0}>
+      <ScrollView contentContainerStyle={styles.scroll} scrollEnabled={!previewDragging} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag">
         <Animated.View style={headerAnimatedStyle}>
           <TopBar
             layoutSlots={layoutSlots}
@@ -676,25 +716,27 @@ export default function DashboardScreen() {
                           playStepTransition(
                             `Loading stops for the ${route?.label ?? routeId}…`,
                             'stops',
-                            800,
+                            0,
                           );
                         }}
                         onBack={() => { setSlotEditorExpanded(false); setLayoutExpanded(true); }}
                       />
                     )}
 
-                    {editorStep === 'stops' && (
-                      <StopPickerStep
-                        selectedRoute={(linesByMode[normalizeMode(city, selectedLine.mode)] ?? []).find(r => r.id === selectedLine.routeId)}
-                        stations={stationsByLine[selectedLine.routeId] ?? []}
-                        loading={!!stationsLoadingByLine[selectedLine.routeId]}
+                      {editorStep === 'stops' && (
+                        <StopPickerStep
+                          city={city}
+                          selectedMode={normalizeMode(city, selectedLine.mode)}
+                          selectedRoute={(linesByMode[normalizeMode(city, selectedLine.mode)] ?? []).find(r => r.id === selectedLine.routeId)}
+                          stations={stationsByLine[selectedLine.routeId] ?? []}
+                          loading={!!stationsLoadingByLine[selectedLine.routeId]}
                         selectedStationId={selectedLine.stationId}
                         selectedRouteId={selectedLine.routeId}
                         search={stationSearch[selectedLine.id] ?? ''}
                         onSearch={text => setStationSearch(prev => ({...prev, [selectedLine.id]: text}))}
                         onSelectStation={id => {
                           updateLine(selectedLine.id, {stationId: id});
-                          playStepTransition('All set! Loading arrivals…', 'done', 600);
+                          playStepTransition('All set! Loading arrivals…', 'done', 0);
                         }}
                         onBack={() => setEditorStep('lines')}
                       />
@@ -709,12 +751,7 @@ export default function DashboardScreen() {
                             r => r.id === selectedLine.routeId,
                           )
                         }
-                        selectedStation={
-                          (stationsByMode[normalizeMode(city, selectedLine.mode)] ?? []).find(
-                            s => s.id === selectedLine.stationId,
-                          )
-                        }
-                        arrival={arrivals.find(a => a.lineId === selectedLine.id)}
+                        selectedStation={resolveSelectedStationForLine(selectedLine, city, stationsByMode, stationsByLine)}
                         liveStatusText={liveStatusText}
                         onChangeLine={() => setEditorStep('lines')}
                         onChangeStop={() => setEditorStep('stops')}
@@ -778,6 +815,7 @@ export default function DashboardScreen() {
           </View>
         </Animated.View>
       </ScrollView>
+      </KeyboardAvoidingView>
 
       <SaveBar dirty={isDirty} loading={saving} success={saveDone} onPress={handleSave} />
       <ConfirmDiscardModal
@@ -1081,37 +1119,22 @@ const FORMAT_GROUPS: Array<{
   options: Array<{id: DisplayFormat; name: string; desc: string}>;
 }> = [
   {
-    label: 'Single arrival',
+    label: 'Layout types',
     options: [
       {
-        id: 'headsign-single',
-        name: 'Destination',
-        desc: 'Example: Woodlawn on the left with the next arrival on the right.',
+        id: 'single-line',
+        name: 'One line',
+        desc: 'One text line on the left and the next arrival on the right.',
       },
       {
-        id: 'direction-single',
-        name: 'Direction',
-        desc: 'Example: Uptown on the left with the next arrival on the right.',
-      },
-    ],
-  },
-  {
-    label: 'Two-line layouts',
-    options: [
-      {
-        id: 'both-single',
-        name: 'Direction + destination',
-        desc: 'Example: Uptown on the first line and Woodlawn underneath.',
+        id: 'two-line',
+        name: 'Two lines',
+        desc: 'Top and bottom text lines with the next arrival on the right.',
       },
       {
-        id: 'headsign-multi',
-        name: 'Destination + times',
-        desc: 'Example: Woodlawn on top with more arrival times underneath.',
-      },
-      {
-        id: 'direction-multi',
-        name: 'Direction + times',
-        desc: 'Example: Uptown on top with more arrival times underneath.',
+        id: 'times-line',
+        name: 'Text + times',
+        desc: 'One text line on top with upcoming arrival times underneath.',
       },
     ],
   },
@@ -1119,14 +1142,12 @@ const FORMAT_GROUPS: Array<{
 
 // Skeleton: neutral = gray shapes; accent = the element unique to this format vs the baseline
 function FormatSkeleton({format, accent}: {format: DisplayFormat; accent: string}) {
-  const hasDirectionPill = format === 'direction-single' || format === 'both-single' || format === 'direction-multi';
-  const hasSecondLine    = format === 'both-single';
-  const hasNextTimes     = format === 'headsign-multi' || format === 'direction-multi';
-  // Accent rule: only highlight the element that distinguishes this format from headsign-single
+  const hasSecondLine = format === 'two-line';
+  const hasNextTimes = format === 'times-line';
   const accentSecondLine = hasSecondLine;
-  const accentChips    = hasNextTimes;
-  const primaryLabel = hasDirectionPill ? 'Uptown' : 'Woodlawn';
-  const secondaryLabel = hasSecondLine ? 'Woodlawn' : null;
+  const accentChips = hasNextTimes;
+  const primaryLabel = 'Woodlawn';
+  const secondaryLabel = hasSecondLine ? 'Uptown' : null;
 
   return (
     <View style={styles.fmtSkel}>
@@ -1227,6 +1248,41 @@ function FormatPickerStep({
   );
 }
 
+function ContentToggle({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: DisplayContent;
+  onChange: (content: DisplayContent) => void;
+}) {
+  return (
+    <View style={styles.sectionBlock}>
+      <Text style={styles.sectionLabel}>{label}</Text>
+      <View style={styles.choiceList}>
+        {CONTENT_OPTIONS.map(option => {
+          const active = option.id === value;
+          return (
+            <Pressable
+              key={option.id}
+              style={[styles.choiceRow, active && styles.choiceRowActive]}
+              onPress={() => onChange(option.id)}>
+              <View style={styles.choiceRowCopy}>
+                <Text style={[styles.choiceRowLabel, active && styles.choiceRowLabelActive]}>{option.label}</Text>
+                <Text style={[styles.choiceRowHint, active && styles.choiceRowHintActive]}>{option.hint}</Text>
+              </View>
+              <View style={[styles.choiceRowCheck, active && styles.choiceRowCheckActive]}>
+                {active ? <Text style={styles.choiceRowCheckText}>✓</Text> : null}
+              </View>
+            </Pressable>
+          );
+        })}
+      </View>
+    </View>
+  );
+}
+
 function StepTransitionMessage({
   message,
   badgeLabel,
@@ -1288,18 +1344,23 @@ function LinePickerStep({
   const allRoutes = linesByMode[selectedMode] ?? [];
   const isLoading = !!linesLoadingByMode[selectedMode];
   const [lineSearch, setLineSearch] = useState('');
+  const [variantPickerEntry, setVariantPickerEntry] = useState<RoutePickerItem | null>(null);
   const pulseAnims = useRef<Record<string, Animated.Value>>({}).current;
 
   // Show search bar when there are many lines (buses especially)
-  const showSearch = allRoutes.length > 15;
+  const showSearch = selectedMode === 'bus' && allRoutes.length > 15;
 
   const routes = useMemo(() => {
     const term = lineSearch.trim().toLowerCase();
-    if (!term) return allRoutes;
-    return allRoutes.filter(r =>
+    const filtered = !term
+      ? allRoutes
+      : allRoutes.filter(r =>
       r.label.toLowerCase().includes(term) || r.id.toLowerCase().includes(term),
-    );
-  }, [allRoutes, lineSearch]);
+      );
+    return prepareRouteEntriesForPicker(city, selectedMode, filtered);
+  }, [allRoutes, city, lineSearch, selectedMode]);
+
+  const routeGroups = useMemo(() => buildRouteGroups(city, selectedMode, routes), [city, routes, selectedMode]);
 
   // Reset search when mode changes
   useEffect(() => { setLineSearch(''); }, [selectedMode]);
@@ -1309,12 +1370,17 @@ function LinePickerStep({
     return pulseAnims[id];
   };
 
-  const handleSelectLine = (routeId: string) => {
-    const anim = getPulseAnim(routeId);
+  const handleSelectLine = (route: RoutePickerItem) => {
+    const anim = getPulseAnim(route.id);
     Animated.sequence([
       Animated.spring(anim, {toValue: 1.15, tension: 200, friction: 8, useNativeDriver: true}),
       Animated.spring(anim, {toValue: 1, tension: 200, friction: 8, useNativeDriver: true}),
-    ]).start(() => onSelectLine(routeId));
+    ]).start();
+    if (route.routes.length > 1) {
+      setVariantPickerEntry(route);
+      return;
+    }
+    onSelectLine(route.routes[0]?.id ?? route.id);
   };
 
   return (
@@ -1356,36 +1422,83 @@ function LinePickerStep({
           ))}
         </View>
       ) : (
-        <ScrollView showsVerticalScrollIndicator={false} style={styles.lineGridScroll} keyboardShouldPersistTaps="handled">
-          <View style={styles.lineGrid}>
-            {routes.map(route => {
-              const isSelected = route.id === selectedRouteId;
-              const anim = getPulseAnim(route.id);
-              return (
-                <Animated.View key={route.id} style={{transform: [{scale: anim}]}}>
-                  <Pressable
-                    style={[styles.lineBadgeTile, isSelected && styles.lineBadgeTileActive]}
-                    onPress={() => handleSelectLine(route.id)}>
-                    <View style={[styles.lineBadgeCircle, {backgroundColor: route.color}]}>
-                      <Text style={[styles.lineBadgeText, {color: route.textColor ?? '#fff'}]}>{route.label}</Text>
-                    </View>
-                  </Pressable>
-                </Animated.View>
-              );
-            })}
-            {routes.length === 0 && !isLoading ? (
-              <Text style={styles.sectionHint}>
-                {lineSearch ? `No lines matching "${lineSearch}".` : 'No lines available for this mode.'}
-              </Text>
-            ) : null}
-          </View>
-        </ScrollView>
+        <View>
+          {routes.length === 0 && !isLoading ? (
+            <Text style={styles.sectionHint}>
+              {lineSearch ? `No lines matching "${lineSearch}".` : 'No lines available for this mode.'}
+            </Text>
+          ) : (
+            <View style={styles.lineGroupList}>
+              {routeGroups.map(group => (
+                <View key={group.key} style={styles.lineGroup}>
+                  {group.title ? <Text style={styles.lineGroupTitle}>{group.title}</Text> : null}
+                  <View style={styles.lineGrid}>
+                    {group.routes.map(route => {
+                      const isSelected = route.routes.some(item => item.id === selectedRouteId);
+                      const isBusBadge = city === 'new-york' && selectedMode === 'bus';
+                      const isCommuterRailBadge = selectedMode === 'commuter-rail';
+                      const isExpress = !isBusBadge && isExpressRouteBadge(city, selectedMode, route);
+                      const useCompactBadgeText = isBusBadge && route.displayLabel.length >= 5;
+                      const anim = getPulseAnim(route.id);
+                      return (
+                        <Animated.View key={route.id} style={{transform: [{scale: anim}]}}>
+                          <Pressable
+                            style={[styles.lineBadgeTile, isSelected && styles.lineBadgeTileActive]}
+                            onPress={() => handleSelectLine(route)}>
+                              <View
+                                style={[
+                                  styles.lineBadgeCircle,
+                                  isBusBadge && styles.lineBadgeBusPill,
+                                  isCommuterRailBadge && styles.lineBadgeCommuterRail,
+                                  {backgroundColor: route.color},
+                                  isExpress && styles.lineBadgeDiamond,
+                                ]}>
+                                <Text
+                                  adjustsFontSizeToFit={!isCommuterRailBadge}
+                                  minimumFontScale={0.74}
+                                  numberOfLines={isCommuterRailBadge ? 3 : 1}
+                                  style={[
+                                    styles.lineBadgeText,
+                                    isBusBadge && styles.lineBadgeBusText,
+                                    isCommuterRailBadge && styles.lineBadgeCommuterRailText,
+                                    useCompactBadgeText && styles.lineBadgeTextCompact,
+                                    {color: route.textColor ?? '#fff'},
+                                    isExpress && styles.lineBadgeTextDiamond,
+                                  ]}>
+                                  {route.displayLabel}
+                                </Text>
+                              </View>
+                            </Pressable>
+                          </Animated.View>
+                      );
+                    })}
+                  </View>
+                </View>
+              ))}
+            </View>
+          )}
+        </View>
       )}
+      <SimplePicker
+        visible={!!variantPickerEntry}
+        options={(variantPickerEntry?.routes ?? []).map(route => ({
+          id: route.id,
+          label: isExpressVariant(route) ? `Express (${route.label})` : `Regular (${route.label})`,
+        }))}
+        value={selectedRouteId}
+        onSelect={id => {
+          setVariantPickerEntry(null);
+          onSelectLine(id);
+        }}
+        onClose={() => setVariantPickerEntry(null)}
+      />
     </View>
   );
 }
 
 function StopPickerStep({
+  city,
+  selectedMode,
   selectedRoute,
   stations,
   loading,
@@ -1396,6 +1509,8 @@ function StopPickerStep({
   onSelectStation,
   onBack,
 }: {
+  city: CityId;
+  selectedMode: ModeId;
   selectedRoute: Route | undefined;
   stations: Station[];
   loading: boolean;
@@ -1407,6 +1522,8 @@ function StopPickerStep({
   onBack: () => void;
 }) {
   const checkAnims = useRef<Record<string, Animated.Value>>({}).current;
+  const showBusBadge = isNycBusBadge(city, selectedMode);
+  const selectedRouteBadgeLabel = selectedRoute ? formatRoutePickerLabel(city, selectedMode, selectedRoute) : '';
 
   const getCheckAnim = (id: string) => {
     if (!checkAnims[id]) checkAnims[id] = new Animated.Value(0);
@@ -1418,7 +1535,8 @@ function StopPickerStep({
     Animated.sequence([
       Animated.spring(anim, {toValue: 1.2, tension: 200, friction: 8, useNativeDriver: true}),
       Animated.spring(anim, {toValue: 1, tension: 200, friction: 8, useNativeDriver: true}),
-    ]).start(() => onSelectStation(id));
+    ]).start();
+    onSelectStation(id);
   };
 
   const term = search.trim().toLowerCase();
@@ -1439,9 +1557,13 @@ function StopPickerStep({
 
       {selectedRoute ? (
         <View style={styles.stopContextBar}>
-          <View style={[styles.stopContextBadge, {backgroundColor: selectedRoute.color}]}>
-            <Text style={[styles.stopContextBadgeText, {color: selectedRoute.textColor ?? '#fff'}]}>
-              {selectedRoute.label}
+          <View style={[styles.stopContextBadge, showBusBadge && styles.stopContextBadgeBus, {backgroundColor: selectedRoute.color}]}>
+            <Text
+              adjustsFontSizeToFit
+              minimumFontScale={0.74}
+              numberOfLines={1}
+              style={[styles.stopContextBadgeText, showBusBadge && styles.stopContextBadgeTextBus, {color: selectedRoute.textColor ?? '#fff'}]}>
+              {selectedRouteBadgeLabel}
             </Text>
           </View>
           <Text style={styles.stopContextLabel}>{selectedRoute.label} line</Text>
@@ -1518,7 +1640,6 @@ function DoneStep({
   line,
   selectedRoute,
   selectedStation,
-  arrival,
   liveStatusText,
   onChangeLine,
   onChangeStop,
@@ -1528,23 +1649,31 @@ function DoneStep({
   line: LinePick;
   selectedRoute: Route | undefined;
   selectedStation: Station | undefined;
-  arrival: Arrival | undefined;
   liveStatusText: string;
   onChangeLine: () => void;
   onChangeStop: () => void;
   onChange: (id: string, next: Partial<LinePick>) => void;
 }) {
-  const canDecreaseNextStops = line.nextStops > 1;
+  const canDecreaseNextStops = line.nextStops > MIN_NEXT_STOPS;
   const canIncreaseNextStops = line.nextStops < MAX_NEXT_STOPS;
+  const mode = normalizeMode(city, line.mode);
+  const showBusBadge = isNycBusBadge(city, mode);
+  const selectedRouteBadgeLabel = selectedRoute ? formatRoutePickerLabel(city, mode, selectedRoute) : '';
+  const showsDirection = line.primaryContent === 'direction' || (line.displayFormat === 'two-line' && line.secondaryContent === 'direction');
+  const showsNextArrivals = line.displayFormat === 'times-line';
 
   return (
     <View style={styles.doneStepContainer}>
       <View style={styles.contextChipRow}>
         {selectedRoute ? (
           <Pressable style={styles.contextChip} onPress={onChangeLine}>
-            <View style={[styles.contextChipBadge, {backgroundColor: selectedRoute.color}]}>
-              <Text style={[styles.contextChipBadgeText, {color: selectedRoute.textColor ?? '#fff'}]}>
-                {selectedRoute.label}
+            <View style={[styles.contextChipBadge, showBusBadge && styles.contextChipBadgeBus, {backgroundColor: selectedRoute.color}]}>
+              <Text
+                adjustsFontSizeToFit
+                minimumFontScale={0.74}
+                numberOfLines={1}
+                style={[styles.contextChipBadgeText, showBusBadge && styles.contextChipBadgeTextBus, {color: selectedRoute.textColor ?? '#fff'}]}>
+                {selectedRouteBadgeLabel}
               </Text>
             </View>
             <Text style={styles.contextChipLabel}>{selectedRoute.label} line</Text>
@@ -1570,53 +1699,116 @@ function DoneStep({
       </View>
 
       {liveStatusText ? <Text style={styles.sectionHint}>{liveStatusText}</Text> : null}
-      {arrival !== undefined && selectedRoute ? (
-        <View style={styles.doneArrivalRow}>
-          <View style={[styles.doneArrivalBadge, {backgroundColor: selectedRoute.color}]}>
-            <Text style={[styles.doneArrivalBadgeText, {color: selectedRoute.textColor ?? '#fff'}]}>
-              {selectedRoute.label}
-            </Text>
-          </View>
-          <View style={styles.doneArrivalInfo}>
-            <Text style={styles.doneArrivalDest}>{arrival.destination ?? selectedStation?.name ?? '—'}</Text>
-            <Text style={styles.doneArrivalTime}>{arrival.minutes != null ? `${arrival.minutes}m` : '—'}</Text>
-          </View>
-        </View>
-      ) : null}
-
-      <DirectionToggle value={line.direction} onChange={direction => onChange(line.id, {direction})} />
 
       <View style={styles.secondarySectionCard}>
-        <View style={styles.sectionBlock}>
-          <Text style={styles.sectionLabel}>Custom Name</Text>
-          <TextInput
-            value={line.label}
-            onChangeText={value => onChange(line.id, {label: value})}
-            placeholder={selectedStation?.name ?? 'Give this slot a name'}
-            placeholderTextColor={colors.textMuted}
-            style={styles.customInput}
-          />
-        </View>
+        {line.displayFormat === 'single-line' ? (
+          <>
+            <ContentToggle
+              label="Line text"
+              value={line.primaryContent}
+              onChange={primaryContent => onChange(line.id, {primaryContent})}
+            />
+            {line.primaryContent === 'custom' ? (
+              <View style={styles.sectionBlock}>
+                <Text style={styles.sectionLabel}>Custom Text</Text>
+                <TextInput
+                  value={line.label}
+                  onChangeText={value => onChange(line.id, {label: value})}
+                  placeholder={selectedStation?.name ?? 'Add custom text'}
+                  placeholderTextColor={colors.textMuted}
+                  style={styles.customInput}
+                />
+              </View>
+            ) : null}
+          </>
+        ) : null}
 
-        <View style={styles.sectionBlock}>
-          <Text style={styles.sectionLabel}>Next Arrivals To Show</Text>
-          <View style={styles.stepperRow}>
-            <Pressable
-              disabled={!canDecreaseNextStops}
-              style={[styles.stepperButton, !canDecreaseNextStops && styles.stepperButtonDisabled]}
-              onPress={() => onChange(line.id, {nextStops: clampNextStops(line.nextStops - 1)})}>
-              <Text style={[styles.stepperButtonText, !canDecreaseNextStops && styles.stepperButtonTextDisabled]}>-</Text>
-            </Pressable>
-            <Text style={styles.stepperValue}>{line.nextStops}</Text>
-            <Pressable
-              disabled={!canIncreaseNextStops}
-              style={[styles.stepperButton, !canIncreaseNextStops && styles.stepperButtonDisabled]}
-              onPress={() => onChange(line.id, {nextStops: clampNextStops(line.nextStops + 1)})}>
-              <Text style={[styles.stepperButtonText, !canIncreaseNextStops && styles.stepperButtonTextDisabled]}>+</Text>
-            </Pressable>
+        {line.displayFormat === 'two-line' ? (
+          <>
+            <ContentToggle
+              label="Top line"
+              value={line.primaryContent}
+              onChange={primaryContent => onChange(line.id, {primaryContent})}
+            />
+            {line.primaryContent === 'custom' ? (
+              <View style={styles.sectionBlock}>
+                <Text style={styles.sectionLabel}>Top Custom Text</Text>
+                <TextInput
+                  value={line.label}
+                  onChangeText={value => onChange(line.id, {label: value})}
+                  placeholder={selectedStation?.name ?? 'Add custom text'}
+                  placeholderTextColor={colors.textMuted}
+                  style={styles.customInput}
+                />
+              </View>
+            ) : null}
+            <ContentToggle
+              label="Bottom line"
+              value={line.secondaryContent}
+              onChange={secondaryContent => onChange(line.id, {secondaryContent})}
+            />
+            {line.secondaryContent === 'custom' ? (
+              <View style={styles.sectionBlock}>
+                <Text style={styles.sectionLabel}>Bottom Custom Text</Text>
+                <TextInput
+                  value={line.secondaryLabel}
+                  onChangeText={value => onChange(line.id, {secondaryLabel: value})}
+                  placeholder={selectedStation?.name ?? 'Add custom text'}
+                  placeholderTextColor={colors.textMuted}
+                  style={styles.customInput}
+                />
+              </View>
+            ) : null}
+          </>
+        ) : null}
+
+        {line.displayFormat === 'times-line' ? (
+          <>
+            <ContentToggle
+              label="Top line"
+              value={line.primaryContent}
+              onChange={primaryContent => onChange(line.id, {primaryContent})}
+            />
+            {line.primaryContent === 'custom' ? (
+              <View style={styles.sectionBlock}>
+                <Text style={styles.sectionLabel}>Custom Text</Text>
+                <TextInput
+                  value={line.label}
+                  onChangeText={value => onChange(line.id, {label: value})}
+                  placeholder={selectedStation?.name ?? 'Add custom text'}
+                  placeholderTextColor={colors.textMuted}
+                  style={styles.customInput}
+                />
+              </View>
+            ) : null}
+          </>
+        ) : null}
+
+        {showsDirection ? (
+          <DirectionToggle value={line.direction} onChange={direction => onChange(line.id, {direction})} />
+        ) : null}
+
+        {showsNextArrivals ? (
+          <View style={styles.sectionBlock}>
+            <Text style={styles.sectionLabel}>Next Arrivals To Show</Text>
+            <View style={styles.stepperRow}>
+              <Pressable
+                disabled={!canDecreaseNextStops}
+                style={[styles.stepperButton, !canDecreaseNextStops && styles.stepperButtonDisabled]}
+                onPress={() => onChange(line.id, {nextStops: clampNextStops(line.nextStops - 1)})}>
+                <Text style={[styles.stepperButtonText, !canDecreaseNextStops && styles.stepperButtonTextDisabled]}>-</Text>
+              </Pressable>
+              <Text style={styles.stepperValue}>{line.nextStops}</Text>
+              <Pressable
+                disabled={!canIncreaseNextStops}
+                style={[styles.stepperButton, !canIncreaseNextStops && styles.stepperButtonDisabled]}
+                onPress={() => onChange(line.id, {nextStops: clampNextStops(line.nextStops + 1)})}>
+                <Text style={[styles.stepperButtonText, !canIncreaseNextStops && styles.stepperButtonTextDisabled]}>+</Text>
+              </Pressable>
+            </View>
+            <Text style={styles.sectionHint}>Choose how many upcoming times to show, from 2 to 5.</Text>
           </View>
-          <Text style={styles.sectionHint}>This controls how many upcoming times appear for this slot.</Text>
-        </View>
+        ) : null}
       </View>
     </View>
   );
@@ -1657,6 +1849,19 @@ function routeLookupKey(mode: ModeId, stationId: string) {
   return `${mode}:${stationId}`;
 }
 
+function resolveSelectedStationForLine(
+  line: Pick<LinePick, 'mode' | 'routeId' | 'stationId'>,
+  city: CityId,
+  stationsByMode: StationsByMode,
+  stationsByLine: Partial<Record<string, Station[]>>,
+) {
+  const mode = normalizeMode(city, line.mode);
+  const lineStations = line.routeId ? (stationsByLine[line.routeId] ?? []) : [];
+  const stationFromLine = lineStations.find(station => station.id === line.stationId);
+  if (stationFromLine) return stationFromLine;
+  return (stationsByMode[mode] ?? []).find(station => station.id === line.stationId);
+}
+
 function areSameLinePicks(left: LinePick[], right: LinePick[]) {
   if (left.length !== right.length) return false;
   return left.every((line, idx) => {
@@ -1668,9 +1873,12 @@ function areSameLinePicks(left: LinePick[], right: LinePick[]) {
       line.routeId === other.routeId &&
       line.direction === other.direction &&
       line.label === other.label &&
+      line.secondaryLabel === other.secondaryLabel &&
       line.textColor === other.textColor &&
       line.nextStops === other.nextStops &&
-      line.displayFormat === other.displayFormat
+      line.displayFormat === other.displayFormat &&
+      line.primaryContent === other.primaryContent &&
+      line.secondaryContent === other.secondaryContent
     );
   });
 }
@@ -1713,14 +1921,69 @@ async function loadStationsForCityMode(city: CityId, mode: ModeId): Promise<Stat
   }));
 }
 
-function resolveRouteColor(city: CityId, lineId: string, apiColor: string | null): string {
-  if (apiColor) return apiColor;
-  return CITY_LINE_COLORS[city]?.[lineId]?.color ?? lineColorFor(lineId);
+function resolveMappedRouteAppearance(city: CityId, lineId: string, label?: string | null) {
+  const map = CITY_LINE_COLORS[city];
+  if (!map) return null;
+
+  const candidates = [lineId, label ?? '', lineId.toUpperCase(), (label ?? '').toUpperCase()].filter(Boolean);
+  for (const candidate of candidates) {
+    const appearance = map[candidate];
+    if (appearance) return appearance;
+  }
+
+  return null;
 }
 
-function resolveRouteTextColor(city: CityId, lineId: string, apiTextColor: string | null): string {
+function resolveNycBusAppearance(lineId: string, label?: string | null) {
+  const normalized = `${lineId} ${label ?? ''}`.toUpperCase();
+
+  if (normalized.includes('SBS') || normalized.includes('SELECT BUS')) {
+    return {color: '#00A1DE', textColor: '#FFFFFF'};
+  }
+
+  if (normalized.includes('LTD') || normalized.includes('LIMITED')) {
+    return {color: '#EE352E', textColor: '#FFFFFF'};
+  }
+
+  if (normalized.startsWith('BM') || normalized.startsWith('QM') || normalized.startsWith('X') || normalized.startsWith('SIM')) {
+    return {color: '#006B3F', textColor: '#FFFFFF'};
+  }
+
+  return {color: '#0039A6', textColor: '#FFFFFF'};
+}
+
+function resolveRouteColor(city: CityId, mode: ModeId, lineId: string, label: string | null, apiColor: string | null): string {
+  if (city === 'new-york' && mode === 'bus') {
+    return resolveNycBusAppearance(lineId, label).color;
+  }
+
+  const mapped = resolveMappedRouteAppearance(city, lineId, label);
+  if (mapped) return mapped.color;
+  if (apiColor) return apiColor;
+  return lineColorFor(lineId);
+}
+
+function resolveRouteTextColor(city: CityId, mode: ModeId, lineId: string, label: string | null, apiTextColor: string | null): string {
+  if (city === 'new-york' && mode === 'bus') {
+    return resolveNycBusAppearance(lineId, label).textColor;
+  }
+
+  const mapped = resolveMappedRouteAppearance(city, lineId, label);
+  if (mapped) return mapped.textColor;
   if (apiTextColor) return apiTextColor;
-  return CITY_LINE_COLORS[city]?.[lineId]?.textColor ?? '#FFFFFF';
+  return '#FFFFFF';
+}
+
+function formatRoutePickerLabel(city: CityId, mode: ModeId, route: Route) {
+  if (city === 'new-york' && mode === 'bus') {
+    return route.label.replace(/-?SBS\b/gi, '+').replace(/\s+/g, '');
+  }
+
+  return route.label;
+}
+
+function isNycBusBadge(city: CityId, mode: ModeId) {
+  return city === 'new-york' && mode === 'bus';
 }
 
 async function loadRoutesForStation(city: CityId, mode: ModeId, stopId: string): Promise<Route[]> {
@@ -1728,8 +1991,8 @@ async function loadRoutesForStation(city: CityId, mode: ModeId, stopId: string):
   return response.lines.map(line => ({
     id: line.id,
     label: line.label || line.id,
-    color: resolveRouteColor(city, line.id, line.color),
-    textColor: resolveRouteTextColor(city, line.id, line.textColor),
+    color: resolveRouteColor(city, mode, line.id, line.label, line.color),
+    textColor: resolveRouteTextColor(city, mode, line.id, line.label, line.textColor),
   }));
 }
 
@@ -1738,9 +2001,308 @@ async function loadGlobalLinesForCityMode(city: CityId, mode: ModeId): Promise<R
   return response.lines.map(line => ({
     id: line.id,
     label: line.label || line.id,
-    color: resolveRouteColor(city, line.id, line.color),
-    textColor: resolveRouteTextColor(city, line.id, line.textColor),
+    color: resolveRouteColor(city, mode, line.id, line.label, line.color),
+    textColor: resolveRouteTextColor(city, mode, line.id, line.label, line.textColor),
   }));
+}
+
+function naturalRouteLabelCompare(left: string, right: string) {
+  return left.localeCompare(right, undefined, {numeric: true, sensitivity: 'base'});
+}
+
+function normalizeRoutePickerLabel(route: Route) {
+  return route.label.trim().toUpperCase();
+}
+
+function compareDuplicateRouteCandidates(left: Route, right: Route) {
+  const leftLabel = normalizeRoutePickerLabel(left);
+  const rightLabel = normalizeRoutePickerLabel(right);
+  const leftExact = left.id.toUpperCase() === leftLabel ? 0 : 1;
+  const rightExact = right.id.toUpperCase() === rightLabel ? 0 : 1;
+  if (leftExact !== rightExact) return leftExact - rightExact;
+
+  if (left.id.length !== right.id.length) return left.id.length - right.id.length;
+
+  return naturalRouteLabelCompare(left.id, right.id);
+}
+
+function dedupeRoutesForPicker(routes: Route[]): Route[] {
+  const seen = new Map<string, Route>();
+
+  for (const route of routes) {
+    const key = normalizeRoutePickerLabel(route);
+    const existing = seen.get(key);
+    if (!existing || compareDuplicateRouteCandidates(route, existing) < 0) {
+      seen.set(key, route);
+    }
+  }
+
+  return [...seen.values()];
+}
+
+function sortRoutesForPicker(routes: Route[]): Route[] {
+  return [...routes].sort((left, right) => {
+    const colorCompare = left.color.localeCompare(right.color);
+    if (colorCompare !== 0) return colorCompare;
+
+    const labelCompare = naturalRouteLabelCompare(left.label, right.label);
+    if (labelCompare !== 0) return labelCompare;
+
+    return naturalRouteLabelCompare(left.id, right.id);
+  });
+}
+
+function prepareRouteEntriesForPicker(city: CityId, mode: ModeId, routes: Route[]) {
+  const deduped = dedupeRoutesForPicker(routes);
+  if (city === 'new-york' && mode === 'train') {
+    return buildNycTrainPickerEntries(deduped);
+  }
+  if (city === 'new-york' && mode === 'bus') {
+    return sortRoutesForNycBusPicker(deduped).map(route => routeToPickerItem(route, city, mode));
+  }
+  return sortRoutesForPicker(deduped).map(route => routeToPickerItem(route, city, mode));
+}
+
+function routeToPickerItem(route: Route, city: CityId, mode: ModeId): RoutePickerItem {
+  return {
+    id: route.id,
+    label: route.label,
+    displayLabel: formatRoutePickerLabel(city, mode, route),
+    color: route.color,
+    textColor: route.textColor,
+    routes: [route],
+  };
+}
+
+function getNycTrainGroupOrder() {
+  const groups = [
+    ['1', '2', '3'],
+    ['A', 'C', 'E'],
+    ['4', '5', '6', '6X'],
+    ['N', 'Q', 'R', 'W'],
+    ['B', 'D', 'F', 'M'],
+    ['7', '7X'],
+    ['G', 'J', 'Z', 'L', 'S', 'FS', 'GS', 'SI'],
+  ];
+
+  const order = new Map<string, number>();
+  groups.forEach((labels, index) => {
+    labels.forEach(label => order.set(label, index));
+  });
+  return order;
+}
+
+function getNycTrainBaseLabel(route: Route) {
+  const label = normalizeRoutePickerLabel(route);
+  if (label === 'FX') return 'F';
+  if (label.endsWith('X') && /^\d/.test(label)) return label.slice(0, -1);
+  return label;
+}
+
+function buildNycTrainPickerEntries(routes: Route[]) {
+  const grouped = new Map<string, Route[]>();
+
+  for (const route of routes) {
+    const key = getNycTrainBaseLabel(route);
+    const current = grouped.get(key) ?? [];
+    current.push(route);
+    grouped.set(key, current);
+  }
+
+  return [...grouped.entries()]
+    .map(([key, variants]) => {
+      const sortedVariants = [...variants].sort((left, right) => {
+        const leftPriority = isExpressVariant(left) ? 1 : 0;
+        const rightPriority = isExpressVariant(right) ? 1 : 0;
+        if (leftPriority !== rightPriority) return leftPriority - rightPriority;
+        return naturalRouteLabelCompare(left.label, right.label);
+      });
+      const primary = sortedVariants[0];
+      return {
+        id: key,
+        label: key,
+        displayLabel: key,
+        color: primary.color,
+        textColor: primary.textColor,
+        routes: sortedVariants,
+      };
+    })
+    .sort((left, right) => {
+      const leftGroup = getNycTrainGroupOrder().get(left.label.toUpperCase()) ?? 999;
+      const rightGroup = getNycTrainGroupOrder().get(right.label.toUpperCase()) ?? 999;
+      if (leftGroup !== rightGroup) return leftGroup - rightGroup;
+      return naturalRouteLabelCompare(left.label, right.label);
+    });
+}
+
+function buildRouteGroups(city: CityId, mode: ModeId, routes: RoutePickerItem[]): RouteGroup[] {
+  if (city === 'new-york' && mode === 'train') {
+    return buildNycTrainRouteGroups(routes);
+  }
+  if (city === 'new-york' && mode === 'bus') {
+    return buildNycBusRouteGroups(routes);
+  }
+
+  const groups: Array<{key: string; routes: Route[]}> = [];
+
+  for (const route of routes) {
+    const current = groups[groups.length - 1];
+    if (!current || current.key !== route.color) {
+      groups.push({key: route.color, routes: [route]});
+      continue;
+    }
+    current.routes.push(route);
+  }
+
+  return groups;
+}
+
+function buildNycTrainRouteGroups(routes: RoutePickerItem[]): RouteGroup[] {
+  const groups = [
+    {key: '123', labels: new Set(['1', '2', '3'])},
+    {key: 'ace', labels: new Set(['A', 'C', 'E'])},
+    {key: '456', labels: new Set(['4', '5', '6', '6X'])},
+    {key: 'nqrw', labels: new Set(['N', 'Q', 'R', 'W'])},
+    {key: 'bdfm', labels: new Set(['B', 'D', 'F', 'M'])},
+    {key: '7', labels: new Set(['7', '7X'])},
+    {key: 'jz', labels: new Set(['J', 'Z'])},
+    {key: 'ls', labels: new Set(['L', 'S', 'FS', 'GS'])},
+    {key: 'other', labels: new Set(['G', 'SI'])},
+  ];
+
+  return groups
+    .map(group => {
+      const groupRoutes = routes.filter(route => group.labels.has(normalizeRoutePickerLabel(route)));
+      return {
+        key: group.key,
+        routes: group.key === 'other'
+          ? [...groupRoutes].sort((left, right) => sortRoutesForPicker(left.routes.concat(right.routes)).length ? naturalRouteLabelCompare(left.label, right.label) : 0)
+          : groupRoutes,
+      };
+    })
+    .filter(group => group.routes.length > 0);
+}
+
+function normalizeBusLabel(route: {label: string}) {
+  return normalizeRoutePickerLabel(route).replace(/\s+/g, '');
+}
+
+function getNycBusGroupKey(route: {label: string}) {
+  const label = normalizeBusLabel(route);
+  if (label.startsWith('BX')) return 'bronx';
+  if (label.startsWith('B')) return 'brooklyn';
+  if (label.startsWith('M')) return 'manhattan';
+  if (label.startsWith('Q')) return 'queens';
+  if (label.startsWith('S')) return 'staten-island';
+  return 'other';
+}
+
+function getNycBusGroupTitle(key: string) {
+  switch (key) {
+    case 'bronx':
+      return 'Bronx';
+    case 'brooklyn':
+      return 'Brooklyn';
+    case 'manhattan':
+      return 'Manhattan';
+    case 'queens':
+      return 'Queens';
+    case 'staten-island':
+      return 'Staten Island';
+    default:
+      return 'Other';
+  }
+}
+
+function getNycBusGroupOrder(key: string) {
+  switch (key) {
+    case 'bronx':
+      return 0;
+    case 'brooklyn':
+      return 1;
+    case 'manhattan':
+      return 2;
+    case 'queens':
+      return 3;
+    case 'staten-island':
+      return 4;
+    default:
+      return 5;
+  }
+}
+
+function getBusRouteSortParts(route: {label: string}) {
+  const label = normalizeBusLabel(route);
+  const match = label.match(/^([A-Z]+)(\d+)?([A-Z]*)$/);
+  if (!match) {
+    return {prefix: label, number: Number.MAX_SAFE_INTEGER, suffix: ''};
+  }
+
+  return {
+    prefix: match[1],
+    number: match[2] ? Number(match[2]) : Number.MAX_SAFE_INTEGER,
+    suffix: match[3] ?? '',
+  };
+}
+
+function sortRoutesForNycBusPicker(routes: Route[]) {
+  return [...routes].sort((left, right) => {
+    const leftGroup = getNycBusGroupOrder(getNycBusGroupKey(left));
+    const rightGroup = getNycBusGroupOrder(getNycBusGroupKey(right));
+    if (leftGroup !== rightGroup) return leftGroup - rightGroup;
+
+    const leftParts = getBusRouteSortParts(left);
+    const rightParts = getBusRouteSortParts(right);
+
+    const prefixCompare = naturalRouteLabelCompare(leftParts.prefix, rightParts.prefix);
+    if (prefixCompare !== 0) return prefixCompare;
+
+    if (leftParts.number !== rightParts.number) return leftParts.number - rightParts.number;
+
+    const suffixCompare = naturalRouteLabelCompare(leftParts.suffix, rightParts.suffix);
+    if (suffixCompare !== 0) return suffixCompare;
+
+    return naturalRouteLabelCompare(left.label, right.label);
+  });
+}
+
+function buildNycBusRouteGroups(routes: RoutePickerItem[]): RouteGroup[] {
+  const grouped = new Map<string, RoutePickerItem[]>();
+
+  for (const route of routes) {
+    const key = getNycBusGroupKey(route);
+    const current = grouped.get(key) ?? [];
+    current.push(route);
+    grouped.set(key, current);
+  }
+
+  return [...grouped.entries()]
+    .sort((left, right) => getNycBusGroupOrder(left[0]) - getNycBusGroupOrder(right[0]))
+    .map(([key, groupRoutes]) => ({
+      key,
+      title: getNycBusGroupTitle(key),
+      routes: [...groupRoutes].sort((left, right) => {
+        const leftParts = getBusRouteSortParts(left);
+        const rightParts = getBusRouteSortParts(right);
+        const prefixCompare = naturalRouteLabelCompare(leftParts.prefix, rightParts.prefix);
+        if (prefixCompare !== 0) return prefixCompare;
+        if (leftParts.number !== rightParts.number) return leftParts.number - rightParts.number;
+        const suffixCompare = naturalRouteLabelCompare(leftParts.suffix, rightParts.suffix);
+        if (suffixCompare !== 0) return suffixCompare;
+        return naturalRouteLabelCompare(left.label, right.label);
+      }),
+    }))
+    .filter(group => group.routes.length > 0);
+}
+
+function isExpressVariant(route: {label: string}) {
+  const label = normalizeRoutePickerLabel(route);
+  return label.endsWith('X') || label === 'FX';
+}
+
+function isExpressRouteBadge(city: CityId, mode: ModeId, route: RoutePickerItem) {
+  if (city !== 'new-york' || mode !== 'train') return false;
+  return route.routes.length === 1 && isExpressVariant(route.routes[0]);
 }
 
 function statusFromArrival(arrival: TransitArrival): Arrival['status'] {
@@ -1802,9 +2364,12 @@ function newLine(
       routeId: firstRoute?.id ?? '',
       direction: 'uptown',
       label: '',
+      secondaryLabel: '',
       textColor: DEFAULT_TEXT_COLOR,
       nextStops: DEFAULT_NEXT_STOPS,
-      displayFormat: 'headsign-single' as DisplayFormat,
+      displayFormat: 'single-line' as DisplayFormat,
+      primaryContent: 'destination' as DisplayContent,
+      secondaryContent: 'direction' as DisplayContent,
     },
     stationsByMode,
     routesByStation,
@@ -1834,6 +2399,7 @@ function normalizeLine(
   const routesLoaded = routes.length > 0;
   const routeMatch = allowedRoutes.find(item => item.id === line.routeId);
   const resolvedRouteId = routeMatch?.id ?? (routesLoaded ? (allowedRoutes[0]?.id ?? routes[0]?.id ?? line.routeId) : line.routeId);
+  const displayFormat = normalizeDisplayFormat(line.displayFormat);
 
   return {
     ...line,
@@ -1841,10 +2407,13 @@ function normalizeLine(
     stationId: resolvedStationId,
     routeId: resolvedRouteId,
     direction: line.direction === 'downtown' ? 'downtown' : 'uptown',
-    label: line.label ?? '',
+    label: normalizeCustomLabel(line.label),
+    secondaryLabel: normalizeCustomLabel(line.secondaryLabel),
     textColor: normalizeHexColor(line.textColor) ?? DEFAULT_TEXT_COLOR,
     nextStops: clampNextStops(line.nextStops),
-    displayFormat: line.displayFormat ?? 'headsign-single',
+    displayFormat,
+    primaryContent: normalizePrimaryContent(displayFormat, line.primaryContent, line.displayFormat),
+    secondaryContent: normalizeSecondaryContent(displayFormat, line.secondaryContent, line.displayFormat),
   };
 }
 
@@ -1899,7 +2468,62 @@ function syncArrivals(existing: Arrival[], lines: LinePick[]): Arrival[] {
 
 function clampNextStops(value: number) {
   if (!Number.isFinite(value)) return DEFAULT_NEXT_STOPS;
-  return Math.min(MAX_NEXT_STOPS, Math.max(1, Math.round(value)));
+  return Math.min(MAX_NEXT_STOPS, Math.max(MIN_NEXT_STOPS, Math.round(value)));
+}
+
+function normalizeDisplayFormat(value: string | undefined | null): DisplayFormat {
+  switch (value) {
+    case 'single-line':
+    case 'two-line':
+    case 'times-line':
+      return value;
+    case 'direction-single':
+    case 'headsign-single':
+      return 'single-line';
+    case 'both-single':
+    case 'both-single-flip':
+      return 'two-line';
+    case 'headsign-multi':
+    case 'direction-multi':
+      return 'times-line';
+    default:
+      return 'single-line';
+  }
+}
+
+function normalizePrimaryContent(
+  displayFormat: DisplayFormat,
+  value: DisplayContent | undefined | null,
+  legacyFormat?: string | null,
+): DisplayContent {
+  if (value === 'direction' || value === 'custom' || value === 'destination') return value;
+  if (legacyFormat === 'direction-single' || legacyFormat === 'both-single' || legacyFormat === 'direction-multi') {
+    return 'direction';
+  }
+  return 'destination';
+}
+
+function normalizeSecondaryContent(
+  displayFormat: DisplayFormat,
+  value: DisplayContent | undefined | null,
+  legacyFormat?: string | null,
+): DisplayContent {
+  if (displayFormat !== 'two-line') return 'direction';
+  if (value === 'direction' || value === 'custom' || value === 'destination') return value;
+  if (legacyFormat === 'both-single') return 'destination';
+  if (legacyFormat === 'both-single-flip') return 'direction';
+  return 'direction';
+}
+
+function resolveDisplayContent(
+  content: DisplayContent,
+  destinationLabel: string,
+  directionLabel: string,
+  customLabel: string,
+) {
+  if (content === 'direction') return directionLabel;
+  if (content === 'custom') return customLabel || destinationLabel;
+  return destinationLabel;
 }
 
 function cycleTimeOption(current: string, delta: 1 | -1) {
@@ -1907,6 +2531,11 @@ function cycleTimeOption(current: string, delta: 1 | -1) {
   const safeIndex = index === -1 ? 0 : index;
   const nextIndex = (safeIndex + delta + TIME_OPTIONS.length) % TIME_OPTIONS.length;
   return TIME_OPTIONS[nextIndex];
+}
+
+function normalizeCustomLabel(value: string | undefined | null) {
+  if (typeof value !== 'string') return '';
+  return value.trim().length > 0 ? value : '';
 }
 
 function normalizeHexColor(value: string | undefined | null): string | null {
@@ -1930,6 +2559,7 @@ function buildNextArrivalTimes(firstMinutes: number, count: number): string[] {
 
 const styles = StyleSheet.create({
   container: {flex: 1, backgroundColor: colors.background},
+  keyboardAvoid: {flex: 1},
   scroll: {padding: spacing.lg, paddingBottom: 140, gap: spacing.md},
   topBarWrap: {gap: spacing.xs},
   topBar: {
@@ -2273,6 +2903,36 @@ const styles = StyleSheet.create({
   segmentDisabled: {opacity: 0.4},
   segmentText: {color: colors.textMuted, fontWeight: '700', fontSize: 11, textAlign: 'center'},
   segmentTextActive: {color: colors.accent},
+  choiceList: {gap: spacing.xs},
+  choiceRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.background,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.sm,
+  },
+  choiceRowActive: {borderColor: colors.accent, backgroundColor: colors.accentMuted},
+  choiceRowCopy: {flex: 1, gap: 2},
+  choiceRowLabel: {color: colors.text, fontSize: 13, fontWeight: '800'},
+  choiceRowLabelActive: {color: colors.text},
+  choiceRowHint: {color: colors.textMuted, fontSize: 11, lineHeight: 14},
+  choiceRowHintActive: {color: colors.textMuted},
+  choiceRowCheck: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.surface,
+  },
+  choiceRowCheckActive: {borderColor: colors.accent, backgroundColor: colors.accent},
+  choiceRowCheckText: {color: colors.background, fontSize: 11, fontWeight: '900'},
   searchRow: {flexDirection: 'row', alignItems: 'stretch', gap: spacing.xs},
   searchInput: {
     backgroundColor: colors.surface,
@@ -2541,8 +3201,16 @@ const styles = StyleSheet.create({
   transitionMessage: {color: colors.text, fontSize: 16, fontWeight: '700', textAlign: 'center'},
   transitionDots: {flexDirection: 'row', gap: 6},
   transitionDot: {width: 6, height: 6, borderRadius: 3, backgroundColor: colors.textMuted},
-  lineGridScroll: {maxHeight: 320},
-  lineGrid: {flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, paddingBottom: spacing.sm},
+  lineGroupList: {gap: spacing.md, paddingBottom: spacing.sm},
+  lineGroup: {
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    padding: spacing.sm,
+  },
+  lineGroupTitle: {color: colors.textMuted, fontSize: 12, fontWeight: '700', marginBottom: spacing.sm},
+  lineGrid: {flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm},
   lineGridSkeleton: {flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm},
   lineGridSkeletonTile: {width: 64, height: 64, borderRadius: radii.md, backgroundColor: colors.surface},
   lineBadgeTile: {
@@ -2557,7 +3225,14 @@ const styles = StyleSheet.create({
   },
   lineBadgeTileActive: {borderColor: colors.accent, backgroundColor: colors.accentMuted},
   lineBadgeCircle: {width: 52, height: 52, borderRadius: 26, alignItems: 'center', justifyContent: 'center'},
+  lineBadgeBusPill: {width: 54, height: 34, borderRadius: 10, paddingHorizontal: 6},
+  lineBadgeCommuterRail: {width: 52, height: 52, paddingHorizontal: 4},
+  lineBadgeDiamond: {width: 44, height: 44, borderRadius: 8, transform: [{rotate: '45deg'}]},
   lineBadgeText: {fontWeight: '900', fontSize: 18},
+  lineBadgeTextCompact: {fontSize: 13},
+  lineBadgeBusText: {fontSize: 15, lineHeight: 18, textAlign: 'center', includeFontPadding: false},
+  lineBadgeCommuterRailText: {fontSize: 10, lineHeight: 11, textAlign: 'center', includeFontPadding: false, paddingHorizontal: 2},
+  lineBadgeTextDiamond: {transform: [{rotate: '-45deg'}]},
   stepSearchInput: {
     backgroundColor: colors.surface,
     borderRadius: radii.md,
@@ -2574,13 +3249,17 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
+    paddingHorizontal: spacing.sm,
     paddingVertical: spacing.sm,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: 'transparent',
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
   },
-  stopRowSelected: {backgroundColor: colors.accentMuted},
-  stopLineDot: {width: 8, height: 8, borderRadius: 4},
-  stopLineDotEmpty: {width: 8, height: 8},
+  stopRowSelected: {backgroundColor: colors.accentMuted, borderColor: colors.accent, borderBottomColor: colors.accent},
+  stopLineDot: {width: 10, height: 10, borderRadius: 5},
+  stopLineDotEmpty: {width: 10, height: 10},
   stopRowInfo: {flex: 1},
   stopCheckmark: {
     width: 24,
@@ -2593,7 +3272,9 @@ const styles = StyleSheet.create({
   stopCheckmarkText: {color: colors.background, fontSize: 12, fontWeight: '900'},
   stopContextBar: {flexDirection: 'row', alignItems: 'center', gap: spacing.sm},
   stopContextBadge: {width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center'},
+  stopContextBadgeBus: {width: 42, borderRadius: 8, paddingHorizontal: 4},
   stopContextBadgeText: {fontWeight: '900', fontSize: 12},
+  stopContextBadgeTextBus: {fontSize: 11, lineHeight: 13, includeFontPadding: false},
   stopContextLabel: {color: colors.textMuted, fontSize: 12, fontWeight: '700'},
   verifyingBadge: {color: colors.textMuted, fontSize: 11, fontWeight: '700'},
   doneStepContainer: {gap: spacing.sm},
@@ -2606,26 +3287,13 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
     backgroundColor: colors.surface,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 6,
-  },
+      paddingHorizontal: spacing.sm,
+      paddingVertical: 6,
+    },
   contextChipBadge: {width: 20, height: 20, borderRadius: 10, alignItems: 'center', justifyContent: 'center'},
+  contextChipBadgeBus: {width: 38, borderRadius: 8, paddingHorizontal: 4},
   contextChipBadgeText: {fontWeight: '900', fontSize: 10},
+  contextChipBadgeTextBus: {fontSize: 9, lineHeight: 10, includeFontPadding: false},
   contextChipLabel: {color: colors.text, fontSize: 13, fontWeight: '700', maxWidth: 120},
   contextChipX: {color: colors.textMuted, fontSize: 11, fontWeight: '700'},
-  doneArrivalRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    borderRadius: radii.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.card,
-    padding: spacing.sm,
-  },
-  doneArrivalBadge: {width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center'},
-  doneArrivalBadgeText: {fontWeight: '900', fontSize: 16},
-  doneArrivalInfo: {flex: 1, gap: 2},
-  doneArrivalDest: {color: colors.text, fontSize: 14, fontWeight: '800'},
-  doneArrivalTime: {color: colors.textMuted, fontSize: 12, fontWeight: '700'},
 });
