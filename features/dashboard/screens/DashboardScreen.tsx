@@ -1083,21 +1083,36 @@ const FORMAT_GROUPS: Array<{
   {
     label: 'Single arrival',
     options: [
-      {id: 'headsign-single',  name: 'Destination',  desc: 'Train headsign and next arrival'},
-      {id: 'direction-single', name: 'Direction',     desc: 'Uptown / Downtown and next arrival'},
+      {
+        id: 'headsign-single',
+        name: 'Destination',
+        desc: 'Example: Woodlawn on the left with the next arrival on the right.',
+      },
+      {
+        id: 'direction-single',
+        name: 'Direction',
+        desc: 'Example: Uptown on the left with the next arrival on the right.',
+      },
     ],
   },
   {
-    label: 'Dual line',
+    label: 'Two-line layouts',
     options: [
-      {id: 'both-single', name: 'Direction + Destination', desc: 'Direction above, headsign below'},
-    ],
-  },
-  {
-    label: 'Multiple arrivals',
-    options: [
-      {id: 'headsign-multi',  name: 'Destination + Times', desc: 'Headsign with next 2 arrivals'},
-      {id: 'direction-multi', name: 'Direction + Times',   desc: 'Direction with next 2 arrivals'},
+      {
+        id: 'both-single',
+        name: 'Direction + destination',
+        desc: 'Example: Uptown on the first line and Woodlawn underneath.',
+      },
+      {
+        id: 'headsign-multi',
+        name: 'Destination + times',
+        desc: 'Example: Woodlawn on top with more arrival times underneath.',
+      },
+      {
+        id: 'direction-multi',
+        name: 'Direction + times',
+        desc: 'Example: Uptown on top with more arrival times underneath.',
+      },
     ],
   },
 ];
@@ -1108,41 +1123,44 @@ function FormatSkeleton({format, accent}: {format: DisplayFormat; accent: string
   const hasSecondLine    = format === 'both-single';
   const hasNextTimes     = format === 'headsign-multi' || format === 'direction-multi';
   // Accent rule: only highlight the element that distinguishes this format from headsign-single
-  const accentDirPill  = hasDirectionPill;
   const accentSecondLine = hasSecondLine;
   const accentChips    = hasNextTimes;
+  const primaryLabel = hasDirectionPill ? 'Uptown' : 'Woodlawn';
+  const secondaryLabel = hasSecondLine ? 'Woodlawn' : null;
 
   return (
     <View style={styles.fmtSkel}>
       <View style={styles.fmtSkelRow}>
         <View style={styles.fmtSkelBadge} />
         <View style={styles.fmtSkelBody}>
-          {hasDirectionPill ? (
-            <View style={styles.fmtSkelDirRow}>
-              <View style={[styles.fmtSkelDirPill, accentDirPill && {backgroundColor: accent + '28', borderColor: accent}]}>
-                <Text style={[styles.fmtSkelDirArrow, accentDirPill && {color: accent}]}>↑↓</Text>
-              </View>
-              <View style={styles.fmtSkelBarShort} />
-            </View>
-          ) : (
-            <View style={styles.fmtSkelBarFull} />
-          )}
+          <View style={styles.fmtSkelPrimaryWrap}>
+            <Text style={styles.fmtSkelPrimaryText} numberOfLines={1}>
+              {primaryLabel}
+            </Text>
+          </View>
           {hasSecondLine ? (
-            <View style={[styles.fmtSkelBarSecond, accentSecondLine && {backgroundColor: accent + '50'}]} />
+            <View style={[styles.fmtSkelSecondaryWrap, accentSecondLine && {backgroundColor: accent + '18'}]}>
+              <Text style={styles.fmtSkelSecondaryText} numberOfLines={1}>
+                {secondaryLabel}
+              </Text>
+            </View>
           ) : null}
         </View>
-        <View style={styles.fmtSkelEta} />
+        <View style={styles.fmtSkelEta}>
+          <Text style={styles.fmtSkelEtaText}>3m</Text>
+        </View>
       </View>
       {hasNextTimes ? (
         <View style={styles.fmtSkelChipRow}>
-          {[0, 1, 2].map(i => (
+          {['7m', '10m', '14m'].map(value => (
             <View
-              key={i}
+              key={value}
               style={[
                 styles.fmtSkelChip,
                 accentChips && {borderColor: accent, backgroundColor: accent + '18'},
-              ]}
-            />
+              ]}>
+              <Text style={styles.fmtSkelChipText}>{value}</Text>
+            </View>
           ))}
         </View>
       ) : null}
@@ -1172,7 +1190,7 @@ function FormatPickerStep({
 
   let globalIndex = 0;
   return (
-    <ScrollView showsVerticalScrollIndicator={false} style={styles.stepScrollView}>
+    <View style={styles.stepSection}>
       <Text style={styles.stepTitle}>How should it look?</Text>
       <Text style={styles.stepSubtitle}>Choose a display format for this slot.</Text>
       <View style={styles.formatCardList}>
@@ -1180,7 +1198,7 @@ function FormatPickerStep({
           <View key={group.label} style={[styles.formatGroup, gi > 0 && styles.formatGroupSpaced]}>
             <View style={styles.formatGroupHeader}>
               <View style={styles.formatGroupLine} />
-              <Text style={styles.formatGroupLabel}>{group.label.toUpperCase()}</Text>
+              <Text style={styles.formatGroupLabel}>{group.label}</Text>
               <View style={styles.formatGroupLine} />
             </View>
             {group.options.map(option => {
@@ -1205,7 +1223,7 @@ function FormatPickerStep({
           </View>
         ))}
       </View>
-    </ScrollView>
+    </View>
   );
 }
 
@@ -2411,7 +2429,7 @@ const styles = StyleSheet.create({
   liveDisabledBody: {color: colors.textMuted, fontSize: 12},
   emptyHint: {color: colors.textMuted, fontSize: 12},
   // Onboarding step styles
-  stepScrollView: {maxHeight: 480},
+  stepSection: {gap: spacing.sm},
   stepContainer: {gap: spacing.sm},
   stepNavRow: {flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between'},
   stepBackButton: {paddingVertical: 4, paddingRight: spacing.sm},
@@ -2422,10 +2440,15 @@ const styles = StyleSheet.create({
   formatCard: {
     borderRadius: radii.md,
     borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.card,
-    padding: spacing.sm,
-    gap: spacing.xs,
+    borderColor: '#242933',
+    backgroundColor: '#12161C',
+    padding: spacing.md,
+    gap: spacing.sm,
+    shadowColor: '#000',
+    shadowOpacity: 0.16,
+    shadowRadius: 8,
+    shadowOffset: {width: 0, height: 2},
+    elevation: 2,
   },
   // ── Format skeleton ────────────────────────────────────────────────
   fmtSkel: {paddingVertical: spacing.sm, gap: 7},
@@ -2435,26 +2458,47 @@ const styles = StyleSheet.create({
     backgroundColor: '#1C2330', flexShrink: 0,
   },
   fmtSkelBody: {flex: 1, gap: 5},
-  fmtSkelBarFull: {height: 9, borderRadius: 3, backgroundColor: '#1C2330'},
-  fmtSkelBarShort: {flex: 1, height: 9, borderRadius: 3, backgroundColor: '#1C2330'},
-  fmtSkelBarSecond: {height: 8, borderRadius: 3, backgroundColor: '#1C2330', width: '55%'},
-  fmtSkelDirRow: {flexDirection: 'row', alignItems: 'center', gap: 6},
-  fmtSkelDirPill: {
-    borderWidth: 1, borderColor: '#1C2330',
-    borderRadius: 5, paddingHorizontal: 6, paddingVertical: 2,
+  fmtSkelPrimaryWrap: {
+    flex: 1,
+    minHeight: 22,
+    borderRadius: 5,
+    backgroundColor: '#1C2330',
+    paddingHorizontal: 8,
+    justifyContent: 'center',
   },
-  fmtSkelDirArrow: {fontSize: 10, fontWeight: '800', color: '#3A4555'},
-  fmtSkelEta: {width: 22, height: 9, borderRadius: 3, backgroundColor: '#1C2330', flexShrink: 0},
+  fmtSkelPrimaryText: {color: '#D7DEE6', fontSize: 13, fontWeight: '700'},
+  fmtSkelSecondaryWrap: {
+    minHeight: 18,
+    borderRadius: 5,
+    backgroundColor: '#1C2330',
+    paddingHorizontal: 8,
+    justifyContent: 'center',
+    width: '100%',
+  },
+  fmtSkelSecondaryText: {color: '#A9B3BE', fontSize: 13, fontWeight: '600'},
+  fmtSkelEta: {
+    minWidth: 30,
+    height: 22,
+    borderRadius: 5,
+    backgroundColor: '#1C2330',
+    flexShrink: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 6,
+  },
+  fmtSkelEtaText: {color: '#D7DEE6', fontSize: 10, fontWeight: '700'},
   fmtSkelChipRow: {
     flexDirection: 'row', gap: 5,
     paddingLeft: 36, // indent to align under text body
   },
   fmtSkelChip: {
-    width: 30, height: 16, borderRadius: 4,
+    minWidth: 34, height: 18, borderRadius: 4,
     borderWidth: 1, borderColor: '#1C2330', backgroundColor: 'transparent',
+    alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4,
   },
+  fmtSkelChipText: {color: '#A9B3BE', fontSize: 9, fontWeight: '700'},
   // ── Format groups ──────────────────────────────────────────────────
-  formatGroup: {gap: spacing.xs},
+  formatGroup: {gap: spacing.sm},
   formatGroupSpaced: {marginTop: spacing.lg},
   formatGroupHeader: {
     flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
@@ -2462,12 +2506,12 @@ const styles = StyleSheet.create({
   },
   formatGroupLine: {flex: 1, height: 1, backgroundColor: colors.border},
   formatGroupLabel: {
-    color: colors.textMuted, fontSize: 10, fontWeight: '800', letterSpacing: 1.2,
+    color: colors.textMuted, fontSize: 11, fontWeight: '700',
   },
-  formatCardDivider: {height: 1, backgroundColor: colors.border, marginHorizontal: -spacing.sm},
-  formatCardInfo: {gap: 2},
+  formatCardDivider: {height: 1, backgroundColor: '#262C35', marginHorizontal: -spacing.md},
+  formatCardInfo: {gap: 4},
   formatCardName: {color: colors.text, fontSize: 14, fontWeight: '800'},
-  formatCardDesc: {color: colors.textMuted, fontSize: 12},
+  formatCardDesc: {color: colors.textMuted, fontSize: 12, lineHeight: 17},
   formatCardCheck: {
     position: 'absolute',
     top: spacing.sm,
