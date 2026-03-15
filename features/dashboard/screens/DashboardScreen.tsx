@@ -11,6 +11,9 @@ import type {TransitArrival, TransitUiMode, DisplayContent, DisplayFormat} from 
 import Display3DPreview from '../components/Display3DPreview';
 import type {Display3DSlot} from '../components/Display3DPreview';
 import {CITY_LINE_COLORS, FALLBACK_ROUTE_COLORS, hashLineColor} from '../../../lib/lineColors';
+import {apiFetch} from '../../../lib/api';
+import {useAuth} from '../../../state/authProvider';
+import {useSelectedDevice} from '../../../hooks/useSelectedDevice';
 
 type ModeId = 'train' | 'bus' | 'trolley' | 'commuter-rail' | 'ferry';
 type Direction = 'uptown' | 'downtown';
@@ -72,6 +75,40 @@ const CITY_MODE_ORDER: Record<CityId, ModeId[]> = {
 };
 
 const Haptics = {selectionAsync: async () => {}, notificationAsync: async (_: any) => {}};
+
+function resolveBackendProvider(c: CityId, mode: ModeId): string {
+  if (c === 'new-york') {
+    if (mode === 'bus') return 'mta-bus';
+    if (mode === 'commuter-rail') return 'mta-lirr';
+    return 'mta-subway';
+  }
+  if (c === 'philadelphia') {
+    if (mode === 'bus') return 'septa-bus';
+    if (mode === 'trolley') return 'septa-trolley';
+    return 'septa-rail';
+  }
+  if (c === 'chicago') {
+    if (mode === 'bus') return 'cta-bus';
+    return 'cta-subway';
+  }
+  return 'mbta';
+}
+
+function cityModeFromProvider(provider: string): {city: CityId; mode: ModeId} | null {
+  const map: Record<string, {city: CityId; mode: ModeId}> = {
+    'mta-subway':    {city: 'new-york',     mode: 'train'},
+    'mta-bus':       {city: 'new-york',     mode: 'bus'},
+    'mta-lirr':      {city: 'new-york',     mode: 'commuter-rail'},
+    'septa-rail':    {city: 'philadelphia', mode: 'train'},
+    'septa-bus':     {city: 'philadelphia', mode: 'bus'},
+    'septa-trolley': {city: 'philadelphia', mode: 'trolley'},
+    'mbta':          {city: 'boston',       mode: 'train'},
+    'cta-subway':    {city: 'chicago',      mode: 'train'},
+    'cta-bus':       {city: 'chicago',      mode: 'bus'},
+  };
+  return map[provider] ?? null;
+}
+
 export default function DashboardScreen() {
   const router = useRouter();
   const {state: appState, setPreset, setSelectedStations, setArrivals: setAppArrivals} = useAppState();
@@ -83,6 +120,9 @@ export default function DashboardScreen() {
   const previewEnter = useRef(new Animated.Value(0)).current;
   const editorEnter = useRef(new Animated.Value(0)).current;
   const liveSupported = isLiveCitySupported(city);
+  const {deviceIds} = useAuth();
+  const selectedDevice = useSelectedDevice();
+  const hasLinkedDevice = deviceIds.length > 0;
   const [layoutSlots, setLayoutSlots] = useState<number>(DEFAULT_LAYOUT_SLOTS);
   const [lines, setLines] = useState<LinePick[]>(() => ensureLineCount([], city, DEFAULT_LAYOUT_SLOTS, {}, {}));
   const [selectedLineId, setSelectedLineId] = useState<string>(openConfigureStopOnLoad ? 'line-1' : '');
@@ -256,6 +296,58 @@ export default function DashboardScreen() {
     setArrivals(prev => syncArrivals(prev, lines));
   }, [lines]);
 
+  // Load saved device config on mount and restore lines/layoutSlots
+  useEffect(() => {
+    if (!hasLinkedDevice || !selectedDevice.id) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await apiFetch(`/device/${selectedDevice.id}/config`);
+        if (!res.ok || cancelled) return;
+        const data = await res.json();
+
+        const savedLines: Array<{provider: string; line: string; stop: string; direction?: string}> =
+          Array.isArray(data?.config?.lines) ? data.config.lines : [];
+
+        const savedDisplayType = Number(data?.config?.displayType);
+        if (!cancelled && Number.isFinite(savedDisplayType)) {
+          const normalized = Math.max(1, Math.min(5, Math.trunc(savedDisplayType)));
+          setLayoutSlots(normalized <= 1 ? 1 : 2);
+        }
+
+        if (!cancelled && savedLines.length > 0) {
+          const restoredLines: LinePick[] = savedLines.slice(0, 2).map((saved, i) => {
+            const mapping = cityModeFromProvider(saved.provider);
+            const mode: ModeId = mapping?.mode ?? 'train';
+            const dir: Direction = saved.direction === 'S' ? 'downtown' : 'uptown';
+            return {
+              id: `line-${i + 1}`,
+              mode,
+              stationId: saved.stop,
+              routeId: saved.line,
+              direction: dir,
+              label: '',
+              secondaryLabel: '',
+              textColor: DEFAULT_TEXT_COLOR,
+              nextStops: DEFAULT_NEXT_STOPS,
+              displayFormat: 'single-line' as DisplayFormat,
+              primaryContent: 'destination' as DisplayContent,
+              secondaryContent: 'direction' as DisplayContent,
+            };
+          });
+          setLines(restoredLines);
+        }
+      } catch {
+        // Silent — user configures from scratch if load fails
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // Run once on mount when device is known
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hasLinkedDevice, selectedDevice.id]);
+
   const activeLiveSelections = useMemo(
     () => lines.filter(line => line.stationId.trim().length > 0 && line.routeId.trim().length > 0),
     [lines],
@@ -352,18 +444,44 @@ export default function DashboardScreen() {
     );
   }, [city, customDisplayScheduleEnabled, displayDays, displaySchedule.end, displaySchedule.start, layoutSlots, lines, presetName]);
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!isDirty || saving) return;
     setSaving(true);
     setSaveDone(false);
-    setTimeout(() => {
+
+    try {
+      if (hasLinkedDevice && selectedDevice.id) {
+        const payloadLines = lines
+          .filter(line => line.stationId && line.routeId)
+          .map(line => ({
+            provider: resolveBackendProvider(city, line.mode),
+            line: line.routeId,
+            stop: line.stationId,
+            ...(line.direction ? {direction: line.direction === 'uptown' ? 'N' : 'S'} : {}),
+          }));
+
+        const configRes = await apiFetch(`/device/${selectedDevice.id}/config`, {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({displayType: layoutSlots, lines: payloadLines}),
+        });
+
+        if (!configRes.ok) {
+          const errData = await configRes.json().catch(() => null);
+          const msg = typeof errData?.error === 'string' ? errData.error : `Save failed (${configRes.status})`;
+          setLiveStatusText(msg);
+          setSaving(false);
+          return;
+        }
+
+        await apiFetch(`/refresh/device/${selectedDevice.id}`, {method: 'POST'});
+      }
+
       snapshotRef.current = {city, layoutSlots, lines, displaySchedule, displayDays, presetName, customDisplayScheduleEnabled};
       setPreset(presetName.trim() || 'Display 1');
       setSelectedStations(
         lines
-          .map(line => {
-            return resolveSelectedStationForLine(line, city, stationsByMode, stationsByLine)?.name ?? line.label.trim();
-          })
+          .map(line => resolveSelectedStationForLine(line, city, stationsByMode, stationsByLine)?.name ?? line.label.trim())
           .filter(name => name.length > 0),
       );
       setAppArrivals(
@@ -382,11 +500,15 @@ export default function DashboardScreen() {
           })
           .filter(item => item.line.trim().length > 0),
       );
-      setSaving(false);
+
       setSaveDone(true);
       void Haptics.notificationAsync?.('success');
       setTimeout(() => setSaveDone(false), 1200);
-    }, 1000);
+    } catch {
+      setLiveStatusText('Network error — config not saved');
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleBackPress = () => {
