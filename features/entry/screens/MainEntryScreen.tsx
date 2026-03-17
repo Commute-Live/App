@@ -6,6 +6,8 @@ import {colors} from '../../../theme';
 import AuthScreen from '../../auth/screens/AuthScreen';
 import {useAuth} from '../../../state/authProvider';
 
+const DEV_BYPASS_LOGIN = true;
+
 export default function MainEntryScreen() {
   const router = useRouter();
   const {status, isAuthenticated} = useAuth();
@@ -17,6 +19,11 @@ export default function MainEntryScreen() {
   }, []);
 
   useEffect(() => {
+    if (showLogo) return;
+    if (DEV_BYPASS_LOGIN) {
+      router.replace('/dashboard');
+      return;
+    }
     if (showLogo || status === 'loading' || !isAuthenticated) return;
     router.replace('/dashboard');
   }, [isAuthenticated, router, showLogo, status]);
@@ -33,6 +40,7 @@ export default function MainEntryScreen() {
     );
   }
 
+  if (DEV_BYPASS_LOGIN) return null;
   return <AuthScreen />;
 }
 

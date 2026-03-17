@@ -36,3 +36,5 @@ npm run docker:reset
 - If you see orphan warnings, run with `--remove-orphans`.
 - The container starts Expo with `--tunnel` so phone access works even when LAN discovery is unreliable.
 - If you prefer direct Docker commands, `docker compose up --build` works the same as `npm run docker:start`.
+
+$uncodixfy load frontend skill for model

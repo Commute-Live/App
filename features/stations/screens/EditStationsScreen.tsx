@@ -1,32 +1,69 @@
-import React, {useMemo, useState} from 'react';
+import React, {useEffect, useMemo, useState} from 'react';
 import {Pressable, ScrollView, StyleSheet, Text, TextInput, View} from 'react-native';
 import {SafeAreaView} from 'react-native-safe-area-context';
 import {ScreenHeader} from '../../../components/ScreenHeader';
-import {colors, spacing, radii} from '../../../theme';
+import {colors, radii, spacing} from '../../../theme';
 import {useAppState} from '../../../state/appState';
+import {CITY_LABELS, CITY_OPTIONS, type CityId} from '../../../constants/cities';
+import {getTransitStations} from '../../../lib/transitApi';
+import type {TransitUiMode} from '../../../types/transit';
 
-const STATION_CATALOG = [
-  'Westlake Station',
-  'South Lake Union',
-  'Capitol Hill',
-  'University District',
-  'International District',
-  'Beacon Hill',
-  'Airport Link',
-  'Ballard Rapid',
-  'Fremont Bridge',
-];
+type StationSearchResult = {
+  id: string;
+  name: string;
+  area: string;
+};
+
+const SUPPORTED_LIVE_CITIES: CityId[] = ['new-york', 'philadelphia', 'boston', 'chicago'];
 
 export default function EditStationsScreen() {
   const {state, addStation, removeStation} = useAppState();
   const [query, setQuery] = useState('');
+  const [results, setResults] = useState<StationSearchResult[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
 
-  const results = useMemo(
-    () =>
-      STATION_CATALOG.filter(name =>
-        name.toLowerCase().includes(query.trim().toLowerCase()),
-      ).slice(0, 6),
-    [query],
+  const selectedCity = state.selectedCity;
+  const selectedCityOption = CITY_OPTIONS.find(option => option.id === selectedCity) ?? CITY_OPTIONS[0];
+  const liveSupported = SUPPORTED_LIVE_CITIES.includes(selectedCity);
+  const trimmedQuery = query.trim();
+
+  useEffect(() => {
+    if (!liveSupported) {
+      setResults([]);
+      setLoading(false);
+      setError('');
+      return;
+    }
+
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      setLoading(true);
+      setError('');
+      void fetchLiveStations(selectedCity, trimmedQuery)
+        .then(rows => {
+          if (cancelled) return;
+          setResults(rows.slice(0, 12));
+        })
+        .catch(() => {
+          if (cancelled) return;
+          setResults([]);
+          setError('Unable to load stations right now.');
+        })
+        .finally(() => {
+          if (!cancelled) setLoading(false);
+        });
+    }, 220);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [liveSupported, selectedCity, trimmedQuery]);
+
+  const visibleResults = useMemo(
+    () => results.filter(item => !state.selectedStations.includes(item.name)).slice(0, 6),
+    [results, state.selectedStations],
   );
 
   return (
@@ -36,7 +73,7 @@ export default function EditStationsScreen() {
 
         <View style={styles.section}>
           <Text style={styles.label}>City / Provider</Text>
-          <Text style={styles.value}>Seattle • King County Metro</Text>
+          <Text style={styles.value}>{CITY_LABELS[selectedCity]} • {selectedCityOption.agencyName}</Text>
         </View>
 
         <View style={styles.section}>
@@ -56,23 +93,83 @@ export default function EditStationsScreen() {
 
         <View style={styles.section}>
           <Text style={styles.label}>Search & add</Text>
-          <TextInput
-            value={query}
-            onChangeText={setQuery}
-            placeholder="Search station name"
-            placeholderTextColor={colors.textMuted}
-            style={styles.input}
-          />
-          {results.map(station => (
-            <Pressable key={station} style={styles.resultRow} onPress={() => addStation(station)}>
-              <Text style={styles.resultText}>{station}</Text>
-              <Text style={styles.addText}>Add</Text>
-            </Pressable>
-          ))}
+          {liveSupported ? (
+            <>
+              <TextInput
+                value={query}
+                onChangeText={setQuery}
+                placeholder="Search station name"
+                placeholderTextColor={colors.textMuted}
+                style={styles.input}
+              />
+
+              {loading ? <Text style={styles.empty}>Loading stations...</Text> : null}
+              {error ? <Text style={styles.errorText}>{error}</Text> : null}
+
+              {!loading && !error && visibleResults.length === 0 ? (
+                <Text style={styles.empty}>
+                  {trimmedQuery ? 'No matching stations found.' : 'Start typing to search nearby stations.'}
+                </Text>
+              ) : null}
+
+              {visibleResults.map(station => (
+                <Pressable key={station.id} style={styles.resultRow} onPress={() => addStation(station.name)}>
+                  <View style={styles.resultTextWrap}>
+                    <Text style={styles.resultText}>{station.name}</Text>
+                    {station.area ? <Text style={styles.resultMeta}>{station.area}</Text> : null}
+                  </View>
+                  <Text style={styles.addText}>Add</Text>
+                </Pressable>
+              ))}
+            </>
+          ) : (
+            <View style={styles.unsupportedCard}>
+              <Text style={styles.empty}>Live station search is not yet available for this city.</Text>
+            </View>
+          )}
         </View>
       </ScrollView>
     </SafeAreaView>
   );
+}
+
+async function fetchLiveStations(city: CityId, query: string): Promise<StationSearchResult[]> {
+  const modes = getModesForCity(city);
+  const groups = await Promise.all(
+    modes.map(mode => getTransitStations(city, mode).catch(() => null)),
+  );
+
+  const rows = groups.flatMap(group => group?.stations ?? []);
+  const seen = new Set<string>();
+  const normalized: StationSearchResult[] = [];
+
+  for (const row of rows) {
+    const station = normalizeStation(row);
+    if (!station) continue;
+    if (seen.has(station.id)) continue;
+    seen.add(station.id);
+    normalized.push(station);
+  }
+
+  const loweredQuery = query.trim().toLowerCase();
+  const filtered = loweredQuery
+    ? normalized.filter(station => station.name.toLowerCase().includes(loweredQuery))
+    : normalized;
+
+  return filtered.sort((a, b) => a.name.localeCompare(b.name));
+}
+
+function getModesForCity(city: CityId): TransitUiMode[] {
+  if (city === 'new-york') return ['train', 'bus', 'commuter-rail'];
+  if (city === 'philadelphia') return ['train', 'bus', 'trolley'];
+  if (city === 'boston') return ['train', 'bus', 'commuter-rail', 'ferry'];
+  if (city === 'chicago') return ['train', 'bus'];
+  return ['train'];
+}
+
+function normalizeStation(row: {id: string; name: string; area: string | null}): StationSearchResult | null {
+  if (!row.id || !row.name) return null;
+  return {id: row.id, name: row.name, area: row.area ?? ''};
 }
 
 const styles = StyleSheet.create({
@@ -104,6 +201,13 @@ const styles = StyleSheet.create({
     color: colors.text,
     marginBottom: spacing.sm,
   },
+  unsupportedCard: {
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    padding: spacing.md,
+  },
   resultRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -113,7 +217,11 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
     marginBottom: spacing.sm,
+    gap: spacing.sm,
   },
-  resultText: {flex: 1, color: colors.text},
+  resultTextWrap: {flex: 1},
+  resultText: {color: colors.text, fontWeight: '700'},
+  resultMeta: {color: colors.textMuted, fontSize: 12, marginTop: 2},
   addText: {color: colors.accent, fontWeight: '700'},
+  errorText: {color: '#FCA5A5', fontSize: 13},
 });

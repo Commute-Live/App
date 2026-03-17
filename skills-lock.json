@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "skills": {
+    "uncodixfy": {
+      "source": "cyxzdev/Uncodixfy",
+      "sourceType": "github",
+      "computedHash": "ba92cc325f5f1f6a7efa4a405ccd3ef8c12ae7c123324d15bdaab419decd4f48"
+    }
+  }
+}
