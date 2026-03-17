@@ -41,8 +41,6 @@ export default function PresetsScreen() {
   const [brightness, setBrightness] = useState(70);
   const [hidden, setHidden] = useState(false);
   const selectedCity = appState.selectedCity;
-  const selectedCityOption = CITY_OPTIONS.find(option => option.id === selectedCity) ?? CITY_OPTIONS[0];
-  const selectedCityBrand = CITY_BRANDS[selectedCity];
   const livePreset = useMemo(() => buildLivePreset(appState), [appState]);
 
   useEffect(() => {
@@ -92,16 +90,6 @@ export default function PresetsScreen() {
         <View style={styles.header}>
           <Text style={styles.title}>Displays</Text>
           <Text style={styles.subtitle}>Manage your saved displays and open one to edit.</Text>
-          <View style={styles.cityHeaderCard}>
-            <View style={styles.cityHeaderRow}>
-              <CityBadge city={selectedCity} />
-              <View style={styles.cityHeaderText}>
-                <Text style={styles.cityHeaderTitle}>{selectedCityOption.label} Display Builder</Text>
-                <Text style={styles.cityHeaderBody}>{selectedCityOption.description}</Text>
-              </View>
-            </View>
-            <View style={[styles.cityHeaderAccent, {backgroundColor: selectedCityBrand.accent}]} />
-          </View>
           <Pressable
             style={styles.addButton}
             onPress={() => router.push({pathname: '/preset-editor', params: {city: selectedCity, from: 'presets', mode: 'new'}})}>

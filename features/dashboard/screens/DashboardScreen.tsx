@@ -120,7 +120,8 @@ export default function DashboardScreen() {
   const previewEnter = useRef(new Animated.Value(0)).current;
   const editorEnter = useRef(new Animated.Value(0)).current;
   const liveSupported = isLiveCitySupported(city);
-  const {deviceIds} = useAuth();
+  const {deviceId, deviceIds, setDeviceId} = useAuth();
+  console.log(deviceId, deviceIds);
   const selectedDevice = useSelectedDevice();
   const hasLinkedDevice = deviceIds.length > 0;
   const [layoutSlots, setLayoutSlots] = useState<number>(DEFAULT_LAYOUT_SLOTS);
@@ -156,6 +157,9 @@ export default function DashboardScreen() {
   const linesRequestedRef = useRef(new Set<string>());
   const stationsRequestedRef = useRef(new Set<string>());
   const routesRequestedRef = useRef(new Set<string>());
+  const [lastCommandJson, setLastCommandJson] = useState<string>('No command published yet.');
+  const [lastCommandTs, setLastCommandTs] = useState<string>('');
+  const [lastCommandError, setLastCommandError] = useState<string>('');
 
   useEffect(() => {
     if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -295,6 +299,13 @@ export default function DashboardScreen() {
   useEffect(() => {
     setArrivals(prev => syncArrivals(prev, lines));
   }, [lines]);
+
+  // Auto-select first linked device if none is currently selected
+  useEffect(() => {
+    if (!deviceId && deviceIds.length > 0) {
+      setDeviceId(deviceIds[0]);
+    }
+  }, [deviceId, deviceIds, setDeviceId]);
 
   // Load saved device config on mount and restore lines/layoutSlots
   useEffect(() => {
@@ -716,6 +727,55 @@ export default function DashboardScreen() {
     ],
   } as const;
 
+  useEffect(() => {
+    if (!hasLinkedDevice || !selectedDevice.id) return;
+    let cancelled = false;
+    let timer: ReturnType<typeof setInterval> | null = null;
+
+    const loadLastCommand = async () => {
+      try {
+        const response = await apiFetch(`/device/${selectedDevice.id}/last-command`);
+        const data = await response.json().catch(() => null);
+        if (!response.ok) {
+          const msg = typeof data?.error === 'string' ? data.error : `Failed to load command (${response.status})`;
+          if (!cancelled) setLastCommandError(msg);
+          return;
+        }
+
+        const event = data?.event;
+        if (!event) {
+          if (!cancelled) {
+            setLastCommandJson('No command published yet.');
+            setLastCommandTs('');
+            setLastCommandError('');
+          }
+          return;
+        }
+
+        const payload = event.payload;
+        const pretty =
+          payload && typeof payload === 'object' ? JSON.stringify(payload, null, 2) : String(payload ?? '');
+        if (!cancelled) {
+          setLastCommandJson(pretty || 'No command payload.');
+          setLastCommandTs(typeof event.ts === 'string' ? event.ts : '');
+          setLastCommandError('');
+        }
+      } catch {
+        if (!cancelled) setLastCommandError('Failed to load latest command payload.');
+      }
+    };
+
+    void loadLastCommand();
+    timer = setInterval(() => {
+      void loadLastCommand();
+    }, 5000);
+
+    return () => {
+      cancelled = true;
+      if (timer) clearInterval(timer);
+    };
+  }, [hasLinkedDevice, selectedDevice.id]);
+
   return (
     <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
       <KeyboardAvoidingView
@@ -732,6 +792,31 @@ export default function DashboardScreen() {
             onBackPress={handleBackPress}
           />
         </Animated.View>
+
+        {hasLinkedDevice ? (
+          <View style={styles.deviceBar}>
+            <View style={[styles.deviceDot, selectedDevice.status === 'Online' ? styles.deviceDotOnline : styles.deviceDotOffline]} />
+            {deviceIds.length > 1 ? (
+              deviceIds.map(id => (
+                <Pressable
+                  key={id}
+                  style={[styles.deviceChip, deviceId === id && styles.deviceChipActive]}
+                  onPress={() => setDeviceId(id)}>
+                  <Text style={[styles.deviceChipText, deviceId === id && styles.deviceChipTextActive]}>{id}</Text>
+                </Pressable>
+              ))
+            ) : (
+              <Text style={styles.deviceLabel}>{deviceId ?? selectedDevice.id}</Text>
+            )}
+            <Text style={[styles.deviceStatus, selectedDevice.status === 'Online' ? styles.deviceStatusOnline : styles.deviceStatusOffline]}>
+              {selectedDevice.status}
+            </Text>
+          </View>
+        ) : (
+          <Pressable style={styles.noDeviceBar} onPress={() => router.push('/register-device')}>
+            <Text style={styles.noDeviceText}>No device linked — tap to add one</Text>
+          </Pressable>
+        )}
 
         <Animated.View style={previewAnimatedStyle}>
           <DashboardPreviewSection
@@ -935,6 +1020,16 @@ export default function DashboardScreen() {
               ) : null}
             </View>
           </View>
+          {hasLinkedDevice ? (
+            <View style={styles.sectionCard}>
+              <Text style={styles.sectionTitle}>Last Payload Sent To ESP</Text>
+              {lastCommandTs ? <Text style={styles.payloadMeta}>Published: {lastCommandTs}</Text> : null}
+              {!!lastCommandError && <Text style={styles.payloadError}>{lastCommandError}</Text>}
+              <View style={styles.payloadBox}>
+                <Text style={styles.payloadText}>{lastCommandJson}</Text>
+              </View>
+            </View>
+          ) : null}
         </Animated.View>
       </ScrollView>
       </KeyboardAvoidingView>
@@ -2132,7 +2227,7 @@ function naturalRouteLabelCompare(left: string, right: string) {
   return left.localeCompare(right, undefined, {numeric: true, sensitivity: 'base'});
 }
 
-function normalizeRoutePickerLabel(route: Route) {
+function normalizeRoutePickerLabel(route: {label: string}) {
   return route.label.trim().toUpperCase();
 }
 
@@ -2265,7 +2360,7 @@ function buildRouteGroups(city: CityId, mode: ModeId, routes: RoutePickerItem[])
     return buildNycBusRouteGroups(routes);
   }
 
-  const groups: Array<{key: string; routes: Route[]}> = [];
+  const groups: Array<{key: string; routes: RoutePickerItem[]}> = [];
 
   for (const route of routes) {
     const current = groups[groups.length - 1];
@@ -3199,6 +3294,44 @@ const styles = StyleSheet.create({
   saveButtonSuccess: {backgroundColor: colors.success},
   saveButtonText: {color: colors.background, fontWeight: '900', fontSize: 15},
   saveHint: {color: colors.textMuted, fontSize: 12, textAlign: 'center'},
+  deviceBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    marginBottom: spacing.xs,
+  },
+  deviceDot: {width: 7, height: 7, borderRadius: 4, flexShrink: 0},
+  deviceDotOnline: {backgroundColor: colors.success},
+  deviceDotOffline: {backgroundColor: colors.warning},
+  deviceLabel: {color: colors.textMuted, fontSize: 11, fontWeight: '700', flex: 1},
+  deviceStatus: {fontSize: 11, fontWeight: '700'},
+  deviceStatusOnline: {color: colors.success},
+  deviceStatusOffline: {color: colors.warning},
+  deviceChip: {
+    paddingHorizontal: spacing.xs,
+    paddingVertical: 3,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+  },
+  deviceChipActive: {borderColor: colors.accent, backgroundColor: colors.accentMuted},
+  deviceChipText: {color: colors.textMuted, fontSize: 11, fontWeight: '700'},
+  deviceChipTextActive: {color: colors.accent},
+  noDeviceBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: spacing.xs,
+    marginBottom: spacing.xs,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.warning,
+    backgroundColor: colors.surface,
+  },
+  noDeviceText: {color: colors.warning, fontSize: 12, fontWeight: '700'},
   liveDisabledCard: {
     borderRadius: radii.md,
     borderWidth: 1,
@@ -3418,4 +3551,23 @@ const styles = StyleSheet.create({
   contextChipBadgeTextBus: {fontSize: 9, lineHeight: 10, includeFontPadding: false},
   contextChipLabel: {color: colors.text, fontSize: 13, fontWeight: '700', maxWidth: 120},
   contextChipX: {color: colors.textMuted, fontSize: 11, fontWeight: '700'},
+  sectionCard: {
+    backgroundColor: colors.card,
+    borderColor: colors.border,
+    borderWidth: 1,
+    borderRadius: radii.lg,
+    padding: spacing.md,
+    marginBottom: spacing.sm,
+  },
+  sectionTitle: {color: colors.text, fontSize: 16, fontWeight: '800', marginBottom: spacing.sm},
+  payloadMeta: {color: colors.textMuted, fontSize: 11, marginTop: -spacing.xs, marginBottom: spacing.xs},
+  payloadError: {color: colors.warning, fontSize: 12, marginBottom: spacing.xs},
+  payloadBox: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radii.md,
+    backgroundColor: colors.surface,
+    padding: spacing.sm,
+  },
+  payloadText: {color: colors.text, fontSize: 11, lineHeight: 16},
 });

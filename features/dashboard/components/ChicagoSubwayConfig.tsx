@@ -6,6 +6,7 @@ import {apiFetch} from '../../../lib/api';
 const CTA_DEFAULT_STOP_ID = '40380';
 const CTA_DEFAULT_STOP_NAME = 'Clark/Lake';
 const MAX_SELECTED_LINES = 2;
+const DISPLAY_PRESETS = [1, 2, 3, 4, 5] as const;
 
 type StopOption = {stopId: string; stop: string; direction: ''};
 
@@ -25,6 +26,8 @@ export default function ChicagoSubwayConfig({deviceId}: Props) {
   const [isSaving, setIsSaving] = useState(false);
   const [statusText, setStatusText] = useState('');
   const [stopDropdownOpen, setStopDropdownOpen] = useState(false);
+  const [displayType, setDisplayType] = useState<number>(1);
+  const [presetDropdownOpen, setPresetDropdownOpen] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -107,6 +110,11 @@ export default function ChicagoSubwayConfig({deviceId}: Props) {
 
         if (!cancelled && configuredLines.length > 0) {
           setSelectedLines(configuredLines.slice(0, MAX_SELECTED_LINES));
+        }
+        const configuredDisplayType = Number(data?.config?.displayType);
+        if (!cancelled && Number.isFinite(configuredDisplayType)) {
+          const normalizedPreset = Math.max(1, Math.min(5, Math.trunc(configuredDisplayType)));
+          setDisplayType(normalizedPreset);
         }
       } catch {
         // Keep defaults.
@@ -223,6 +231,7 @@ export default function ChicagoSubwayConfig({deviceId}: Props) {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({
+          displayType,
           lines: selectedLines.map(line => ({
             provider: 'cta-subway',
             line,
@@ -248,7 +257,7 @@ export default function ChicagoSubwayConfig({deviceId}: Props) {
     } finally {
       setIsSaving(false);
     }
-  }, [deviceId, selectedLines, stopId, stopName]);
+  }, [deviceId, selectedLines, stopId, stopName, displayType]);
 
   const lineButtons = useMemo(
     () =>
@@ -303,6 +312,45 @@ export default function ChicagoSubwayConfig({deviceId}: Props) {
                     onPress={() => chooseStop(option)}>
                     <Text style={styles.stopItemTitle}>{option.stop}</Text>
                     <Text style={styles.stopItemSubtitle}>{option.stopId}</Text>
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+          </View>
+        )}
+      </View>
+
+      <View style={styles.sectionCard}>
+        <Text style={styles.sectionTitle}>Preset Layout</Text>
+        <Text style={styles.hintText}>Choose layout preset for this device (1-5).</Text>
+        <Pressable
+          style={({pressed}) => [
+            styles.stationSelector,
+            presetDropdownOpen && styles.stationSelectorOpen,
+            pressed && styles.stationSelectorPressed,
+          ]}
+          onPress={() => setPresetDropdownOpen(prev => !prev)}>
+          <Text style={styles.stationSelectorText}>Preset {displayType}</Text>
+          <Text style={styles.stationSelectorCaret}>{presetDropdownOpen ? '▲' : '▼'}</Text>
+        </Pressable>
+        {presetDropdownOpen && (
+          <View style={styles.stopList}>
+            <ScrollView style={styles.stopListScroll} nestedScrollEnabled>
+              {DISPLAY_PRESETS.map(option => {
+                const isSelected = displayType === option;
+                return (
+                  <Pressable
+                    key={option}
+                    style={({pressed}) => [
+                      styles.stopItem,
+                      isSelected && styles.stopItemSelected,
+                      pressed && styles.stopItemPressed,
+                    ]}
+                    onPress={() => {
+                      setDisplayType(option);
+                      setPresetDropdownOpen(false);
+                    }}>
+                    <Text style={styles.stopItemTitle}>Preset {option}</Text>
                   </Pressable>
                 );
               })}
