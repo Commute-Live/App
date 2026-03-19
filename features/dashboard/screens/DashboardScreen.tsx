@@ -370,11 +370,13 @@ export default function DashboardScreen() {
             const displayFormat = normalizeDisplayFormat(saved.displayFormat);
             const mapping = cityModeFromProvider(saved.provider);
             const mode: ModeId = mapping?.mode ?? 'train';
-            const dir: Direction = saved.direction === 'S' ? 'downtown' : 'uptown';
+            const normalizedSavedStop = saved.stop.trim().toUpperCase();
+            const dir: Direction =
+              saved.direction === 'S' || (!saved.direction && normalizedSavedStop.endsWith('S')) ? 'downtown' : 'uptown';
             return {
               id: `line-${i + 1}`,
               mode,
-              stationId: saved.stop,
+              stationId: normalizeSavedStationId(saved.provider, normalizedSavedStop),
               routeId: saved.line,
               direction: dir,
               label: typeof saved.label === 'string' ? saved.label : typeof saved.topText === 'string' ? saved.topText : '',
@@ -2242,6 +2244,15 @@ function buildAreaFromName(name: string) {
   const splitAt = name.indexOf('-');
   if (splitAt === -1) return '';
   return name.slice(splitAt + 1).trim();
+}
+
+function normalizeSavedStationId(provider: string, stopId: string) {
+  const normalizedProvider = provider.trim().toLowerCase();
+  const normalizedStopId = stopId.trim().toUpperCase();
+  if (normalizedProvider === 'mta-subway' && /[NS]$/.test(normalizedStopId)) {
+    return normalizedStopId.slice(0, -1);
+  }
+  return normalizedStopId;
 }
 
 function toTransitUiMode(mode: ModeId): TransitUiMode {
