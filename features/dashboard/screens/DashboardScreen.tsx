@@ -328,16 +328,27 @@ export default function DashboardScreen() {
 
         const savedLines: Array<{provider: string; line: string; stop: string; direction?: string}> =
           Array.isArray(data?.config?.lines) ? data.config.lines : [];
+        const savedName = typeof data?.display?.name === 'string' ? data.display.name.trim() : '';
+        const savedScheduleStart = typeof data?.display?.scheduleStart === 'string' ? data.display.scheduleStart : null;
+        const savedScheduleEnd = typeof data?.display?.scheduleEnd === 'string' ? data.display.scheduleEnd : null;
+        const savedScheduleDays = Array.isArray(data?.display?.scheduleDays)
+          ? data.display.scheduleDays.filter((day: unknown): day is DayId => typeof day === 'string' && DAY_OPTIONS.some(option => option.id === day))
+          : [];
 
         const savedDisplayType = Number(data?.config?.displayType);
-        if (!cancelled && Number.isFinite(savedDisplayType)) {
+        let nextLayoutSlots = layoutSlots;
+        if (Number.isFinite(savedDisplayType)) {
           const normalized = Math.max(1, Math.min(5, Math.trunc(savedDisplayType)));
-          setLayoutSlots(normalized <= 1 ? 1 : 2);
+          nextLayoutSlots = normalized <= 1 ? 1 : 2;
+        }
+        if (!cancelled) {
+          setLayoutSlots(nextLayoutSlots);
         }
 
         const citySavedLines = savedLines.filter(saved => cityModeFromProvider(saved.provider)?.city === city);
+        let nextLines = ensureLineCount([], city, nextLayoutSlots, {}, {});
 
-        if (!cancelled && citySavedLines.length > 0) {
+        if (citySavedLines.length > 0) {
           const restoredLines: LinePick[] = citySavedLines.slice(0, 2).map((saved, i) => {
             const mapping = cityModeFromProvider(saved.provider);
             const mode: ModeId = mapping?.mode ?? 'train';
@@ -359,7 +370,32 @@ export default function DashboardScreen() {
               secondaryContent: 'direction' as DisplayContent,
             };
           });
-          setLines(restoredLines);
+          nextLines = ensureLineCount(restoredLines, city, nextLayoutSlots, {}, {});
+        }
+
+        const nextCustomScheduleEnabled = !!(savedScheduleStart || savedScheduleEnd || savedScheduleDays.length > 0);
+        const nextDisplaySchedule = {
+          start: savedScheduleStart ?? '06:00',
+          end: savedScheduleEnd ?? '09:00',
+        };
+        const nextDisplayDays = savedScheduleDays.length > 0 ? savedScheduleDays : ['mon', 'tue', 'wed', 'thu', 'fri'];
+        const nextPresetName = savedName || 'Display 1';
+
+        if (!cancelled) {
+          setLines(nextLines);
+          setCustomDisplayScheduleEnabled(nextCustomScheduleEnabled);
+          setDisplaySchedule(nextDisplaySchedule);
+          setDisplayDays(nextDisplayDays);
+          setPresetName(nextPresetName);
+          snapshotRef.current = {
+            city,
+            layoutSlots: nextLayoutSlots,
+            lines: nextLines,
+            displaySchedule: nextDisplaySchedule,
+            displayDays: nextDisplayDays,
+            presetName: nextPresetName,
+            customDisplayScheduleEnabled: nextCustomScheduleEnabled,
+          };
         }
       } catch {
         // Silent — user configures from scratch if load fails
@@ -487,7 +523,15 @@ export default function DashboardScreen() {
         const configRes = await apiFetch(`/device/${selectedDevice.id}/config`, {
           method: 'POST',
           headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({displayId: activeDisplayId ?? undefined, displayType: layoutSlots, lines: payloadLines}),
+          body: JSON.stringify({
+            displayId: activeDisplayId ?? undefined,
+            name: presetName.trim() || 'Display 1',
+            scheduleStart: customDisplayScheduleEnabled ? displaySchedule.start : null,
+            scheduleEnd: customDisplayScheduleEnabled ? displaySchedule.end : null,
+            scheduleDays: customDisplayScheduleEnabled ? displayDays : [],
+            displayType: layoutSlots,
+            lines: payloadLines,
+          }),
         });
 
         if (!configRes.ok) {
