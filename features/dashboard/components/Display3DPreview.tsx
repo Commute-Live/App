@@ -15,6 +15,7 @@ export type Display3DSlot = {
 
 type Props = {
   slots: Display3DSlot[];
+  displayType?: number;
   onSelectSlot: (id: string) => void;
   onReorderSlot: (id: string) => void;
   onDragStateChange?: (dragging: boolean) => void;
@@ -24,13 +25,14 @@ type Props = {
 
 export default function Display3DPreview({
   slots,
+  displayType = 1,
   onSelectSlot,
   onReorderSlot,
   onDragStateChange,
   showHint = true,
   brightness = 100,
 }: Props) {
-  const compact = slots.length > 1;
+  const compact = slots.length > 1 || displayType >= 3;
   const safeBrightness = Math.max(0, Math.min(100, brightness));
   const brightnessOverlayOpacity = ((100 - safeBrightness) / 100) * 0.65;
   const [draggingId, setDraggingId] = useState<string | null>(null);

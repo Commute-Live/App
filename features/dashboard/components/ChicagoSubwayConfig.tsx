@@ -2,6 +2,7 @@ import React, {useCallback, useEffect, useMemo, useState} from 'react';
 import {Pressable, ScrollView, StyleSheet, Text, View} from 'react-native';
 import {colors, radii, spacing} from '../../../theme';
 import {apiFetch} from '../../../lib/api';
+import {extractConfigDisplayId} from '../../../lib/deviceConfig';
 
 const CTA_DEFAULT_STOP_ID = '40380';
 const CTA_DEFAULT_STOP_NAME = 'Clark/Lake';
@@ -27,6 +28,7 @@ export default function ChicagoSubwayConfig({deviceId}: Props) {
   const [statusText, setStatusText] = useState('');
   const [stopDropdownOpen, setStopDropdownOpen] = useState(false);
   const [displayType, setDisplayType] = useState<number>(1);
+  const [activeDisplayId, setActiveDisplayId] = useState<string | null>(null);
   const [presetDropdownOpen, setPresetDropdownOpen] = useState(false);
 
   useEffect(() => {
@@ -92,6 +94,9 @@ export default function ChicagoSubwayConfig({deviceId}: Props) {
         if (!response.ok) return;
 
         const data = await response.json();
+        if (!cancelled) {
+          setActiveDisplayId(extractConfigDisplayId(data));
+        }
         const firstProvider = typeof data?.config?.lines?.[0]?.provider === 'string' ? data.config.lines[0].provider : '';
         if (firstProvider !== 'cta-subway') return;
 
@@ -231,6 +236,7 @@ export default function ChicagoSubwayConfig({deviceId}: Props) {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({
+          displayId: activeDisplayId ?? undefined,
           displayType,
           lines: selectedLines.map(line => ({
             provider: 'cta-subway',
@@ -250,6 +256,8 @@ export default function ChicagoSubwayConfig({deviceId}: Props) {
         return;
       }
 
+      const configData = await configResponse.json().catch(() => null);
+      setActiveDisplayId(extractConfigDisplayId(configData));
       await apiFetch(`/refresh/device/${deviceId}`, {method: 'POST'});
       setStatusText(`Updated ${selectedLines.join(', ')} at ${stopName} (${stopId})`);
     } catch {
@@ -257,7 +265,7 @@ export default function ChicagoSubwayConfig({deviceId}: Props) {
     } finally {
       setIsSaving(false);
     }
-  }, [deviceId, selectedLines, stopId, stopName, displayType]);
+  }, [activeDisplayId, deviceId, selectedLines, stopId, stopName, displayType]);
 
   const lineButtons = useMemo(
     () =>
