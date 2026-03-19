@@ -115,6 +115,7 @@ export default function DashboardScreen() {
   const {state: appState, setPreset, setSelectedStations, setArrivals: setAppArrivals} = useAppState();
   const params = useLocalSearchParams<{city?: string; from?: string; mode?: string; displayId?: string}>();
   const city = normalizeCityIdParam(params.city ?? appState.selectedCity);
+  const isCreateMode = params.mode === 'new';
   const openConfigureStopOnLoad = params.mode === 'new';
   const fallbackRoute = params.from === 'presets' ? '/presets' : '/dashboard';
   const headerEnter = useRef(new Animated.Value(0)).current;
@@ -322,7 +323,7 @@ export default function DashboardScreen() {
 
         if (editingDisplayId) {
           sourceDisplay = await fetchDisplay(selectedDevice.id, editingDisplayId);
-        } else {
+        } else if (!isCreateMode) {
           const res = await apiFetch(`/device/${selectedDevice.id}/config`);
           if (!res.ok || cancelled) return;
           const data = await res.json();
@@ -425,7 +426,7 @@ export default function DashboardScreen() {
     };
     // Run once on mount when device is known
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [city, editingDisplayId, hasLinkedDevice, selectedDevice.id]);
+  }, [city, editingDisplayId, hasLinkedDevice, isCreateMode, selectedDevice.id]);
 
   const activeLiveSelections = useMemo(
     () => lines.filter(line => line.stationId.trim().length > 0 && line.routeId.trim().length > 0),

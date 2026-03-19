@@ -1,35 +1,26 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { BottomNav, type BottomNavItem } from '../../../components/BottomNav';
 import { colors, radii, spacing } from '../../../theme';
 import DashboardPreviewSection from '../components/DashboardPreviewSection';
-import type { Display3DSlot } from '../components/Display3DPreview';
 import { useAppState } from '../../../state/appState';
 import {
    CITY_BRANDS,
    CITY_LABELS,
    CITY_OPTIONS,
-   type CityId,
 } from '../../../constants/cities';
 import { useAuth } from '../../../state/authProvider';
 import { useSelectedDevice } from '../../../hooks/useSelectedDevice';
 import { apiFetch } from '../../../lib/api';
-
-type DayId = 'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat' | 'sun';
-type LivePreviewItem = {
-   id: string;
-   name: string;
-   city: CityId;
-   enabled: boolean;
-   displayStart: string;
-   displayEnd: string;
-   displayDays: DayId[];
-   offStart: string;
-   offEnd: string;
-   slots: Display3DSlot[];
-};
+import {
+   fetchDisplays,
+   providerToCity,
+   toDisplayScheduleText,
+   toPreviewSlots,
+   type DeviceDisplay,
+} from '../../../lib/displays';
 
 const NAV_ITEMS: BottomNavItem[] = [
    { key: 'home', label: 'Home', icon: 'home-outline', route: '/dashboard' },
@@ -60,8 +51,6 @@ const TIME_OPTIONS = [
    '22:00',
    '23:00',
 ];
-const ALL_DAYS: DayId[] = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
-
 export default function DashboardHomeScreen() {
    const router = useRouter();
    const { state: appState } = useAppState();
@@ -69,6 +58,9 @@ export default function DashboardHomeScreen() {
    const selectedDevice = useSelectedDevice();
    const hasLinkedDevice = deviceIds.length > 0;
    const [carouselIndex, setCarouselIndex] = useState(0);
+   const [deviceDisplays, setDeviceDisplays] = useState<DeviceDisplay[]>([]);
+   const [displaysLoading, setDisplaysLoading] = useState(false);
+   const [displaysError, setDisplaysError] = useState('');
    const [quietHoursEnabled, setQuietHoursEnabled] = useState(true);
    const [quietHours, setQuietHours] = useState({ start: '23:00', end: '05:00' });
    const [lastCommandJson, setLastCommandJson] = useState('');
@@ -78,35 +70,38 @@ export default function DashboardHomeScreen() {
    const [espDeviceId, setEspDeviceId] = useState<string | null>(null);
 
    const city = appState.selectedCity;
-
-   const liveSlots = useMemo(
-      () => buildLiveSlots(appState.selectedStations, appState.arrivals, city),
-      [appState.arrivals, appState.selectedStations, city],
-   );
-   const carouselPresets = useMemo<LivePreviewItem[]>(
-      () =>
-         liveSlots.length > 0
-            ? [
-                 {
-                    id: `live-${city}`,
-                    name: appState.preset.trim() || 'Current Display',
-                    city,
-                    enabled: true,
-                    displayStart: '00:00',
-                    displayEnd: '23:59',
-                    displayDays: ALL_DAYS,
-                    offStart: '00:00',
-                    offEnd: '00:00',
-                    slots: liveSlots,
-                 },
-              ]
-            : [],
-      [appState.preset, city, liveSlots],
-   );
    const cityBrand = CITY_BRANDS[city];
    const cityAgency =
       CITY_OPTIONS.find((option) => option.id === city)?.agencyCode ??
       CITY_LABELS[city];
+   const loadDisplays = useCallback(async () => {
+      if (!hasLinkedDevice || !selectedDevice.id || status !== 'authenticated') {
+         setDeviceDisplays([]);
+         setDisplaysError('');
+         setDisplaysLoading(false);
+         return;
+      }
+
+      setDisplaysLoading(true);
+      setDisplaysError('');
+      try {
+         const data = await fetchDisplays(selectedDevice.id);
+         setDeviceDisplays(data.displays);
+      } catch (err) {
+         setDisplaysError(err instanceof Error ? err.message : 'Failed to load displays');
+         setDeviceDisplays([]);
+      } finally {
+         setDisplaysLoading(false);
+      }
+   }, [hasLinkedDevice, selectedDevice.id, status]);
+   const carouselPresets = useMemo(
+      () =>
+         deviceDisplays.filter((display) => {
+            const displayCity = providerToCity(display.config.lines?.[0]?.provider ?? null);
+            return displayCity === city;
+         }),
+      [city, deviceDisplays],
+   );
 
    // Auth guard — redirect to login if session is not authenticated
    useEffect(() => {
@@ -163,7 +158,13 @@ export default function DashboardHomeScreen() {
 
    useEffect(() => {
       setCarouselIndex(0);
-   }, [city]);
+   }, [city, carouselPresets.length]);
+
+   useFocusEffect(
+      useCallback(() => {
+         void loadDisplays();
+      }, [loadDisplays]),
+   );
 
    useEffect(() => {
       if (carouselPresets.length <= 1) return;
@@ -373,7 +374,9 @@ export default function DashboardHomeScreen() {
                      </Text>
                      <Text style={styles.heroMeta}>
                         {activePreset
-                           ? describeDisplayWindow(activePreset)
+                           ? toDisplayScheduleText(activePreset)
+                           : displaysLoading
+                           ? 'Loading displays for this device'
                            : 'Create a display to preview it here'}
                      </Text>
                   </View>
@@ -396,11 +399,12 @@ export default function DashboardHomeScreen() {
                {activePreset ? (
                   <>
                      <DashboardPreviewSection
-                        slots={activePreset.slots}
+                        slots={toPreviewSlots(activePreset, cityBrand.accent)}
                         onSelectSlot={() => {}}
                         onReorderSlot={() => {}}
                         onDragStateChange={() => {}}
                         showHint={false}
+                        brightness={activePreset.config.brightness ?? 60}
                      />
                      <View style={styles.heroFooter}>
                         <Text style={styles.heroHint}>
@@ -421,6 +425,35 @@ export default function DashboardHomeScreen() {
                               />
                            ))}
                         </View>
+                        <View style={styles.actionsRow}>
+                           <Pressable
+                              style={styles.secondaryButton}
+                              onPress={() =>
+                                 router.push({
+                                    pathname: '/preset-editor',
+                                    params: { city, from: 'dashboard', mode: 'new' },
+                                 })
+                              }
+                           >
+                              <Text style={styles.secondaryButtonText}>Add Display</Text>
+                           </Pressable>
+                           <Pressable
+                              style={styles.ghostButton}
+                              onPress={() =>
+                                 router.push({
+                                    pathname: '/preset-editor',
+                                    params: {
+                                       city,
+                                       from: 'dashboard',
+                                       mode: 'edit',
+                                       displayId: activePreset.displayId,
+                                    },
+                                 })
+                              }
+                           >
+                              <Text style={styles.ghostButtonText}>Edit This Display</Text>
+                           </Pressable>
+                        </View>
                      </View>
                   </>
                ) : (
@@ -428,6 +461,18 @@ export default function DashboardHomeScreen() {
                      <Text style={styles.emptyHeroText}>
                         No displays for {CITY_LABELS[city]} yet.
                      </Text>
+                     {displaysError ? <Text style={styles.commandError}>{displaysError}</Text> : null}
+                     <Pressable
+                        style={styles.setupButton}
+                        onPress={() =>
+                           router.push({
+                              pathname: '/preset-editor',
+                              params: { city, from: 'dashboard', mode: 'new' },
+                           })
+                        }
+                     >
+                        <Text style={styles.setupButtonText}>Add First Display</Text>
+                     </Pressable>
                   </View>
                )}
             </View>}
@@ -517,49 +562,6 @@ export default function DashboardHomeScreen() {
    );
 }
 
-function describeDisplayWindow(preset: LivePreviewItem) {
-   return `${formatDayList(preset.displayDays)} ${preset.displayStart}-${preset.displayEnd}`;
-}
-
-function buildLiveSlots(
-   selectedStations: string[],
-   arrivals: { line: string; destination: string; minutes: number }[],
-   city: CityId,
-): Display3DSlot[] {
-   const stops =
-      selectedStations.length > 0
-         ? selectedStations
-         : arrivals.map((item) => item.destination).filter(Boolean);
-   const count = Math.max(stops.length, arrivals.length);
-   if (count === 0) return [];
-
-   const accent = CITY_BRANDS[city].accent;
-   return Array.from({ length: Math.min(2, count) }, (_, index) => {
-      const arrival = arrivals[index];
-      const stopName =
-         stops[index] ?? arrival?.destination ?? `Stop ${index + 1}`;
-      const routeLabel = toRouteLabel(arrival?.line);
-      const minutes = Number.isFinite(arrival?.minutes)
-         ? Math.max(0, Math.round(arrival!.minutes))
-         : null;
-      return {
-         id: `slot-${index + 1}`,
-         color: accent,
-         textColor: '#041015',
-         routeLabel,
-         selected: false,
-         stopName,
-         times: minutes == null ? '--' : `${minutes}`,
-      };
-   });
-}
-
-function toRouteLabel(line: string | undefined) {
-   if (!line) return '--';
-   const cleaned = line.trim().toUpperCase();
-   return cleaned.length <= 4 ? cleaned : cleaned.slice(0, 4);
-}
-
 function TimeAdjustField({
    label,
    value,
@@ -585,32 +587,6 @@ function TimeAdjustField({
          </View>
       </View>
    );
-}
-
-function formatDayList(days: DayId[]) {
-   const weekday: DayId[] = ['mon', 'tue', 'wed', 'thu', 'fri'];
-   const weekend: DayId[] = ['sat', 'sun'];
-   if (days.length === 7) return 'Every day';
-   if (
-      weekday.every((day) => days.includes(day)) &&
-      days.length === weekday.length
-   )
-      return 'Mon-Fri';
-   if (
-      weekend.every((day) => days.includes(day)) &&
-      days.length === weekend.length
-   )
-      return 'Sat-Sun';
-   const labels: Record<DayId, string> = {
-      mon: 'Mon',
-      tue: 'Tue',
-      wed: 'Wed',
-      thu: 'Thu',
-      fri: 'Fri',
-      sat: 'Sat',
-      sun: 'Sun',
-   };
-   return days.map((day) => labels[day]).join(', ');
 }
 
 function cycleTimeOption(current: string, delta: 1 | -1) {
