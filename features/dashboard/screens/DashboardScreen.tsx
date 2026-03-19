@@ -12,6 +12,7 @@ import Display3DPreview from '../components/Display3DPreview';
 import type {Display3DSlot} from '../components/Display3DPreview';
 import {CITY_LINE_COLORS, FALLBACK_ROUTE_COLORS, hashLineColor} from '../../../lib/lineColors';
 import {apiFetch} from '../../../lib/api';
+import {createDisplay, fetchDisplay, updateDisplay, validateDisplayDraft} from '../../../lib/displays';
 import {useAuth} from '../../../state/authProvider';
 import {useSelectedDevice} from '../../../hooks/useSelectedDevice';
 
@@ -112,8 +113,9 @@ function cityModeFromProvider(provider: string): {city: CityId; mode: ModeId} | 
 export default function DashboardScreen() {
   const router = useRouter();
   const {state: appState, setPreset, setSelectedStations, setArrivals: setAppArrivals} = useAppState();
-  const params = useLocalSearchParams<{city?: string; from?: string; mode?: string}>();
+  const params = useLocalSearchParams<{city?: string; from?: string; mode?: string; displayId?: string}>();
   const city = normalizeCityIdParam(params.city ?? appState.selectedCity);
+  const isCreateMode = params.mode === 'new';
   const openConfigureStopOnLoad = params.mode === 'new';
   const fallbackRoute = params.from === 'presets' ? '/presets' : '/dashboard';
   const headerEnter = useRef(new Animated.Value(0)).current;
@@ -135,6 +137,10 @@ export default function DashboardScreen() {
   const [displaySchedule, setDisplaySchedule] = useState({start: '06:00', end: '09:00'});
   const [displayDays, setDisplayDays] = useState<DayId[]>(['mon', 'tue', 'wed', 'thu', 'fri']);
   const [presetName, setPresetName] = useState('Display 1');
+  const [editingDisplayId, setEditingDisplayId] = useState<string | null>(
+    typeof params.displayId === 'string' ? params.displayId : null,
+  );
+  const [displayMetadata, setDisplayMetadata] = useState({paused: false, priority: 0, sortOrder: 0});
   const [saving, setSaving] = useState(false);
   const [saveDone, setSaveDone] = useState(false);
   const [openLayoutPicker, setOpenLayoutPicker] = useState(false);
@@ -307,27 +313,61 @@ export default function DashboardScreen() {
     }
   }, [deviceId, deviceIds, setDeviceId]);
 
-  // Load saved device config on mount and restore lines/layoutSlots
+  // Load saved display/config on mount and restore lines/layout/schedule metadata
   useEffect(() => {
     if (!hasLinkedDevice || !selectedDevice.id) return;
     let cancelled = false;
     (async () => {
       try {
-        const res = await apiFetch(`/device/${selectedDevice.id}/config`);
-        if (!res.ok || cancelled) return;
-        const data = await res.json();
+        let sourceDisplay: any = null;
 
-        const savedLines: Array<{provider: string; line: string; stop: string; direction?: string}> =
-          Array.isArray(data?.config?.lines) ? data.config.lines : [];
-
-        const savedDisplayType = Number(data?.config?.displayType);
-        if (!cancelled && Number.isFinite(savedDisplayType)) {
-          const normalized = Math.max(1, Math.min(5, Math.trunc(savedDisplayType)));
-          setLayoutSlots(normalized <= 1 ? 1 : 2);
+        if (editingDisplayId) {
+          sourceDisplay = await fetchDisplay(selectedDevice.id, editingDisplayId);
+        } else if (!isCreateMode) {
+          const res = await apiFetch(`/device/${selectedDevice.id}/config`);
+          if (!res.ok || cancelled) return;
+          const data = await res.json();
+          sourceDisplay = data?.display ?? null;
         }
 
-        if (!cancelled && savedLines.length > 0) {
-          const restoredLines: LinePick[] = savedLines.slice(0, 2).map((saved, i) => {
+        if (!sourceDisplay || cancelled) return;
+
+        const savedLines: Array<any> = Array.isArray(sourceDisplay?.config?.lines) ? sourceDisplay.config.lines : [];
+        const savedDisplayType = Number(sourceDisplay?.config?.displayType);
+        const nextLayoutSlots =
+          Number.isFinite(savedDisplayType) && Math.max(1, Math.min(5, Math.trunc(savedDisplayType))) <= 1 ? 1 : 2;
+
+        setPresetName(typeof sourceDisplay.name === 'string' && sourceDisplay.name.trim().length > 0 ? sourceDisplay.name : 'Display 1');
+        setDisplayMetadata({
+          paused: sourceDisplay.paused === true,
+          priority: Number.isInteger(sourceDisplay.priority) ? sourceDisplay.priority : 0,
+          sortOrder: Number.isInteger(sourceDisplay.sortOrder) ? sourceDisplay.sortOrder : 0,
+        });
+
+        const hasCustomSchedule =
+          !!sourceDisplay.scheduleStart ||
+          !!sourceDisplay.scheduleEnd ||
+          (Array.isArray(sourceDisplay.scheduleDays) && sourceDisplay.scheduleDays.length > 0);
+        setCustomDisplayScheduleEnabled(hasCustomSchedule);
+        setDisplaySchedule({
+          start: sourceDisplay.scheduleStart ?? '06:00',
+          end: sourceDisplay.scheduleEnd ?? '09:00',
+        });
+        setDisplayDays(
+          Array.isArray(sourceDisplay.scheduleDays) && sourceDisplay.scheduleDays.length > 0
+            ? sourceDisplay.scheduleDays
+            : ['mon', 'tue', 'wed', 'thu', 'fri'],
+        );
+
+        if (Number.isFinite(savedDisplayType)) {
+          setLayoutSlots(nextLayoutSlots);
+        }
+
+        let restoredLines: LinePick[] | null = null;
+
+        if (savedLines.length > 0) {
+          restoredLines = savedLines.slice(0, 2).map((saved, i) => {
+            const displayFormat = normalizeDisplayFormat(saved.displayFormat);
             const mapping = cityModeFromProvider(saved.provider);
             const mode: ModeId = mapping?.mode ?? 'train';
             const dir: Direction = saved.direction === 'S' ? 'downtown' : 'uptown';
@@ -337,17 +377,46 @@ export default function DashboardScreen() {
               stationId: saved.stop,
               routeId: saved.line,
               direction: dir,
-              label: '',
-              secondaryLabel: '',
-              textColor: DEFAULT_TEXT_COLOR,
-              nextStops: DEFAULT_NEXT_STOPS,
-              displayFormat: 'single-line' as DisplayFormat,
-              primaryContent: 'destination' as DisplayContent,
-              secondaryContent: 'direction' as DisplayContent,
+              label: typeof saved.label === 'string' ? saved.label : typeof saved.topText === 'string' ? saved.topText : '',
+              secondaryLabel:
+                typeof saved.secondaryLabel === 'string'
+                  ? saved.secondaryLabel
+                  : typeof saved.bottomText === 'string'
+                    ? saved.bottomText
+                    : '',
+              textColor: typeof saved.textColor === 'string' && saved.textColor.trim().length > 0 ? saved.textColor : DEFAULT_TEXT_COLOR,
+              nextStops: typeof saved.nextStops === 'number' ? clampNextStops(saved.nextStops) : DEFAULT_NEXT_STOPS,
+              displayFormat,
+              primaryContent: normalizePrimaryContent(
+                displayFormat,
+                typeof saved.primaryContent === 'string' ? (saved.primaryContent as DisplayContent) : 'destination',
+                displayFormat,
+              ),
+              secondaryContent: normalizeSecondaryContent(
+                displayFormat,
+                typeof saved.secondaryContent === 'string' ? (saved.secondaryContent as DisplayContent) : 'direction',
+                displayFormat,
+              ),
             };
           });
           setLines(restoredLines);
         }
+
+        snapshotRef.current = {
+          city,
+          layoutSlots: nextLayoutSlots,
+          lines: restoredLines ?? snapshotRef.current.lines,
+          displaySchedule: {
+            start: sourceDisplay.scheduleStart ?? '06:00',
+            end: sourceDisplay.scheduleEnd ?? '09:00',
+          },
+          displayDays:
+            Array.isArray(sourceDisplay.scheduleDays) && sourceDisplay.scheduleDays.length > 0
+              ? sourceDisplay.scheduleDays
+              : ['mon', 'tue', 'wed', 'thu', 'fri'],
+          presetName: typeof sourceDisplay.name === 'string' && sourceDisplay.name.trim().length > 0 ? sourceDisplay.name : 'Display 1',
+          customDisplayScheduleEnabled: hasCustomSchedule,
+        };
       } catch {
         // Silent — user configures from scratch if load fails
       }
@@ -357,7 +426,7 @@ export default function DashboardScreen() {
     };
     // Run once on mount when device is known
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hasLinkedDevice, selectedDevice.id]);
+  }, [city, editingDisplayId, hasLinkedDevice, isCreateMode, selectedDevice.id]);
 
   const activeLiveSelections = useMemo(
     () => lines.filter(line => line.stationId.trim().length > 0 && line.routeId.trim().length > 0),
@@ -455,6 +524,43 @@ export default function DashboardScreen() {
     );
   }, [city, customDisplayScheduleEnabled, displayDays, displaySchedule.end, displaySchedule.start, layoutSlots, lines, presetName]);
 
+  const draftPayload = useMemo(() => {
+    const payloadLines = lines
+      .filter(line => line.stationId && line.routeId)
+      .map(line => ({
+        provider: resolveBackendProvider(city, line.mode),
+        line: line.routeId,
+        stop: line.stationId,
+        ...(line.direction ? {direction: line.direction === 'uptown' ? 'N' : 'S'} : {}),
+        label: line.label.trim() || undefined,
+        secondaryLabel: line.secondaryLabel.trim() || undefined,
+        textColor: line.textColor || undefined,
+        nextStops: line.displayFormat === 'times-line' ? line.nextStops : undefined,
+        displayFormat: line.displayFormat,
+        primaryContent: line.primaryContent,
+        secondaryContent: line.displayFormat === 'two-line' ? line.secondaryContent : undefined,
+      }));
+
+    return {
+      name: presetName.trim() || 'Display 1',
+      paused: displayMetadata.paused,
+      priority: displayMetadata.priority,
+      sortOrder: displayMetadata.sortOrder,
+      scheduleStart: customDisplayScheduleEnabled ? displaySchedule.start : null,
+      scheduleEnd: customDisplayScheduleEnabled ? displaySchedule.end : null,
+      scheduleDays: customDisplayScheduleEnabled ? displayDays : [],
+      config: {
+        brightness: 60,
+        displayType: layoutSlots,
+        scrolling: false,
+        arrivalsToDisplay: 1,
+        lines: payloadLines,
+      },
+    };
+  }, [city, customDisplayScheduleEnabled, displayDays, displayMetadata.paused, displayMetadata.priority, displayMetadata.sortOrder, displaySchedule.end, displaySchedule.start, layoutSlots, lines, presetName]);
+
+  const displayValidationError = useMemo(() => validateDisplayDraft(draftPayload), [draftPayload]);
+
   const handleSave = async () => {
     if (!isDirty || saving) return;
     setSaving(true);
@@ -462,24 +568,27 @@ export default function DashboardScreen() {
 
     try {
       if (hasLinkedDevice && selectedDevice.id) {
-        const payloadLines = lines
-          .filter(line => line.stationId && line.routeId)
-          .map(line => ({
-            provider: resolveBackendProvider(city, line.mode),
-            line: line.routeId,
-            stop: line.stationId,
-            ...(line.direction ? {direction: line.direction === 'uptown' ? 'N' : 'S'} : {}),
-          }));
+        if (displayValidationError) {
+          setLiveStatusText(displayValidationError);
+          setSaving(false);
+          return;
+        }
 
-        const configRes = await apiFetch(`/device/${selectedDevice.id}/config`, {
-          method: 'POST',
-          headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({displayType: layoutSlots, lines: payloadLines}),
-        });
-
-        if (!configRes.ok) {
-          const errData = await configRes.json().catch(() => null);
-          const msg = typeof errData?.error === 'string' ? errData.error : `Save failed (${configRes.status})`;
+        try {
+          const result = editingDisplayId
+            ? await updateDisplay(selectedDevice.id, editingDisplayId, draftPayload)
+            : await createDisplay(selectedDevice.id, draftPayload);
+          const nextDisplayId =
+            typeof result?.displayId === 'string'
+              ? result.displayId
+              : typeof result?.display?.displayId === 'string'
+                ? result.display.displayId
+                : editingDisplayId;
+          if (nextDisplayId) {
+            setEditingDisplayId(nextDisplayId);
+          }
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : 'Save failed';
           setLiveStatusText(msg);
           setSaving(false);
           return;
@@ -1034,7 +1143,13 @@ export default function DashboardScreen() {
       </ScrollView>
       </KeyboardAvoidingView>
 
-      <SaveBar dirty={isDirty} loading={saving} success={saveDone} onPress={handleSave} />
+      <SaveBar
+        dirty={isDirty}
+        loading={saving}
+        success={saveDone}
+        disabledReason={displayValidationError}
+        onPress={handleSave}
+      />
       <ConfirmDiscardModal
         visible={showDiscardConfirm}
         onStay={() => setShowDiscardConfirm(false)}
@@ -1286,16 +1401,31 @@ function TimeStepper({
   );
 }
 
-function SaveBar({dirty, loading, success, onPress}: {dirty: boolean; loading: boolean; success: boolean; onPress: () => void}) {
+function SaveBar({
+  dirty,
+  loading,
+  success,
+  disabledReason,
+  onPress,
+}: {
+  dirty: boolean;
+  loading: boolean;
+  success: boolean;
+  disabledReason?: string | null;
+  onPress: () => void;
+}) {
+  const disabled = !dirty || loading || !!disabledReason;
   return (
     <View style={styles.saveBar}>
       <Pressable
-        disabled={!dirty || loading}
+        disabled={disabled}
         onPress={onPress}
-        style={[styles.saveButton, (!dirty || loading) && styles.saveButtonDisabled, success && styles.saveButtonSuccess]}>
+        style={[styles.saveButton, disabled && styles.saveButtonDisabled, success && styles.saveButtonSuccess]}>
         <Text style={styles.saveButtonText}>{loading ? 'Saving...' : success ? 'Synced' : 'Save to Device'}</Text>
       </Pressable>
-      <Text style={styles.saveHint}>{success ? 'Last synced just now' : dirty ? 'Unsaved changes' : 'No changes'}</Text>
+      <Text style={styles.saveHint}>
+        {success ? 'Last synced just now' : disabledReason ? disabledReason : dirty ? 'Unsaved changes' : 'No changes'}
+      </Text>
     </View>
   );
 }
