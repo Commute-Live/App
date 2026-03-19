@@ -415,7 +415,7 @@ export default function DashboardHomeScreen() {
                         <View style={styles.heroDots}>
                            {carouselPresets.map((preset, index) => (
                               <Pressable
-                                 key={preset.id}
+                                 key={preset.displayId}
                                  style={[
                                     styles.heroDot,
                                     index === carouselIndex &&
