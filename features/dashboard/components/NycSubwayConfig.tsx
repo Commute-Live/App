@@ -3,15 +3,15 @@ import {Pressable, ScrollView, StyleSheet, Text, View} from 'react-native';
 import {colors, radii, spacing} from '../../../theme';
 import {apiFetch} from '../../../lib/api';
 
-const DEFAULT_STOP_ID = '725N';
-const DEFAULT_STOP_NAME = 'Times Sq-42 St';
+const DEFAULT_STOP_ID = '';
+const DEFAULT_STOP_NAME = 'Select stop';
 const MAX_SELECTED_LINES = 2;
 const MAX_SELECTED_BUS_LINES = 1;
 const DISPLAY_PRESETS = [1, 2, 3, 4, 5] as const;
 
-type StopOption = {stopId: string; stop: string; direction: 'N' | 'S' | ''};
+type StopOption = {stopId: string; stop: string; direction?: 'N' | 'S' | ''};
 type BusRouteOption = {id: string; label: string};
-type SubwaySelection = {line: string; stopId: string; stopName: string};
+type SubwaySelection = {line: string; stopId: string; stopName: string; direction: 'N' | 'S'};
 
 type Props = {
   deviceId: string;
@@ -20,7 +20,7 @@ type Props = {
 
 export default function NycSubwayConfig({deviceId, providerId = 'mta-subway'}: Props) {
   const isBusMode = providerId === 'mta-bus';
-  const [selectedLines, setSelectedLines] = useState<string[]>(['E', 'A']);
+  const [selectedLines, setSelectedLines] = useState<string[]>([]);
   const [stopId, setStopId] = useState(DEFAULT_STOP_ID);
   const [stopName, setStopName] = useState(DEFAULT_STOP_NAME);
   const [busRouteOptions, setBusRouteOptions] = useState<BusRouteOption[]>([]);
@@ -39,7 +39,7 @@ export default function NycSubwayConfig({deviceId, providerId = 'mta-subway'}: P
   const [displayType, setDisplayType] = useState<number>(1);
   const [presetDropdownOpen, setPresetDropdownOpen] = useState(false);
   const [subwaySelections, setSubwaySelections] = useState<SubwaySelection[]>([
-    {line: 'E', stopId: DEFAULT_STOP_ID, stopName: DEFAULT_STOP_NAME},
+    {line: '', stopId: DEFAULT_STOP_ID, stopName: DEFAULT_STOP_NAME, direction: 'N'},
   ]);
   const [activeSubwaySelectionIndex, setActiveSubwaySelectionIndex] = useState<0 | 1>(0);
   const [subwayStopDropdownOpen, setSubwayStopDropdownOpen] = useState(false);
@@ -50,10 +50,23 @@ export default function NycSubwayConfig({deviceId, providerId = 'mta-subway'}: P
   const normalizeStopId = useCallback((rawStop: string, rawDirection: string) => {
     const normalized = rawStop.trim().toUpperCase();
     if (!normalized.length) return '';
-    if (normalized.endsWith('N') || normalized.endsWith('S')) return normalized;
-    const direction = rawDirection.trim().toUpperCase();
-    if (direction === 'N' || direction === 'S') return `${normalized}${direction}`;
+    if (isBusMode) {
+      if (normalized.endsWith('N') || normalized.endsWith('S')) return normalized;
+      const direction = rawDirection.trim().toUpperCase();
+      if (direction === 'N' || direction === 'S') return `${normalized}${direction}`;
+      return normalized;
+    }
+    if (!isBusMode && (normalized.endsWith('N') || normalized.endsWith('S'))) {
+      return normalized.slice(0, -1);
+    }
     return normalized;
+  }, [isBusMode]);
+
+  const normalizeSubwayDirection = useCallback((rawDirection: string, rawStop: string): 'N' | 'S' => {
+    const normalizedDirection = rawDirection.trim().toUpperCase();
+    if (normalizedDirection === 'S') return 'S';
+    if (normalizedDirection === 'N') return 'N';
+    return rawStop.trim().toUpperCase().endsWith('S') ? 'S' : 'N';
   }, []);
 
   useEffect(() => {
@@ -97,6 +110,7 @@ export default function NycSubwayConfig({deviceId, providerId = 'mta-subway'}: P
                 line,
                 stopId: stopIdForLine,
                 stopName: stopIdForLine || 'Select stop',
+                direction: normalizeSubwayDirection(rawDirection, rawStop),
               };
             });
             setSubwaySelections(mapped);
@@ -144,10 +158,10 @@ export default function NycSubwayConfig({deviceId, providerId = 'mta-subway'}: P
       setStopId('404040');
       setStopName('Select bus stop');
     } else {
-      setSelectedLines(prev => (prev.length > 0 ? prev.slice(0, MAX_SELECTED_LINES) : ['E', 'A']));
+      setSelectedLines(prev => (prev.length > 0 ? prev.slice(0, MAX_SELECTED_LINES) : []));
       setStopId(DEFAULT_STOP_ID);
       setStopName(DEFAULT_STOP_NAME);
-      setSubwaySelections([{line: 'E', stopId: DEFAULT_STOP_ID, stopName: DEFAULT_STOP_NAME}]);
+      setSubwaySelections([{line: '', stopId: DEFAULT_STOP_ID, stopName: DEFAULT_STOP_NAME, direction: 'N'}]);
       setSubwayAvailableLines([[], []]);
       setSubwayLoadingLines([false, false]);
       setActiveSubwaySelectionIndex(0);
@@ -209,33 +223,17 @@ export default function NycSubwayConfig({deviceId, providerId = 'mta-subway'}: P
       setStopsError('');
       try {
         const response = await apiFetch(`/providers/new-york/stops/bus?route=${encodeURIComponent(primaryRoute)}&limit=1000`);
-        console.log('[NYC stops] request', {
-          mode: isBusMode ? 'bus' : 'subway',
-          route: primaryRoute ?? null,
-          status: response.status,
-          ok: response.ok,
-        });
         if (!response.ok) {
           if (!cancelled) setStopsError('Failed to load stops');
           return;
         }
         const data = await response.json();
-        console.log('[NYC stops] response', {
-          mode: isBusMode ? 'bus' : 'subway',
-          route: primaryRoute ?? null,
-          count: Array.isArray(data?.stops) ? data.stops.length : -1,
-          sample: Array.isArray(data?.stops) ? data.stops.slice(0, 2) : data,
-        });
         if (!cancelled) {
           const options = Array.isArray(data?.stops) ? (data.stops as StopOption[]) : [];
           setAllStops(options);
           if (options.length === 0) setStopsError('No stops found');
         }
       } catch {
-        console.log('[NYC stops] error', {
-          mode: isBusMode ? 'bus' : 'subway',
-          route: primaryRoute ?? null,
-        });
         if (!cancelled) {
           setAllStops([]);
           setStopsError('Failed to load stops');
@@ -268,14 +266,21 @@ export default function NycSubwayConfig({deviceId, providerId = 'mta-subway'}: P
       setIsLoadingStops(true);
       setStopsError('');
       try {
-        const response = await apiFetch('/stops?limit=1000');
+        const response = await apiFetch('/mta/stations?mode=subway&limit=1000');
         if (!response.ok) {
           if (!cancelled) setStopsError('Failed to load stops');
           return;
         }
         const data = await response.json();
         if (!cancelled) {
-          const options = Array.isArray(data?.stops) ? (data.stops as StopOption[]) : [];
+          const options: StopOption[] = Array.isArray(data?.stations)
+            ? data.stations
+                .map((row: any) => ({
+                  stopId: typeof row?.stopId === 'string' ? row.stopId.trim().toUpperCase() : '',
+                  stop: typeof row?.name === 'string' ? row.name : '',
+                }))
+                .filter((row: StopOption) => row.stopId.length > 0 && row.stop.length > 0)
+            : [];
           setSubwayAllStops(options);
           if (options.length === 0) setStopsError('No stops found');
         }
@@ -329,7 +334,7 @@ export default function NycSubwayConfig({deviceId, providerId = 'mta-subway'}: P
         return next;
       });
       try {
-        const response = await apiFetch(`/stops/${encodeURIComponent(normalizedStopId)}/lines`);
+        const response = await apiFetch(`/mta/stations/subway/${encodeURIComponent(normalizedStopId)}/lines`);
         if (!response.ok) {
           if (!cancelled) {
             setSubwayAvailableLines(prev => {
@@ -344,7 +349,13 @@ export default function NycSubwayConfig({deviceId, providerId = 'mta-subway'}: P
         const data = await response.json();
         const lines = Array.isArray(data?.lines)
           ? data.lines
-              .map((line: unknown) => (typeof line === 'string' ? line.toUpperCase() : ''))
+              .map((line: unknown) => {
+                if (typeof line === 'string') return line.toUpperCase();
+                if (line && typeof line === 'object' && typeof (line as {id?: unknown}).id === 'string') {
+                  return (line as {id: string}).id.toUpperCase();
+                }
+                return '';
+              })
               .filter((line: string) => line.length > 0)
           : [];
 
@@ -390,14 +401,6 @@ export default function NycSubwayConfig({deviceId, providerId = 'mta-subway'}: P
       cancelled = true;
     };
   }, [isBusMode, subwaySelections[0]?.stopId, subwaySelections[1]?.stopId]);
-
-  useEffect(() => {
-    if (!isBusMode || !stopDropdownOpen) {
-      setStopOptions([]);
-      return;
-    }
-    setStopOptions(allStops);
-  }, [isBusMode, allStops, stopDropdownOpen]);
 
   useEffect(() => {
     if (!isBusMode) return;
@@ -457,6 +460,17 @@ export default function NycSubwayConfig({deviceId, providerId = 'mta-subway'}: P
     });
   }, [isBusMode]);
 
+  const toggleSubwayDirectionAtIndex = useCallback((direction: 'N' | 'S', index: 0 | 1) => {
+    if (isBusMode) return;
+    setStatusText('');
+    setSubwaySelections(prev => {
+      const next = [...prev];
+      if (!next[index]) return prev;
+      next[index] = {...next[index], direction};
+      return next;
+    });
+  }, [isBusMode]);
+
   const saveConfig = useCallback(async () => {
     if (!deviceId) return;
     setIsSaving(true);
@@ -487,6 +501,7 @@ export default function NycSubwayConfig({deviceId, providerId = 'mta-subway'}: P
           .map(sel => ({
             line: sel.line.trim().toUpperCase(),
             stopId: sel.stopId.trim().toUpperCase(),
+            direction: sel.direction,
           }))
           .filter(sel => sel.line.length > 0 && sel.stopId.length > 0)
           .slice(0, MAX_SELECTED_LINES);
@@ -502,7 +517,7 @@ export default function NycSubwayConfig({deviceId, providerId = 'mta-subway'}: P
           provider: 'mta-subway',
           line: sel.line,
           stop: sel.stopId,
-          direction: sel.stopId.endsWith('S') ? 'S' : 'N',
+          direction: sel.direction,
         }));
       }
 
@@ -530,7 +545,7 @@ export default function NycSubwayConfig({deviceId, providerId = 'mta-subway'}: P
         const normalizedStopId = stopId.trim().toUpperCase();
         setStatusText(`Updated ${selectedLines.join(', ')} at ${normalizedStopId}`);
       } else {
-        setStatusText(`Updated ${payloadLines.map(row => `${row.line}@${row.stop}`).join(', ')}`);
+        setStatusText(`Updated ${payloadLines.map(row => `${row.line}@${row.stop}${row.direction ? `(${row.direction})` : ''}`).join(', ')}`);
       }
     } catch {
       setStatusText('Network error');
@@ -687,7 +702,7 @@ export default function NycSubwayConfig({deviceId, providerId = 'mta-subway'}: P
               onPress={() => {
                 setSubwaySelections(prev => {
                   if (prev.length >= 2) return prev;
-                  return [...prev, {line: '', stopId: '', stopName: 'Select stop'}];
+                  return [...prev, {line: '', stopId: '', stopName: 'Select stop', direction: 'N'}];
                 });
                 setActiveSubwaySelectionIndex(1);
                 setSubwayStopDropdownOpen(prev => (activeSubwaySelectionIndex === 1 ? !prev : true));
@@ -807,6 +822,22 @@ export default function NycSubwayConfig({deviceId, providerId = 'mta-subway'}: P
             {!subwayLoadingLines[0] && (subwayAvailableLines[0]?.length ?? 0) === 0 && (
               <Text style={styles.hintText}>No lines for train 1 stop.</Text>
             )}
+            <View style={styles.lineGrid}>
+              {(['N', 'S'] as const).map(direction => {
+                const isActive = subwaySelections[0]?.direction === direction;
+                return (
+                  <Pressable
+                    key={`direction-0-${direction}`}
+                    style={[styles.lineChip, isActive && styles.lineChipActive]}
+                    onPress={() => toggleSubwayDirectionAtIndex(direction, 0)}
+                    disabled={isSaving}>
+                    <Text style={[styles.lineChipText, isActive && styles.lineChipTextActive]}>
+                      {direction === 'N' ? 'Northbound' : 'Southbound'}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
             <View style={styles.lineGrid}>{subwayLineButtons(0)}</View>
 
             {subwaySelections.length > 1 && (
@@ -816,6 +847,22 @@ export default function NycSubwayConfig({deviceId, providerId = 'mta-subway'}: P
                 {!subwayLoadingLines[1] && (subwayAvailableLines[1]?.length ?? 0) === 0 && (
                   <Text style={styles.hintText}>No lines for train 2 stop.</Text>
                 )}
+                <View style={styles.lineGrid}>
+                  {(['N', 'S'] as const).map(direction => {
+                    const isActive = subwaySelections[1]?.direction === direction;
+                    return (
+                      <Pressable
+                        key={`direction-1-${direction}`}
+                        style={[styles.lineChip, isActive && styles.lineChipActive]}
+                        onPress={() => toggleSubwayDirectionAtIndex(direction, 1)}
+                        disabled={isSaving}>
+                        <Text style={[styles.lineChipText, isActive && styles.lineChipTextActive]}>
+                          {direction === 'N' ? 'Northbound' : 'Southbound'}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
                 <View style={styles.lineGrid}>{subwayLineButtons(1)}</View>
               </>
             )}
@@ -823,7 +870,7 @@ export default function NycSubwayConfig({deviceId, providerId = 'mta-subway'}: P
               Selected:{' '}
               {subwaySelections
                 .filter(sel => sel.line && sel.stopId)
-                .map(sel => `${sel.line}@${sel.stopId}`)
+                .map(sel => `${sel.line}@${sel.stopId}(${sel.direction})`)
                 .join(', ') || 'None'}
             </Text>
           </>
