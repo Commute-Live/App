@@ -5,6 +5,7 @@ import Display3DPreview, {type Display3DSlot} from './Display3DPreview';
 
 type Props = {
   slots: Display3DSlot[];
+  displayType?: number;
   onSelectSlot: (id: string) => void;
   onReorderSlot: (id: string) => void;
   onDragStateChange?: (dragging: boolean) => void;
@@ -14,6 +15,7 @@ type Props = {
 
 export default function DashboardPreviewSection({
   slots,
+  displayType = 1,
   onSelectSlot,
   onReorderSlot,
   onDragStateChange,
@@ -24,6 +26,7 @@ export default function DashboardPreviewSection({
     <View style={styles.previewSection}>
       <Display3DPreview
         slots={slots}
+        displayType={displayType}
         onSelectSlot={onSelectSlot}
         onReorderSlot={onReorderSlot}
         onDragStateChange={onDragStateChange}

@@ -5,10 +5,9 @@ import {useLocalSearchParams, useRouter} from 'expo-router';
 import {colors, radii, spacing} from '../../../theme';
 import DashboardPreviewSection from '../components/DashboardPreviewSection';
 import {useAppState} from '../../../state/appState';
-import {CITY_LABELS, CITY_BRANDS, normalizeCityId, type CityId} from '../../../constants/cities';
+import {CITY_LABELS, normalizeCityId, type CityId} from '../../../constants/cities';
 import {getTransitArrivals, getTransitLines, getTransitStations, getGlobalTransitLines, getTransitStopsForLine} from '../../../lib/transitApi';
 import type {TransitArrival, TransitUiMode, DisplayContent, DisplayFormat} from '../../../types/transit';
-import Display3DPreview from '../components/Display3DPreview';
 import type {Display3DSlot} from '../components/Display3DPreview';
 import {CITY_LINE_COLORS, FALLBACK_ROUTE_COLORS, hashLineColor} from '../../../lib/lineColors';
 import {apiFetch} from '../../../lib/api';
@@ -46,6 +45,7 @@ const DEFAULT_NEXT_STOPS = 3;
 const MIN_NEXT_STOPS = 2;
 const MAX_NEXT_STOPS = 5;
 const DEFAULT_LAYOUT_SLOTS = 2;
+const DEFAULT_DISPLAY_PRESET = 1;
 const TIME_OPTIONS = ['00:00', '05:00', '06:00', '07:00', '08:00', '09:00', '10:00', '17:00', '18:00', '20:00', '22:00', '23:00'];
 const DAY_OPTIONS = [
   {id: 'mon', label: 'Mon'},
@@ -56,16 +56,18 @@ const DAY_OPTIONS = [
   {id: 'sat', label: 'Sat'},
   {id: 'sun', label: 'Sun'},
 ] as const;
-const CONTENT_OPTIONS: Array<{id: DisplayContent; label: string; hint: string}> = [
-  {id: 'destination', label: 'Destination', hint: 'Shows the train or bus destination.'},
-  {id: 'direction', label: 'Direction', hint: 'Shows Uptown, Downtown, Northbound, or Southbound.'},
-  {id: 'custom', label: 'Custom', hint: 'Shows your own text.'},
-];
 type DayId = (typeof DAY_OPTIONS)[number]['id'];
 const LAYOUT_OPTIONS = [
   {id: 'layout-1', slots: 1, label: '1 stop'},
   {id: 'layout-2', slots: 2, label: '2 stops'},
 ];
+const DISPLAY_PRESET_OPTIONS = [
+  {id: 1, label: 'Preset 1', hint: 'Default destination with ETA on the right.'},
+  {id: 2, label: 'Preset 2', hint: 'Direction-focused label with the same base layout.'},
+  {id: 3, label: 'Preset 3', hint: 'Two-line compact label stack.'},
+  {id: 4, label: 'Preset 4', hint: 'Destination with extra ETA line underneath.'},
+  {id: 5, label: 'Preset 5', hint: 'Direction with extra ETA line underneath.'},
+] as const;
 const MODE_ORDER: ModeId[] = ['train', 'bus', 'trolley', 'commuter-rail', 'ferry'];
 const LIVE_SUPPORTED_CITIES: CityId[] = ['new-york', 'philadelphia', 'boston', 'chicago'];
 const CITY_MODE_ORDER: Record<CityId, ModeId[]> = {
@@ -126,6 +128,7 @@ export default function DashboardScreen() {
   const selectedDevice = useSelectedDevice();
   const hasLinkedDevice = deviceIds.length > 0;
   const [layoutSlots, setLayoutSlots] = useState<number>(DEFAULT_LAYOUT_SLOTS);
+  const [displayPreset, setDisplayPreset] = useState<number>(DEFAULT_DISPLAY_PRESET);
   const [lines, setLines] = useState<LinePick[]>(() => ensureLineCount([], city, DEFAULT_LAYOUT_SLOTS, {}, {}));
   const [selectedLineId, setSelectedLineId] = useState<string>(openConfigureStopOnLoad ? 'line-1' : '');
   const [stationSearch, setStationSearch] = useState<Record<string, string>>({});
@@ -336,16 +339,15 @@ export default function DashboardScreen() {
           : [];
 
         const savedDisplayType = Number(data?.config?.displayType);
-        let nextLayoutSlots = layoutSlots;
-        if (Number.isFinite(savedDisplayType)) {
-          const normalized = Math.max(1, Math.min(5, Math.trunc(savedDisplayType)));
-          nextLayoutSlots = normalized <= 1 ? 1 : 2;
-        }
+        const nextDisplayPreset = Number.isFinite(savedDisplayType)
+          ? Math.max(1, Math.min(5, Math.trunc(savedDisplayType)))
+          : DEFAULT_DISPLAY_PRESET;
+        const citySavedLines = savedLines.filter(saved => cityModeFromProvider(saved.provider)?.city === city);
+        const nextLayoutSlots = citySavedLines.length > 1 ? 2 : 1;
         if (!cancelled) {
           setLayoutSlots(nextLayoutSlots);
+          setDisplayPreset(nextDisplayPreset);
         }
-
-        const citySavedLines = savedLines.filter(saved => cityModeFromProvider(saved.provider)?.city === city);
         let nextLines = ensureLineCount([], city, nextLayoutSlots, {}, {});
 
         if (citySavedLines.length > 0) {
@@ -390,6 +392,7 @@ export default function DashboardScreen() {
           snapshotRef.current = {
             city,
             layoutSlots: nextLayoutSlots,
+            displayPreset: nextDisplayPreset,
             lines: nextLines,
             displaySchedule: nextDisplaySchedule,
             displayDays: nextDisplayDays,
@@ -489,12 +492,13 @@ export default function DashboardScreen() {
     ]).start();
   }, [editorEnter, headerEnter, previewEnter]);
 
-  const snapshotRef = useRef({city, layoutSlots, lines, displaySchedule, displayDays, presetName, customDisplayScheduleEnabled});
+  const snapshotRef = useRef({city, layoutSlots, displayPreset, lines, displaySchedule, displayDays, presetName, customDisplayScheduleEnabled});
   const isDirty = useMemo(() => {
     const snap = snapshotRef.current;
     return (
       snap.city !== city ||
       snap.layoutSlots !== layoutSlots ||
+      snap.displayPreset !== displayPreset ||
       snap.presetName !== presetName ||
       snap.customDisplayScheduleEnabled !== customDisplayScheduleEnabled ||
       snap.displaySchedule.start !== displaySchedule.start ||
@@ -502,7 +506,7 @@ export default function DashboardScreen() {
       JSON.stringify(snap.displayDays) !== JSON.stringify(displayDays) ||
       JSON.stringify(snap.lines) !== JSON.stringify(lines)
     );
-  }, [city, customDisplayScheduleEnabled, displayDays, displaySchedule.end, displaySchedule.start, layoutSlots, lines, presetName]);
+  }, [city, customDisplayScheduleEnabled, displayDays, displayPreset, displaySchedule.end, displaySchedule.start, layoutSlots, lines, presetName]);
 
   const handleSave = async () => {
     if (!isDirty || saving) return;
@@ -529,7 +533,7 @@ export default function DashboardScreen() {
             scheduleStart: customDisplayScheduleEnabled ? displaySchedule.start : null,
             scheduleEnd: customDisplayScheduleEnabled ? displaySchedule.end : null,
             scheduleDays: customDisplayScheduleEnabled ? displayDays : [],
-            displayType: layoutSlots,
+            displayType: displayPreset,
             lines: payloadLines,
           }),
         });
@@ -547,7 +551,7 @@ export default function DashboardScreen() {
         await apiFetch(`/refresh/device/${selectedDevice.id}`, {method: 'POST'});
       }
 
-      snapshotRef.current = {city, layoutSlots, lines, displaySchedule, displayDays, presetName, customDisplayScheduleEnabled};
+      snapshotRef.current = {city, layoutSlots, displayPreset, lines, displaySchedule, displayDays, presetName, customDisplayScheduleEnabled};
       setPreset(presetName.trim() || 'Display 1');
       setSelectedStations(
         lines
@@ -705,8 +709,6 @@ export default function DashboardScreen() {
 
         const destinationLabel = arrival?.destination ?? station?.name ?? '—';
         const directionLabel = line.direction === 'uptown' ? 'Uptown' : 'Downtown';
-        const primaryCustomLabel = line.label.trim();
-        const secondaryCustomLabel = line.secondaryLabel.trim();
         const t0 = arrival?.minutes != null ? String(arrival.minutes) : '—';
         const allTimes = buildNextArrivalTimes(arrival?.minutes ?? 0, line.nextStops);
         const subTimes = allTimes.slice(1).map(t => t.replace('m', '')).join(', ');
@@ -714,20 +716,26 @@ export default function DashboardScreen() {
         let stopName: string;
         let subLine: string | undefined;
 
-        switch (line.displayFormat) {
-          case 'single-line':
-            stopName = resolveDisplayContent(line.primaryContent, destinationLabel, directionLabel, primaryCustomLabel);
+        switch (displayPreset) {
+          case 2:
+            stopName = directionLabel;
             break;
-          case 'two-line':
-            stopName = resolveDisplayContent(line.primaryContent, destinationLabel, directionLabel, primaryCustomLabel);
-            subLine = resolveDisplayContent(line.secondaryContent, destinationLabel, directionLabel, secondaryCustomLabel);
+          case 3:
+            stopName = directionLabel;
+            subLine = destinationLabel !== directionLabel ? destinationLabel : undefined;
             break;
-          case 'times-line':
-            stopName = resolveDisplayContent(line.primaryContent, destinationLabel, directionLabel, primaryCustomLabel);
-            subLine = subTimes;
+          case 4:
+            stopName = destinationLabel;
+            subLine = subTimes || undefined;
             break;
+          case 5:
+            stopName = directionLabel;
+            subLine = subTimes || undefined;
+            break;
+          case 1:
           default:
             stopName = destinationLabel;
+            break;
         }
 
         return {
@@ -741,7 +749,7 @@ export default function DashboardScreen() {
           times: t0,
         };
       }),
-    [arrivals, city, lines, routesByStation, selectedLineId, stationsByLine, stationsByMode],
+    [arrivals, city, displayPreset, lines, routesByStation, selectedLineId, stationsByLine, stationsByMode],
   );
 
   const headerAnimatedStyle = {
@@ -845,6 +853,7 @@ export default function DashboardScreen() {
         <Animated.View style={headerAnimatedStyle}>
           <TopBar
             layoutSlots={layoutSlots}
+            displayPreset={displayPreset}
             presetName={presetName}
             onPresetNameChange={setPresetName}
             onLayoutOpen={() => setOpenLayoutPicker(true)}
@@ -880,6 +889,7 @@ export default function DashboardScreen() {
         <Animated.View style={previewAnimatedStyle}>
           <DashboardPreviewSection
             slots={previewSlots}
+            displayType={displayPreset}
             onSelectSlot={handleSelectSlotForEdit}
             onReorderSlot={reorderLineByHold}
             onDragStateChange={setPreviewDragging}
@@ -911,7 +921,7 @@ export default function DashboardScreen() {
           <View style={styles.card}>
             <View style={styles.collapsibleSection}>
               <Pressable style={styles.collapsibleHeader} onPress={toggleLayoutEditor}>
-                <Text style={styles.sectionLabel}>Choose Layout</Text>
+                <Text style={styles.sectionLabel}>Layout + Preset</Text>
                 <View style={styles.collapsibleArrowBubble}>
                   <Text style={styles.collapsibleArrow}>{layoutExpanded ? '▲' : '▼'}</Text>
                 </View>
@@ -919,21 +929,8 @@ export default function DashboardScreen() {
 
               {layoutExpanded ? (
                 <View style={styles.collapsibleBody}>
-                  <FormatPickerStep
-                    city={city}
-                    selectedFormat={selectedLine?.displayFormat ?? lines[0]?.displayFormat}
-                    onSelect={format => {
-                      const targetId = selectedLine?.id ?? lines[0]?.id;
-                      if (targetId) updateLine(targetId, {displayFormat: format});
-                      setLayoutExpanded(false);
-                      setSlotEditorExpanded(true);
-                      if (!selectedLineId) {
-                        const firstLine = lines[0];
-                        setSelectedLineId(firstLine?.id ?? '');
-                        setEditorStep(firstLine && firstLine.stationId && firstLine.routeId ? 'done' : 'lines');
-                      }
-                    }}
-                  />
+                  <LayoutSlotsPickerStep selectedSlots={layoutSlots} onSelect={applyLayout} />
+                  <DisplayPresetPickerStep selectedPreset={displayPreset} onSelect={setDisplayPreset} />
                 </View>
               ) : null}
             </View>
@@ -1011,6 +1008,7 @@ export default function DashboardScreen() {
                     {editorStep === 'done' && (
                       <DoneStep
                         city={city}
+                        displayPreset={displayPreset}
                         line={selectedLine}
                         selectedRoute={
                           (routesByStation[routeLookupKey(normalizeMode(city, selectedLine.mode), selectedLine.stationId)] ?? []).find(
@@ -1112,12 +1110,14 @@ export default function DashboardScreen() {
 
 function TopBar({
   layoutSlots,
+  displayPreset,
   presetName,
   onPresetNameChange,
   onLayoutOpen,
   onBackPress,
 }: {
   layoutSlots: number;
+  displayPreset: number;
   presetName: string;
   onPresetNameChange: (value: string) => void;
   onLayoutOpen: () => void;
@@ -1162,7 +1162,7 @@ function TopBar({
           <Pressable style={styles.layoutPillTopRight} onPress={onLayoutOpen}>
             <Text style={styles.layoutIcon}>[]</Text>
             <Text style={styles.layoutPillTopRightText}>
-              {LAYOUT_OPTIONS.find(option => option.slots === layoutSlots)?.label ?? 'Layout'} v
+              {(LAYOUT_OPTIONS.find(option => option.slots === layoutSlots)?.label ?? 'Layout')} · P{displayPreset} v
             </Text>
           </Pressable>
         </View>
@@ -1390,163 +1390,64 @@ function SimplePicker({
   );
 }
 
-const FORMAT_GROUPS: Array<{
-  label: string;
-  options: Array<{id: DisplayFormat; name: string; desc: string}>;
-}> = [
-  {
-    label: 'Layout types',
-    options: [
-      {
-        id: 'single-line',
-        name: 'One line',
-        desc: 'One text line on the left and the next arrival on the right.',
-      },
-      {
-        id: 'two-line',
-        name: 'Two lines',
-        desc: 'Top and bottom text lines with the next arrival on the right.',
-      },
-      {
-        id: 'times-line',
-        name: 'Text + times',
-        desc: 'One text line on top with upcoming arrival times underneath.',
-      },
-    ],
-  },
-];
-
-// Skeleton: neutral = gray shapes; accent = the element unique to this format vs the baseline
-function FormatSkeleton({format, accent}: {format: DisplayFormat; accent: string}) {
-  const hasSecondLine = format === 'two-line';
-  const hasNextTimes = format === 'times-line';
-  const accentSecondLine = hasSecondLine;
-  const accentChips = hasNextTimes;
-  const primaryLabel = 'Woodlawn';
-  const secondaryLabel = hasSecondLine ? 'Uptown' : null;
-
-  return (
-    <View style={styles.fmtSkel}>
-      <View style={styles.fmtSkelRow}>
-        <View style={styles.fmtSkelBadge} />
-        <View style={styles.fmtSkelBody}>
-          <View style={styles.fmtSkelPrimaryWrap}>
-            <Text style={styles.fmtSkelPrimaryText} numberOfLines={1}>
-              {primaryLabel}
-            </Text>
-          </View>
-          {hasSecondLine ? (
-            <View style={[styles.fmtSkelSecondaryWrap, accentSecondLine && {backgroundColor: accent + '18'}]}>
-              <Text style={styles.fmtSkelSecondaryText} numberOfLines={1}>
-                {secondaryLabel}
-              </Text>
-            </View>
-          ) : null}
-        </View>
-        <View style={styles.fmtSkelEta}>
-          <Text style={styles.fmtSkelEtaText}>3m</Text>
-        </View>
-      </View>
-      {hasNextTimes ? (
-        <View style={styles.fmtSkelChipRow}>
-          {['7m', '10m', '14m'].map(value => (
-            <View
-              key={value}
-              style={[
-                styles.fmtSkelChip,
-                accentChips && {borderColor: accent, backgroundColor: accent + '18'},
-              ]}>
-              <Text style={styles.fmtSkelChipText}>{value}</Text>
-            </View>
-          ))}
-        </View>
-      ) : null}
-    </View>
-  );
-}
-
-function FormatPickerStep({
-  city,
-  selectedFormat,
+function DisplayPresetPickerStep({
+  selectedPreset,
   onSelect,
 }: {
-  city: CityId;
-  selectedFormat: DisplayFormat;
-  onSelect: (format: DisplayFormat) => void;
+  selectedPreset: number;
+  onSelect: (preset: number) => void;
 }) {
-  const brand = CITY_BRANDS[city];
-  const allOptions = FORMAT_GROUPS.flatMap(g => g.options);
-  const scaleAnims = useRef(allOptions.map(() => new Animated.Value(1))).current;
-
-  const handlePress = (format: DisplayFormat, globalIndex: number) => {
-    Animated.sequence([
-      Animated.timing(scaleAnims[globalIndex], {toValue: 0.96, duration: 80, useNativeDriver: true}),
-      Animated.spring(scaleAnims[globalIndex], {toValue: 1, tension: 200, friction: 10, useNativeDriver: true}),
-    ]).start(() => onSelect(format));
-  };
-
-  let globalIndex = 0;
   return (
     <View style={styles.stepSection}>
-      <Text style={styles.stepTitle}>How should it look?</Text>
-      <Text style={styles.stepSubtitle}>Choose a display format for this slot.</Text>
-      <View style={styles.formatCardList}>
-        {FORMAT_GROUPS.map((group, gi) => (
-          <View key={group.label} style={[styles.formatGroup, gi > 0 && styles.formatGroupSpaced]}>
-            <View style={styles.formatGroupHeader}>
-              <View style={styles.formatGroupLine} />
-              <Text style={styles.formatGroupLabel}>{group.label}</Text>
-              <View style={styles.formatGroupLine} />
-            </View>
-            {group.options.map(option => {
-              const idx = globalIndex++;
-              const isSelected = option.id === selectedFormat;
-              return (
-                <Animated.View key={option.id} style={{transform: [{scale: scaleAnims[idx]}]}}>
-                  <Pressable
-                    style={[styles.formatCard, isSelected && {borderColor: brand.accent, borderWidth: 2}]}
-                    onPress={() => handlePress(option.id, idx)}>
-                    <FormatSkeleton format={option.id} accent={brand.accent} />
-                    <View style={[styles.formatCardDivider, isSelected && {backgroundColor: brand.accent, opacity: 0.3}]} />
-                    <View style={styles.formatCardInfo}>
-                      <Text style={[styles.formatCardName, isSelected && {color: brand.accent}]}>{option.name}</Text>
-                      <Text style={styles.formatCardDesc}>{option.desc}</Text>
-                    </View>
-                    {isSelected ? <View style={[styles.formatCardCheck, {backgroundColor: brand.accent}]}><Text style={styles.formatCardCheckText}>✓</Text></View> : null}
-                  </Pressable>
-                </Animated.View>
-              );
-            })}
-          </View>
-        ))}
-      </View>
-    </View>
-  );
-}
-
-function ContentToggle({
-  label,
-  value,
-  onChange,
-}: {
-  label: string;
-  value: DisplayContent;
-  onChange: (content: DisplayContent) => void;
-}) {
-  return (
-    <View style={styles.sectionBlock}>
-      <Text style={styles.sectionLabel}>{label}</Text>
+      <Text style={styles.stepTitle}>Which device preset?</Text>
+      <Text style={styles.stepSubtitle}>This maps directly to the ESP render preset.</Text>
       <View style={styles.choiceList}>
-        {CONTENT_OPTIONS.map(option => {
-          const active = option.id === value;
+        {DISPLAY_PRESET_OPTIONS.map(option => {
+          const active = option.id === selectedPreset;
           return (
             <Pressable
               key={option.id}
               style={[styles.choiceRow, active && styles.choiceRowActive]}
-              onPress={() => onChange(option.id)}>
+              onPress={() => onSelect(option.id)}>
               <View style={styles.choiceRowCopy}>
                 <Text style={[styles.choiceRowLabel, active && styles.choiceRowLabelActive]}>{option.label}</Text>
                 <Text style={[styles.choiceRowHint, active && styles.choiceRowHintActive]}>{option.hint}</Text>
+              </View>
+              <View style={[styles.choiceRowCheck, active && styles.choiceRowCheckActive]}>
+                {active ? <Text style={styles.choiceRowCheckText}>✓</Text> : null}
+              </View>
+            </Pressable>
+          );
+        })}
+      </View>
+    </View>
+  );
+}
+
+function LayoutSlotsPickerStep({
+  selectedSlots,
+  onSelect,
+}: {
+  selectedSlots: number;
+  onSelect: (slots: number) => void;
+}) {
+  return (
+    <View style={styles.stepSection}>
+      <Text style={styles.stepTitle}>How many stops?</Text>
+      <Text style={styles.stepSubtitle}>Choose whether the device should show one tracked stop or two.</Text>
+      <View style={styles.choiceList}>
+        {LAYOUT_OPTIONS.map(option => {
+          const active = option.slots === selectedSlots;
+          return (
+            <Pressable
+              key={option.id}
+              style={[styles.choiceRow, active && styles.choiceRowActive]}
+              onPress={() => onSelect(option.slots)}>
+              <View style={styles.choiceRowCopy}>
+                <Text style={[styles.choiceRowLabel, active && styles.choiceRowLabelActive]}>{option.label}</Text>
+                <Text style={[styles.choiceRowHint, active && styles.choiceRowHintActive]}>
+                  {option.slots === 1 ? 'Single row with one saved service.' : 'Two active rows, one per saved service.'}
+                </Text>
               </View>
               <View style={[styles.choiceRowCheck, active && styles.choiceRowCheckActive]}>
                 {active ? <Text style={styles.choiceRowCheckText}>✓</Text> : null}
@@ -1913,6 +1814,7 @@ function StopRow({
 
 function DoneStep({
   city,
+  displayPreset,
   line,
   selectedRoute,
   selectedStation,
@@ -1922,6 +1824,7 @@ function DoneStep({
   onChange,
 }: {
   city: CityId;
+  displayPreset: number;
   line: LinePick;
   selectedRoute: Route | undefined;
   selectedStation: Station | undefined;
@@ -1930,13 +1833,11 @@ function DoneStep({
   onChangeStop: () => void;
   onChange: (id: string, next: Partial<LinePick>) => void;
 }) {
-  const canDecreaseNextStops = line.nextStops > MIN_NEXT_STOPS;
-  const canIncreaseNextStops = line.nextStops < MAX_NEXT_STOPS;
   const mode = normalizeMode(city, line.mode);
   const showBusBadge = isNycBusBadge(city, mode);
   const selectedRouteBadgeLabel = selectedRoute ? formatRoutePickerLabel(city, mode, selectedRoute) : '';
-  const showsDirection = line.primaryContent === 'direction' || (line.displayFormat === 'two-line' && line.secondaryContent === 'direction');
-  const showsNextArrivals = line.displayFormat === 'times-line';
+  const presetOption = DISPLAY_PRESET_OPTIONS.find(option => option.id === displayPreset);
+  const presetBehavior = describePresetBehavior(displayPreset);
 
   return (
     <View style={styles.doneStepContainer}>
@@ -1977,114 +1878,21 @@ function DoneStep({
       {liveStatusText ? <Text style={styles.sectionHint}>{liveStatusText}</Text> : null}
 
       <View style={styles.secondarySectionCard}>
-        {line.displayFormat === 'single-line' ? (
-          <>
-            <ContentToggle
-              label="Line text"
-              value={line.primaryContent}
-              onChange={primaryContent => onChange(line.id, {primaryContent})}
-            />
-            {line.primaryContent === 'custom' ? (
-              <View style={styles.sectionBlock}>
-                <Text style={styles.sectionLabel}>Custom Text</Text>
-                <TextInput
-                  value={line.label}
-                  onChangeText={value => onChange(line.id, {label: value})}
-                  placeholder={selectedStation?.name ?? 'Add custom text'}
-                  placeholderTextColor={colors.textMuted}
-                  style={styles.customInput}
-                />
-              </View>
-            ) : null}
-          </>
-        ) : null}
-
-        {line.displayFormat === 'two-line' ? (
-          <>
-            <ContentToggle
-              label="Top line"
-              value={line.primaryContent}
-              onChange={primaryContent => onChange(line.id, {primaryContent})}
-            />
-            {line.primaryContent === 'custom' ? (
-              <View style={styles.sectionBlock}>
-                <Text style={styles.sectionLabel}>Top Custom Text</Text>
-                <TextInput
-                  value={line.label}
-                  onChangeText={value => onChange(line.id, {label: value})}
-                  placeholder={selectedStation?.name ?? 'Add custom text'}
-                  placeholderTextColor={colors.textMuted}
-                  style={styles.customInput}
-                />
-              </View>
-            ) : null}
-            <ContentToggle
-              label="Bottom line"
-              value={line.secondaryContent}
-              onChange={secondaryContent => onChange(line.id, {secondaryContent})}
-            />
-            {line.secondaryContent === 'custom' ? (
-              <View style={styles.sectionBlock}>
-                <Text style={styles.sectionLabel}>Bottom Custom Text</Text>
-                <TextInput
-                  value={line.secondaryLabel}
-                  onChangeText={value => onChange(line.id, {secondaryLabel: value})}
-                  placeholder={selectedStation?.name ?? 'Add custom text'}
-                  placeholderTextColor={colors.textMuted}
-                  style={styles.customInput}
-                />
-              </View>
-            ) : null}
-          </>
-        ) : null}
-
-        {line.displayFormat === 'times-line' ? (
-          <>
-            <ContentToggle
-              label="Top line"
-              value={line.primaryContent}
-              onChange={primaryContent => onChange(line.id, {primaryContent})}
-            />
-            {line.primaryContent === 'custom' ? (
-              <View style={styles.sectionBlock}>
-                <Text style={styles.sectionLabel}>Custom Text</Text>
-                <TextInput
-                  value={line.label}
-                  onChangeText={value => onChange(line.id, {label: value})}
-                  placeholder={selectedStation?.name ?? 'Add custom text'}
-                  placeholderTextColor={colors.textMuted}
-                  style={styles.customInput}
-                />
-              </View>
-            ) : null}
-          </>
-        ) : null}
-
-        {showsDirection ? (
-          <DirectionToggle value={line.direction} onChange={direction => onChange(line.id, {direction})} />
-        ) : null}
-
-        {showsNextArrivals ? (
-          <View style={styles.sectionBlock}>
-            <Text style={styles.sectionLabel}>Next Arrivals To Show</Text>
-            <View style={styles.stepperRow}>
-              <Pressable
-                disabled={!canDecreaseNextStops}
-                style={[styles.stepperButton, !canDecreaseNextStops && styles.stepperButtonDisabled]}
-                onPress={() => onChange(line.id, {nextStops: clampNextStops(line.nextStops - 1)})}>
-                <Text style={[styles.stepperButtonText, !canDecreaseNextStops && styles.stepperButtonTextDisabled]}>-</Text>
-              </Pressable>
-              <Text style={styles.stepperValue}>{line.nextStops}</Text>
-              <Pressable
-                disabled={!canIncreaseNextStops}
-                style={[styles.stepperButton, !canIncreaseNextStops && styles.stepperButtonDisabled]}
-                onPress={() => onChange(line.id, {nextStops: clampNextStops(line.nextStops + 1)})}>
-                <Text style={[styles.stepperButtonText, !canIncreaseNextStops && styles.stepperButtonTextDisabled]}>+</Text>
-              </Pressable>
-            </View>
-            <Text style={styles.sectionHint}>Choose how many upcoming times to show, from 2 to 5.</Text>
-          </View>
-        ) : null}
+        <View style={styles.sectionBlock}>
+          <Text style={styles.sectionLabel}>Device Preset</Text>
+          <Text style={styles.sectionHint}>
+            {presetOption ? `${presetOption.label}: ${presetOption.hint}` : `Preset ${displayPreset}`}
+          </Text>
+        </View>
+        <View style={styles.sectionBlock}>
+          <Text style={styles.sectionLabel}>What The ESP Shows</Text>
+          <Text style={styles.sectionHint}>{presetBehavior.primary}</Text>
+          {presetBehavior.secondary ? <Text style={styles.sectionHint}>{presetBehavior.secondary}</Text> : null}
+        </View>
+        <DirectionToggle value={line.direction} onChange={direction => onChange(line.id, {direction})} />
+        <Text style={styles.sectionHint}>
+          Direction is saved to the backend and controls which service/platform the display follows.
+        </Text>
       </View>
     </View>
   );
@@ -2180,6 +1988,37 @@ function normalizeSavedStationId(provider: string, stopId: string) {
     return normalizedStopId.slice(0, -1);
   }
   return normalizedStopId;
+}
+
+function describePresetBehavior(displayPreset: number) {
+  switch (displayPreset) {
+    case 2:
+      return {
+        primary: 'Direction is used as the main label, with the primary ETA on the right.',
+        secondary: 'This keeps the same base geometry as preset 1 but swaps the label behavior.',
+      };
+    case 3:
+      return {
+        primary: 'Direction appears on the first compact line, with destination underneath.',
+        secondary: 'Use this when you want both direction and destination visible in one row.',
+      };
+    case 4:
+      return {
+        primary: 'Destination is used as the main label, with a compact extra-ETA line below.',
+        secondary: 'The device uses this extra line for additional arrival times.',
+      };
+    case 5:
+      return {
+        primary: 'Direction is used as the main label, with a compact extra-ETA line below.',
+        secondary: 'This combines the direction-first label with the extra arrivals strip.',
+      };
+    case 1:
+    default:
+      return {
+        primary: 'Destination is used as the main label, with the primary ETA on the right.',
+        secondary: 'This is the default firmware preset.',
+      };
+  }
 }
 
 function toTransitUiMode(mode: ModeId): TransitUiMode {
