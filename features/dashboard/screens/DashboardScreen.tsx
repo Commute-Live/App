@@ -12,6 +12,7 @@ import Display3DPreview from '../components/Display3DPreview';
 import type {Display3DSlot} from '../components/Display3DPreview';
 import {CITY_LINE_COLORS, FALLBACK_ROUTE_COLORS, hashLineColor} from '../../../lib/lineColors';
 import {apiFetch} from '../../../lib/api';
+import {extractConfigDisplayId} from '../../../lib/deviceConfig';
 import {useAuth} from '../../../state/authProvider';
 import {useSelectedDevice} from '../../../hooks/useSelectedDevice';
 
@@ -152,11 +153,13 @@ export default function DashboardScreen() {
   const [transitionLabel, setTransitionLabel] = useState('');
   const [linesByMode, setLinesByMode] = useState<Partial<Record<ModeId, Route[]>>>({});
   const [linesLoadingByMode, setLinesLoadingByMode] = useState<Partial<Record<ModeId, boolean>>>({});
+  const [activeDisplayId, setActiveDisplayId] = useState<string | null>(null);
   const stepAnim = useRef(new Animated.Value(1)).current;
   const stationsByLineRef = useRef(new Set<string>());
   const linesRequestedRef = useRef(new Set<string>());
   const stationsRequestedRef = useRef(new Set<string>());
   const routesRequestedRef = useRef(new Set<string>());
+  const previousCityRef = useRef(city);
   const [lastCommandJson, setLastCommandJson] = useState<string>('No command published yet.');
   const [lastCommandTs, setLastCommandTs] = useState<string>('');
   const [lastCommandError, setLastCommandError] = useState<string>('');
@@ -187,6 +190,8 @@ export default function DashboardScreen() {
   }, []);
 
   useEffect(() => {
+    const cityChanged = previousCityRef.current !== city;
+    previousCityRef.current = city;
     setStationsByMode({});
     setStationsLoadingByMode({});
     setStationsByLine({});
@@ -202,7 +207,7 @@ export default function DashboardScreen() {
     stationsRequestedRef.current.clear();
     routesRequestedRef.current.clear();
     stationsByLineRef.current.clear();
-    setLines(prev => ensureLineCount(prev, city, layoutSlots, {}, {}));
+    setLines(prev => ensureLineCount(cityChanged ? [] : prev, city, layoutSlots, {}, {}));
   }, [city, layoutSlots]);
 
   useEffect(() => {
@@ -311,11 +316,15 @@ export default function DashboardScreen() {
   useEffect(() => {
     if (!hasLinkedDevice || !selectedDevice.id) return;
     let cancelled = false;
+    setActiveDisplayId(null);
     (async () => {
       try {
         const res = await apiFetch(`/device/${selectedDevice.id}/config`);
         if (!res.ok || cancelled) return;
         const data = await res.json();
+        if (!cancelled) {
+          setActiveDisplayId(extractConfigDisplayId(data));
+        }
 
         const savedLines: Array<{provider: string; line: string; stop: string; direction?: string}> =
           Array.isArray(data?.config?.lines) ? data.config.lines : [];
@@ -326,8 +335,10 @@ export default function DashboardScreen() {
           setLayoutSlots(normalized <= 1 ? 1 : 2);
         }
 
-        if (!cancelled && savedLines.length > 0) {
-          const restoredLines: LinePick[] = savedLines.slice(0, 2).map((saved, i) => {
+        const citySavedLines = savedLines.filter(saved => cityModeFromProvider(saved.provider)?.city === city);
+
+        if (!cancelled && citySavedLines.length > 0) {
+          const restoredLines: LinePick[] = citySavedLines.slice(0, 2).map((saved, i) => {
             const mapping = cityModeFromProvider(saved.provider);
             const mode: ModeId = mapping?.mode ?? 'train';
             const normalizedSavedStop = saved.stop.trim().toUpperCase();
@@ -359,7 +370,7 @@ export default function DashboardScreen() {
     };
     // Run once on mount when device is known
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hasLinkedDevice, selectedDevice.id]);
+  }, [city, hasLinkedDevice, selectedDevice.id]);
 
   const activeLiveSelections = useMemo(
     () => lines.filter(line => line.stationId.trim().length > 0 && line.routeId.trim().length > 0),
@@ -476,7 +487,7 @@ export default function DashboardScreen() {
         const configRes = await apiFetch(`/device/${selectedDevice.id}/config`, {
           method: 'POST',
           headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({displayType: layoutSlots, lines: payloadLines}),
+          body: JSON.stringify({displayId: activeDisplayId ?? undefined, displayType: layoutSlots, lines: payloadLines}),
         });
 
         if (!configRes.ok) {
@@ -487,6 +498,8 @@ export default function DashboardScreen() {
           return;
         }
 
+        const configData = await configRes.json().catch(() => null);
+        setActiveDisplayId(extractConfigDisplayId(configData));
         await apiFetch(`/refresh/device/${selectedDevice.id}`, {method: 'POST'});
       }
 

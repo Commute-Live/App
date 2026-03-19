@@ -2,6 +2,7 @@ import React, {useCallback, useEffect, useMemo, useState} from 'react';
 import {Pressable, ScrollView, Share, StyleSheet, Text, TextInput, View} from 'react-native';
 import {colors, radii, spacing} from '../../../theme';
 import {apiFetch} from '../../../lib/api';
+import {extractConfigDisplayId} from '../../../lib/deviceConfig';
 
 const MAX_PHILLY_LINES = 2;
 const DISPLAY_PRESETS = [1, 2, 3, 4, 5] as const;
@@ -61,6 +62,7 @@ export default function RegionalTransitConfig({deviceId, city, mode}: Props) {
   const [statusText, setStatusText] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const [displayType, setDisplayType] = useState<number>(1);
+  const [activeDisplayId, setActiveDisplayId] = useState<string | null>(null);
   const [presetDropdownOpen, setPresetDropdownOpen] = useState(false);
   const [phillyDirection, setPhillyDirection] = useState<'N' | 'S'>('N');
   const [septaDebugJson, setSeptaDebugJson] = useState('');
@@ -130,6 +132,9 @@ export default function RegionalTransitConfig({deviceId, city, mode}: Props) {
         const response = await apiFetch(`/device/${deviceId}/config`);
         if (!response.ok) return;
         const data = await response.json();
+        if (!cancelled) {
+          setActiveDisplayId(extractConfigDisplayId(data));
+        }
         const rows = Array.isArray(data?.config?.lines) ? data.config.lines : [];
         const matches = rows.filter((row: any) => typeof row?.provider === 'string' && row.provider === provider);
         if (matches.length === 0 || cancelled) return;
@@ -248,6 +253,7 @@ export default function RegionalTransitConfig({deviceId, city, mode}: Props) {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({
+          displayId: activeDisplayId ?? undefined,
           displayType,
           lines: linesToSave.map(line => ({
               provider,
@@ -268,6 +274,8 @@ export default function RegionalTransitConfig({deviceId, city, mode}: Props) {
         return;
       }
 
+      const configData = await response.json().catch(() => null);
+      setActiveDisplayId(extractConfigDisplayId(configData));
       await apiFetch(`/refresh/device/${deviceId}`, {method: 'POST'});
       setStatusText(`Updated ${linesToSave.join(', ')} @ ${stopName} (${stopTrimmed})`);
     } catch {
@@ -275,7 +283,7 @@ export default function RegionalTransitConfig({deviceId, city, mode}: Props) {
     } finally {
       setIsSaving(false);
     }
-  }, [city, deviceId, provider, route, selectedLines, stopId, stopName, displayType, mode, phillyDirection]);
+  }, [activeDisplayId, city, deviceId, provider, route, selectedLines, stopId, stopName, displayType, mode, phillyDirection]);
 
   const loadSeptaDebugJson = useCallback(async () => {
     if (city !== 'philadelphia' || mode !== 'train') return;

@@ -2,6 +2,7 @@ import React, {useCallback, useEffect, useMemo, useState} from 'react';
 import {Pressable, ScrollView, StyleSheet, Text, View} from 'react-native';
 import {colors, radii, spacing} from '../../../theme';
 import {apiFetch} from '../../../lib/api';
+import {extractConfigDisplayId} from '../../../lib/deviceConfig';
 
 const DEFAULT_STOP_ID = '';
 const DEFAULT_STOP_NAME = 'Select stop';
@@ -38,6 +39,7 @@ export default function NycSubwayConfig({deviceId, providerId = 'mta-subway'}: P
   const [stopError, setStopError] = useState('');
   const [displayType, setDisplayType] = useState<number>(1);
   const [presetDropdownOpen, setPresetDropdownOpen] = useState(false);
+  const [activeDisplayId, setActiveDisplayId] = useState<string | null>(null);
   const [subwaySelections, setSubwaySelections] = useState<SubwaySelection[]>([
     {line: '', stopId: DEFAULT_STOP_ID, stopName: DEFAULT_STOP_NAME, direction: 'N'},
   ]);
@@ -76,6 +78,9 @@ export default function NycSubwayConfig({deviceId, providerId = 'mta-subway'}: P
         const response = await apiFetch(`/device/${deviceId}/config`);
         if (!response.ok) return;
         const data = await response.json();
+        if (!cancelled) {
+          setActiveDisplayId(extractConfigDisplayId(data));
+        }
         const firstProvider = typeof data?.config?.lines?.[0]?.provider === 'string' ? data.config.lines[0].provider : '';
         if (isBusMode) {
           if (firstProvider !== 'mta-bus') return;
@@ -525,6 +530,7 @@ export default function NycSubwayConfig({deviceId, providerId = 'mta-subway'}: P
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({
+          displayId: activeDisplayId ?? undefined,
           displayType,
           lines: payloadLines,
         }),
@@ -540,6 +546,8 @@ export default function NycSubwayConfig({deviceId, providerId = 'mta-subway'}: P
         return;
       }
 
+      const configData = await configResponse.json().catch(() => null);
+      setActiveDisplayId(extractConfigDisplayId(configData));
       await apiFetch(`/refresh/device/${deviceId}`, {method: 'POST'});
       if (isBusMode) {
         const normalizedStopId = stopId.trim().toUpperCase();
@@ -552,7 +560,7 @@ export default function NycSubwayConfig({deviceId, providerId = 'mta-subway'}: P
     } finally {
       setIsSaving(false);
     }
-  }, [deviceId, selectedLines, stopId, isBusMode, displayType, subwaySelections]);
+  }, [activeDisplayId, deviceId, selectedLines, stopId, isBusMode, displayType, subwaySelections]);
 
   const subwayLineButtons = useCallback((index: 0 | 1) => {
     const lines = subwayAvailableLines[index] ?? [];
