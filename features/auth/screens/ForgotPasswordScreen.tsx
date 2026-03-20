@@ -1,4 +1,4 @@
-import React, {useState} from 'react';
+import React, {useEffect, useState} from 'react';
 import {
   Image,
   KeyboardAvoidingView,
@@ -13,35 +13,61 @@ import {
 import {SafeAreaView} from 'react-native-safe-area-context';
 import {useRouter} from 'expo-router';
 
-import {useAuth} from '../../../state/authProvider';
+import {apiFetch} from '../../../lib/api';
 import {colors, radii, spacing} from '../../../theme';
 
-export default function LoginScreen() {
+const GENERIC_SUCCESS =
+  'If an account with that email exists, we sent a password reset link.';
+
+export default function ForgotPasswordScreen() {
   const router = useRouter();
-  const {signIn, clearAuth} = useAuth();
   const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorText, setErrorText] = useState('');
+  const [successText, setSuccessText] = useState('');
+  const [cooldownSeconds, setCooldownSeconds] = useState(0);
 
-  const onLogin = async () => {
-    if (!email.trim() || !password) {
-      setErrorText('Email and password are required');
+  useEffect(() => {
+    if (cooldownSeconds <= 0) return;
+    const timer = setTimeout(() => setCooldownSeconds((value) => Math.max(0, value - 1)), 1000);
+    return () => clearTimeout(timer);
+  }, [cooldownSeconds]);
+
+  const onSubmit = async () => {
+    const nextEmail = email.trim().toLowerCase();
+    if (!nextEmail) {
+      setErrorText('Email is required.');
       return;
     }
 
     setIsSubmitting(true);
     setErrorText('');
 
-    const result = await signIn(email, password);
-    setIsSubmitting(false);
+    try {
+      const response = await apiFetch('/auth/forgot-password', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({email: nextEmail}),
+      });
+      const data = await response.json().catch(() => null);
 
-    if (!result.ok) {
-      setErrorText(result.error);
-      return;
+      if (response.status === 429) {
+        setErrorText('Too many reset requests. Please wait a few minutes and try again.');
+        return;
+      }
+
+      if (!response.ok) {
+        setErrorText('Unable to send reset instructions right now.');
+        return;
+      }
+
+      setSuccessText(typeof data?.message === 'string' ? data.message : GENERIC_SUCCESS);
+      setCooldownSeconds(60);
+    } catch {
+      setErrorText('Network error. Please try again.');
+    } finally {
+      setIsSubmitting(false);
     }
-
-    router.replace('/dashboard');
   };
 
   return (
@@ -52,8 +78,10 @@ export default function LoginScreen() {
         keyboardVerticalOffset={Platform.OS === 'ios' ? 12 : 0}>
         <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
           <Image source={require('../../../app-logo.png')} style={styles.logo} resizeMode="contain" />
-          <Text style={styles.title}>Log in</Text>
-          <Text style={styles.subtitle}>Access your account to manage your display.</Text>
+          <Text style={styles.title}>Forgot password</Text>
+          <Text style={styles.subtitle}>
+            Enter your account email and we&apos;ll send a secure reset link.
+          </Text>
 
           <View style={styles.field}>
             <Text style={styles.label}>Email</Text>
@@ -65,45 +93,30 @@ export default function LoginScreen() {
               autoCapitalize="none"
               keyboardType="email-address"
               style={styles.input}
-              returnKeyType="next"
-            />
-          </View>
-
-          <View style={styles.field}>
-            <Text style={styles.label}>Password</Text>
-            <TextInput
-              value={password}
-              onChangeText={setPassword}
-              placeholder="Password"
-              placeholderTextColor={colors.textMuted}
-              secureTextEntry
-              style={styles.input}
               returnKeyType="done"
             />
           </View>
 
           <Pressable
             style={styles.primaryButton}
-            disabled={isSubmitting}
+            disabled={isSubmitting || cooldownSeconds > 0}
             onPress={() => {
-              void onLogin();
+              void onSubmit();
             }}>
-            <Text style={styles.primaryText}>{isSubmitting ? 'Logging in...' : 'Log in'}</Text>
+            <Text style={styles.primaryText}>
+              {isSubmitting
+                ? 'Sending...'
+                : cooldownSeconds > 0
+                  ? `Resend in ${cooldownSeconds}s`
+                  : 'Send reset link'}
+            </Text>
           </Pressable>
 
+          {successText ? <Text style={styles.successText}>{successText}</Text> : null}
           {errorText ? <Text style={styles.errorText}>{errorText}</Text> : null}
 
-          <Pressable style={styles.resetLink} onPress={() => router.push('/forgot-password')}>
-            <Text style={styles.resetText}>Forgot password?</Text>
-          </Pressable>
-
-          <Pressable
-            style={styles.secondaryButton}
-            onPress={() => {
-              clearAuth();
-              router.push('/auth');
-            }}>
-            <Text style={styles.secondaryText}>Back</Text>
+          <Pressable style={styles.secondaryButton} onPress={() => router.replace('/login')}>
+            <Text style={styles.secondaryText}>Back to login</Text>
           </Pressable>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -151,7 +164,12 @@ const styles = StyleSheet.create({
     marginTop: spacing.sm,
   },
   secondaryText: {color: colors.textMuted, fontWeight: '700', fontSize: 13},
-  resetLink: {alignItems: 'center', marginTop: spacing.sm},
-  resetText: {color: colors.textMuted, fontWeight: '700', fontSize: 12},
+  successText: {
+    color: '#93C5FD',
+    fontSize: 12,
+    fontWeight: '700',
+    marginTop: spacing.sm,
+    textAlign: 'center',
+  },
   errorText: {color: '#FCA5A5', fontSize: 12, fontWeight: '700', marginTop: spacing.sm, textAlign: 'center'},
 });

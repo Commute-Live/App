@@ -21,10 +21,12 @@ const getErrorCode = async (response: Response): Promise<string | null> => {
   }
 };
 
-let sessionInvalidHandler: ((code: 'REFRESH_INVALID' | 'REFRESH_REUSED') => void) | null = null;
+let sessionInvalidHandler:
+  | ((code: 'REFRESH_INVALID' | 'REFRESH_REUSED' | 'SESSION_REVOKED') => void)
+  | null = null;
 
 export const setSessionInvalidHandler = (
-  handler: ((code: 'REFRESH_INVALID' | 'REFRESH_REUSED') => void) | null,
+  handler: ((code: 'REFRESH_INVALID' | 'REFRESH_REUSED' | 'SESSION_REVOKED') => void) | null,
 ) => {
   sessionInvalidHandler = handler;
 };
@@ -54,6 +56,10 @@ export async function apiFetch(input: string, init: RequestInit = {}): Promise<R
   }
 
   const errorCode = await getErrorCode(response);
+  if (errorCode === 'SESSION_REVOKED' && sessionInvalidHandler) {
+    sessionInvalidHandler(errorCode);
+    return response;
+  }
   if (errorCode !== 'ACCESS_EXPIRED') {
     return response;
   }
