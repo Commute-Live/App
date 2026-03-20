@@ -21,7 +21,6 @@ import {
   cityModeFromProvider,
   clampNextStops,
   cycleTimeOption,
-  describePresetBehavior,
   ensureLineCount,
   formatRoutePickerLabel,
   getAvailableModes,
@@ -99,11 +98,11 @@ const LAYOUT_OPTIONS = [
   {id: 'layout-2', slots: 2, label: '2 stops'},
 ];
 const DISPLAY_PRESET_OPTIONS = [
-  {id: 1, label: 'Preset 1', hint: 'Default destination with ETA on the right.'},
-  {id: 2, label: 'Preset 2', hint: 'Direction-focused label with the same base layout.'},
-  {id: 3, label: 'Preset 3', hint: 'Two-line compact label stack.'},
-  {id: 4, label: 'Preset 4', hint: 'Destination with extra ETA line underneath.'},
-  {id: 5, label: 'Preset 5', hint: 'Direction with extra ETA line underneath.'},
+  {id: 1, label: 'Destination + ETA', description: 'Single destination name with next arrival time on the right.'},
+  {id: 2, label: 'Direction + ETA', description: 'Direction-focused row with next arrival time on the right.'},
+  {id: 3, label: 'Stacked Destinations', description: 'Two destination lines stacked in one row with no extra ETA line.'},
+  {id: 4, label: 'Destination + Multi ETA', description: 'Single destination with additional ETA values under the main text.'},
+  {id: 5, label: 'Direction + Multi ETA', description: 'Direction-focused row with additional ETA values under the main text.'},
 ] as const;
 const Haptics = {selectionAsync: async () => {}, notificationAsync: async (_: any) => {}};
 
@@ -114,7 +113,6 @@ export default function DisplayEditorScreen() {
   const params = useLocalSearchParams<{city?: string; from?: string; mode?: string; displayId?: string}>();
   const city = normalizeCityIdParam(params.city ?? appState.selectedCity);
   const isCreateMode = params.mode === 'new';
-  const openConfigureStopOnLoad = params.mode === 'new';
   const fallbackRoute = params.from === 'presets' ? '/presets' : '/dashboard';
   const headerEnter = useRef(new Animated.Value(0)).current;
   const previewEnter = useRef(new Animated.Value(0)).current;
@@ -126,10 +124,12 @@ export default function DisplayEditorScreen() {
   const [layoutSlots, setLayoutSlots] = useState<number>(DEFAULT_LAYOUT_SLOTS);
   const [displayPreset, setDisplayPreset] = useState<number>(DEFAULT_DISPLAY_PRESET);
   const [lines, setLines] = useState<LinePick[]>(() => ensureLineCount([], city, DEFAULT_LAYOUT_SLOTS, {}, {}));
-  const [selectedLineId, setSelectedLineId] = useState<string>(openConfigureStopOnLoad ? 'line-1' : '');
+  const [selectedLineId, setSelectedLineId] = useState<string>('');
   const [stationSearch, setStationSearch] = useState<Record<string, string>>({});
-  const [layoutExpanded, setLayoutExpanded] = useState(openConfigureStopOnLoad);
-  const [slotEditorExpanded, setSlotEditorExpanded] = useState(isCreateMode);
+  const [layoutExpanded, setLayoutExpanded] = useState(isCreateMode);
+  const [slotEditorExpanded, setSlotEditorExpanded] = useState(false);
+  const [layoutConfirmed, setLayoutConfirmed] = useState(!isCreateMode);
+  const [presetConfirmed, setPresetConfirmed] = useState(!isCreateMode);
   const [scheduleExpanded, setScheduleExpanded] = useState(false);
   const [customDisplayScheduleEnabled, setCustomDisplayScheduleEnabled] = useState(false);
   const [displaySchedule, setDisplaySchedule] = useState({start: '06:00', end: '09:00'});
@@ -152,7 +152,7 @@ export default function DisplayEditorScreen() {
   const [routesLoadingByStation, setRoutesLoadingByStation] = useState<Record<string, boolean>>({});
   const [arrivals, setArrivals] = useState<Arrival[]>([]);
   const [liveStatusText, setLiveStatusText] = useState('');
-  const [editorStep, setEditorStep] = useState<EditorStep>(openConfigureStopOnLoad ? 'lines' : 'done');
+  const [editorStep, setEditorStep] = useState<EditorStep>(isCreateMode ? 'lines' : 'done');
   const [transitionLabel, setTransitionLabel] = useState('');
   const [linesByMode, setLinesByMode] = useState<Partial<Record<ModeId, Route[]>>>({});
   const [linesLoadingByMode, setLinesLoadingByMode] = useState<Partial<Record<ModeId, boolean>>>({});
@@ -265,7 +265,6 @@ export default function DisplayEditorScreen() {
   }, [city, lines, liveSupported, queryClient]); // linesRequestedRef guards against duplicates — no cancellation needed
 
   const selectedLine = lines.find(line => line.id === selectedLineId) ?? null;
-  const selectedLineIndex = selectedLine ? lines.findIndex(line => line.id === selectedLine.id) : -1;
 
   useEffect(() => {
     if (!liveSupported || !selectedLine?.routeId) return;
@@ -398,6 +397,8 @@ export default function DisplayEditorScreen() {
         if (!cancelled) {
           setLayoutSlots(nextLayoutSlots);
           setDisplayPreset(nextDisplayPreset);
+          setLayoutConfirmed(true);
+          setPresetConfirmed(true);
         }
 
         if (citySavedLines.length > 0) {
@@ -665,6 +666,11 @@ export default function DisplayEditorScreen() {
 
     try {
       if (hasLinkedDevice && selectedDevice.id) {
+        if (!presetConfirmed) {
+          setLiveStatusText('Choose a preset before saving.');
+          setSaving(false);
+          return;
+        }
         if (displayValidationError) {
           setLiveStatusText(displayValidationError);
           setSaving(false);
@@ -755,11 +761,54 @@ export default function DisplayEditorScreen() {
 
   const applyLayout = (slots: number) => {
     const safeSlots = slots === 1 ? 1 : 2;
-    if (safeSlots === layoutSlots) return;
-    setLayoutSlots(safeSlots);
-    setLines(prev => ensureLineCount(prev, city, safeSlots, stationsByMode, routesByStation));
-    setSelectedLineId('line-1');
+    const nextLines =
+      safeSlots === layoutSlots ? lines : ensureLineCount(lines, city, safeSlots, stationsByMode, routesByStation);
+
+    setLayoutConfirmed(true);
+    setOpenLayoutPicker(false);
+
+    if (safeSlots !== layoutSlots) {
+      setLayoutSlots(safeSlots);
+      setLines(nextLines);
+    }
+
+    const nextSelectedLineId =
+      selectedLineId && nextLines.some(line => line.id === selectedLineId)
+        ? selectedLineId
+        : nextLines[0]?.id ?? 'line-1';
+    const nextSelectedLine = nextLines.find(line => line.id === nextSelectedLineId);
+
+    setSelectedLineId(nextSelectedLineId);
+    setEditorStep(nextSelectedLine && nextSelectedLine.stationId && nextSelectedLine.routeId ? 'done' : 'lines');
+    setLayoutExpanded(false);
+    setSlotEditorExpanded(true);
+
     void Haptics.selectionAsync();
+  };
+
+  const openStopConfiguration = (nextLines: LinePick[] = lines) => {
+    const nextSelectedLineId =
+      selectedLineId && nextLines.some(line => line.id === selectedLineId)
+        ? selectedLineId
+        : nextLines[0]?.id ?? '';
+    const nextSelectedLine = nextLines.find(line => line.id === nextSelectedLineId);
+
+    setSelectedLineId(nextSelectedLineId);
+    setEditorStep(nextSelectedLine && nextSelectedLine.stationId && nextSelectedLine.routeId ? 'done' : 'lines');
+    setLayoutExpanded(false);
+    setSlotEditorExpanded(true);
+    setScheduleExpanded(false);
+  };
+
+  const advanceToNextSlotIfNeeded = (completedLineId: string) => {
+    if (layoutSlots < 2 || completedLineId !== lines[0]?.id) return false;
+
+    const nextLine = lines[1];
+    if (!nextLine || (nextLine.routeId && nextLine.stationId)) return false;
+
+    setSelectedLineId(nextLine.id);
+    setEditorStep(nextLine.routeId ? 'stops' : 'lines');
+    return true;
   };
 
   const updateLine = (id: string, next: Partial<LinePick>) => {
@@ -771,6 +820,11 @@ export default function DisplayEditorScreen() {
   };
 
   const handleSelectSlotForEdit = (id: string) => {
+    if (!layoutConfirmed) {
+      setLayoutExpanded(true);
+      setSlotEditorExpanded(false);
+      return;
+    }
     if (slotEditorExpanded && selectedLineId === id) {
       setSlotEditorExpanded(false);
       setSelectedLineId('');
@@ -791,6 +845,10 @@ export default function DisplayEditorScreen() {
   };
 
   const toggleSlotEditor = () => {
+    if (!layoutConfirmed) {
+      setLayoutExpanded(true);
+      return;
+    }
     setSlotEditorExpanded(prev => {
       const next = !prev;
       if (!next) {
@@ -970,26 +1028,54 @@ export default function DisplayEditorScreen() {
           visible={openLayoutPicker}
           options={LAYOUT_OPTIONS.map(option => ({id: String(option.slots), label: option.label}))}
           value={String(layoutSlots)}
-          onSelect={val => {
-            applyLayout(Number(val));
-            setOpenLayoutPicker(false);
-          }}
+          onSelect={val => applyLayout(Number(val))}
           onClose={() => setOpenLayoutPicker(false)}
         />
 
         <Animated.View style={editorAnimatedStyle}>
           <View style={styles.card}>
             <View style={styles.collapsibleSection}>
+              <Pressable style={styles.collapsibleHeader} onPress={toggleLayoutEditor}>
+                <Text style={styles.sectionLabel}>Layout + Preset</Text>
+                <View style={styles.collapsibleArrowBubble}>
+                  <Text style={styles.collapsibleArrow}>{layoutExpanded ? '▲' : '▼'}</Text>
+                </View>
+              </Pressable>
+
+              {layoutExpanded ? (
+                <View style={styles.collapsibleBody}>
+                  {!layoutConfirmed ? (
+                    <Text style={styles.sectionHint}>Use the top-right layout chip to choose 1 stop or 2 stops first.</Text>
+                  ) : null}
+                  <DisplayPresetPickerStep
+                    selectedPreset={presetConfirmed ? displayPreset : null}
+                    onSelect={preset => {
+                      setDisplayPreset(preset);
+                      setLayoutConfirmed(true);
+                      setPresetConfirmed(true);
+                      openStopConfiguration();
+                    }}
+                  />
+                </View>
+              ) : null}
+            </View>
+
+            <View style={styles.collapsibleSection}>
               <Pressable style={styles.collapsibleHeader} onPress={toggleSlotEditor}>
-                <Text style={styles.sectionLabel}>
-                  {selectedLine ? `Configure Stop ${selectedLineIndex + 1}` : 'Configure Stop'}
-                </Text>
+                <Text style={styles.sectionLabel}>Configure Stops</Text>
                 <View style={styles.collapsibleArrowBubble}>
                   <Text style={styles.collapsibleArrow}>{slotEditorExpanded ? '▲' : '▼'}</Text>
                 </View>
               </Pressable>
 
-              {slotEditorExpanded ? (
+              {!layoutConfirmed ? (
+                <View style={styles.collapsibleBody}>
+                  <Text style={styles.sectionHint}>Select a layout first, then configure each stop.</Text>
+                  <Pressable style={styles.layoutFirstAction} onPress={() => setLayoutExpanded(true)}>
+                    <Text style={styles.layoutFirstActionText}>Open Layout + Preset</Text>
+                  </Pressable>
+                </View>
+              ) : slotEditorExpanded ? (
                 selectedLine ? (
                   <View style={styles.collapsibleBody}>
                     {(editorStep === 'line-transition' || editorStep === 'stop-transition' || editorStep === 'done-transition') && (
@@ -1030,19 +1116,22 @@ export default function DisplayEditorScreen() {
                       />
                     )}
 
-                      {editorStep === 'stops' && (
-                        <StopPickerStep
-                          city={city}
-                          selectedMode={normalizeMode(city, selectedLine.mode)}
-                          selectedRoute={(linesByMode[normalizeMode(city, selectedLine.mode)] ?? []).find(r => r.id === selectedLine.routeId)}
-                          stations={stationsByLine[selectedLine.routeId] ?? []}
-                          loading={!!stationsLoadingByLine[selectedLine.routeId]}
+                    {editorStep === 'stops' && (
+                      <StopPickerStep
+                        city={city}
+                        selectedMode={normalizeMode(city, selectedLine.mode)}
+                        selectedRoute={(linesByMode[normalizeMode(city, selectedLine.mode)] ?? []).find(r => r.id === selectedLine.routeId)}
+                        stations={stationsByLine[selectedLine.routeId] ?? []}
+                        loading={!!stationsLoadingByLine[selectedLine.routeId]}
                         selectedStationId={selectedLine.stationId}
                         selectedRouteId={selectedLine.routeId}
                         search={stationSearch[selectedLine.id] ?? ''}
                         onSearch={text => setStationSearch(prev => ({...prev, [selectedLine.id]: text}))}
                         onSelectStation={id => {
                           updateLine(selectedLine.id, {stationId: id});
+                          if (advanceToNextSlotIfNeeded(selectedLine.id)) {
+                            return;
+                          }
                           playStepTransition('All set! Loading arrivals…', 'done', 0);
                         }}
                         onBack={() => setEditorStep('lines')}
@@ -1053,6 +1142,7 @@ export default function DisplayEditorScreen() {
                       <DoneStep
                         city={city}
                         displayPreset={displayPreset}
+                        presetConfirmed={presetConfirmed}
                         line={selectedLine}
                         selectedRoute={
                           (routesByStation[routeLookupKey(normalizeMode(city, selectedLine.mode), selectedLine.stationId)] ?? []).find(
@@ -1070,21 +1160,6 @@ export default function DisplayEditorScreen() {
                 ) : (
                   <Text style={styles.emptyHint}>Select a slot in the preview to start editing.</Text>
                 )
-              ) : null}
-            </View>
-
-            <View style={styles.collapsibleSection}>
-              <Pressable style={styles.collapsibleHeader} onPress={toggleLayoutEditor}>
-                <Text style={styles.sectionLabel}>Layout + Preset</Text>
-                <View style={styles.collapsibleArrowBubble}>
-                  <Text style={styles.collapsibleArrow}>{layoutExpanded ? '▲' : '▼'}</Text>
-                </View>
-              </Pressable>
-
-              {layoutExpanded ? (
-                <View style={styles.collapsibleBody}>
-                  <DisplayPresetPickerStep selectedPreset={displayPreset} onSelect={setDisplayPreset} />
-                </View>
               ) : null}
             </View>
 
@@ -1444,18 +1519,22 @@ function SimplePicker({
 }) {
   return (
     <Modal transparent visible={visible} animationType="fade" onRequestClose={onClose}>
-      <Pressable style={styles.modalOverlay} onPress={onClose}>
+      <View style={styles.modalOverlay}>
+        <Pressable style={styles.modalBackdrop} onPress={onClose} />
         <View style={styles.modalSheet}>
           {options.map(option => (
             <Pressable
               key={option.id}
               style={[styles.modalOption, option.id === value && styles.modalOptionActive]}
-              onPress={() => onSelect(option.id)}>
+              onPress={() => {
+                onSelect(option.id);
+                onClose();
+              }}>
               <Text style={[styles.modalOptionText, option.id === value && styles.modalOptionTextActive]}>{option.label}</Text>
             </Pressable>
           ))}
         </View>
-      </Pressable>
+      </View>
     </Modal>
   );
 }
@@ -1464,32 +1543,61 @@ function DisplayPresetPickerStep({
   selectedPreset,
   onSelect,
 }: {
-  selectedPreset: number;
+  selectedPreset: number | null;
   onSelect: (preset: number) => void;
 }) {
   return (
     <View style={styles.stepSection}>
       <Text style={styles.stepTitle}>Which device preset?</Text>
-      <Text style={styles.stepSubtitle}>This maps directly to the ESP render preset.</Text>
-      <View style={styles.choiceList}>
+      <Text style={styles.stepSubtitle}>Pick the exact diagram shown on your display.</Text>
+      <View style={styles.presetChoiceList}>
         {DISPLAY_PRESET_OPTIONS.map(option => {
           const active = option.id === selectedPreset;
           return (
             <Pressable
               key={option.id}
-              style={[styles.choiceRow, active && styles.choiceRowActive]}
+              style={[styles.presetChoiceCard, active && styles.presetChoiceCardActive]}
               onPress={() => onSelect(option.id)}>
-              <View style={styles.choiceRowCopy}>
-                <Text style={[styles.choiceRowLabel, active && styles.choiceRowLabelActive]}>{option.label}</Text>
-                <Text style={[styles.choiceRowHint, active && styles.choiceRowHintActive]}>{option.hint}</Text>
+              <View style={styles.presetChoiceHeader}>
+                <Text style={[styles.presetChoiceLabel, active && styles.presetChoiceLabelActive]}>{option.label}</Text>
+                <View style={[styles.choiceRowCheck, active && styles.choiceRowCheckActive]}>
+                  {active ? <Text style={styles.choiceRowCheckText}>✓</Text> : null}
+                </View>
               </View>
-              <View style={[styles.choiceRowCheck, active && styles.choiceRowCheckActive]}>
-                {active ? <Text style={styles.choiceRowCheckText}>✓</Text> : null}
-              </View>
+              <Text style={styles.presetChoiceDescription}>{option.description}</Text>
+              <PresetDiagram presetId={option.id} />
             </Pressable>
           );
         })}
       </View>
+    </View>
+  );
+}
+
+function PresetDiagram({presetId}: {presetId: number}) {
+  const isDirection = presetId === 2 || presetId === 5;
+  const isDualLabel = presetId === 3;
+  const hasSecondaryEtaLine = presetId === 4 || presetId === 5;
+
+  return (
+    <View style={styles.presetDiagramFrame}>
+      <View style={styles.presetDiagramLineBadge}>
+        <Text style={styles.presetDiagramLineBadgeText}>4</Text>
+      </View>
+
+      <View style={styles.presetDiagramCenter}>
+        {isDualLabel ? (
+          <>
+            <Text style={styles.presetDiagramPrimaryText}>Uptown</Text>
+            <Text style={[styles.presetDiagramPrimaryText, styles.presetDiagramSecondaryTextMuted]}>Woodlawn</Text>
+          </>
+        ) : (
+          <Text style={styles.presetDiagramPrimaryText}>{isDirection ? 'Uptown' : 'Woodlawn'}</Text>
+        )}
+        {hasSecondaryEtaLine ? <Text style={styles.presetDiagramSecondaryEta}>5m, 10m</Text> : null}
+      </View>
+
+      <Text style={styles.presetDiagramRightEta}>2m</Text>
     </View>
   );
 }
@@ -1880,6 +1988,7 @@ function StopRow({
 function DoneStep({
   city,
   displayPreset,
+  presetConfirmed,
   line,
   selectedRoute,
   selectedStation,
@@ -1890,6 +1999,7 @@ function DoneStep({
 }: {
   city: CityId;
   displayPreset: number;
+  presetConfirmed: boolean;
   line: LinePick;
   selectedRoute: Route | undefined;
   selectedStation: Station | undefined;
@@ -1902,7 +2012,6 @@ function DoneStep({
   const showBusBadge = isNycBusBadge(city, mode);
   const selectedRouteBadgeLabel = selectedRoute ? formatRoutePickerLabel(city, mode, selectedRoute) : '';
   const presetOption = DISPLAY_PRESET_OPTIONS.find(option => option.id === displayPreset);
-  const presetBehavior = describePresetBehavior(displayPreset);
 
   return (
     <View style={styles.doneStepContainer}>
@@ -1946,13 +2055,10 @@ function DoneStep({
         <View style={styles.sectionBlock}>
           <Text style={styles.sectionLabel}>Device Preset</Text>
           <Text style={styles.sectionHint}>
-            {presetOption ? `${presetOption.label}: ${presetOption.hint}` : `Preset ${displayPreset}`}
+            {presetConfirmed ? presetOption?.label ?? `Display Type ${displayPreset}` : 'Not selected yet'}
           </Text>
-        </View>
-        <View style={styles.sectionBlock}>
-          <Text style={styles.sectionLabel}>What The ESP Shows</Text>
-          <Text style={styles.sectionHint}>{presetBehavior.primary}</Text>
-          {presetBehavior.secondary ? <Text style={styles.sectionHint}>{presetBehavior.secondary}</Text> : null}
+          {presetConfirmed && presetOption?.description ? <Text style={styles.sectionHint}>{presetOption.description}</Text> : null}
+          <PresetDiagram presetId={displayPreset} />
         </View>
         <DirectionToggle value={line.direction} onChange={direction => onChange(line.id, {direction})} />
         <Text style={styles.sectionHint}>
