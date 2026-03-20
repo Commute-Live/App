@@ -293,7 +293,6 @@ export const styles = StyleSheet.create({
   },
   scheduleToggleThumbOn: {
     backgroundColor: colors.accent,
-    transform: [{translateX: 18}],
   },
   collapsibleSection: {
     borderRadius: radii.md,

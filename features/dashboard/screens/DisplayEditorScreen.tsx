@@ -162,6 +162,15 @@ export default function DisplayEditorScreen() {
   const stationsRequestedRef = useRef(new Set<string>());
   const routesRequestedRef = useRef(new Set<string>());
   const previousCityRef = useRef(city);
+  const animateSectionLayout = () => {
+    LayoutAnimation.configureNext({
+      duration: 180,
+      create: {type: LayoutAnimation.Types.easeInEaseOut, property: LayoutAnimation.Properties.opacity},
+      update: {type: LayoutAnimation.Types.easeInEaseOut},
+      delete: {type: LayoutAnimation.Types.easeInEaseOut, property: LayoutAnimation.Properties.opacity},
+    });
+  };
+
   useEffect(() => {
     if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
       UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -574,6 +583,16 @@ export default function DisplayEditorScreen() {
     ]).start();
   }, [editorEnter, headerEnter, previewEnter]);
 
+  useEffect(() => {
+    stepAnim.setValue(0);
+    Animated.spring(stepAnim, {
+      toValue: 1,
+      tension: 110,
+      friction: 14,
+      useNativeDriver: true,
+    }).start();
+  }, [editorStep, selectedLineId, stepAnim]);
+
   const snapshotRef = useRef({city, layoutSlots, displayPreset, lines, displaySchedule, displayDays, presetName, customDisplayScheduleEnabled});
   const isDirty = useMemo(() => {
     const snap = snapshotRef.current;
@@ -760,6 +779,7 @@ export default function DisplayEditorScreen() {
   };
 
   const applyLayout = (slots: number) => {
+    animateSectionLayout();
     const safeSlots = slots === 1 ? 1 : 2;
     const nextLines =
       safeSlots === layoutSlots ? lines : ensureLineCount(lines, city, safeSlots, stationsByMode, routesByStation);
@@ -787,6 +807,7 @@ export default function DisplayEditorScreen() {
   };
 
   const openStopConfiguration = (nextLines: LinePick[] = lines) => {
+    animateSectionLayout();
     const nextSelectedLineId =
       selectedLineId && nextLines.some(line => line.id === selectedLineId)
         ? selectedLineId
@@ -820,6 +841,7 @@ export default function DisplayEditorScreen() {
   };
 
   const handleSelectSlotForEdit = (id: string) => {
+    animateSectionLayout();
     if (!layoutConfirmed) {
       setLayoutExpanded(true);
       setSlotEditorExpanded(false);
@@ -838,6 +860,7 @@ export default function DisplayEditorScreen() {
   };
 
   const toggleLayoutEditor = () => {
+    animateSectionLayout();
     setLayoutExpanded(prev => {
       if (!prev) setSlotEditorExpanded(false);
       return !prev;
@@ -845,6 +868,7 @@ export default function DisplayEditorScreen() {
   };
 
   const toggleSlotEditor = () => {
+    animateSectionLayout();
     if (!layoutConfirmed) {
       setLayoutExpanded(true);
       return;
@@ -866,6 +890,7 @@ export default function DisplayEditorScreen() {
   };
 
   const toggleScheduleEditor = () => {
+    animateSectionLayout();
     setScheduleExpanded(prev => !prev);
   };
   const reorderLineByHold = (id: string) => {
@@ -961,6 +986,30 @@ export default function DisplayEditorScreen() {
     ],
   } as const;
 
+  const stepAnimatedStyle = {
+    opacity: stepAnim,
+    transform: [
+      {
+        translateX: stepAnim.interpolate({
+          inputRange: [0, 1],
+          outputRange: [28, 0],
+        }),
+      },
+      {
+        translateY: stepAnim.interpolate({
+          inputRange: [0, 1],
+          outputRange: [10, 0],
+        }),
+      },
+      {
+        scale: stepAnim.interpolate({
+          inputRange: [0, 1],
+          outputRange: [0.985, 1],
+        }),
+      },
+    ],
+  } as const;
+
   return (
     <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
       <KeyboardAvoidingView
@@ -1038,11 +1087,11 @@ export default function DisplayEditorScreen() {
               <Pressable style={styles.collapsibleHeader} onPress={toggleLayoutEditor}>
                 <Text style={styles.sectionLabel}>Layout + Preset</Text>
                 <View style={styles.collapsibleArrowBubble}>
-                  <Text style={styles.collapsibleArrow}>{layoutExpanded ? '▲' : '▼'}</Text>
+                  <AnimatedChevron expanded={layoutExpanded} />
                 </View>
               </Pressable>
 
-              {layoutExpanded ? (
+              <FadeSection visible={layoutExpanded}>
                 <View style={styles.collapsibleBody}>
                   {!layoutConfirmed ? (
                     <Text style={styles.sectionHint}>Use the top-right layout chip to choose 1 stop or 2 stops first.</Text>
@@ -1057,27 +1106,30 @@ export default function DisplayEditorScreen() {
                     }}
                   />
                 </View>
-              ) : null}
+              </FadeSection>
             </View>
 
             <View style={styles.collapsibleSection}>
               <Pressable style={styles.collapsibleHeader} onPress={toggleSlotEditor}>
                 <Text style={styles.sectionLabel}>Configure Stops</Text>
                 <View style={styles.collapsibleArrowBubble}>
-                  <Text style={styles.collapsibleArrow}>{slotEditorExpanded ? '▲' : '▼'}</Text>
+                  <AnimatedChevron expanded={slotEditorExpanded} />
                 </View>
               </Pressable>
 
               {!layoutConfirmed ? (
-                <View style={styles.collapsibleBody}>
-                  <Text style={styles.sectionHint}>Select a layout first, then configure each stop.</Text>
-                  <Pressable style={styles.layoutFirstAction} onPress={() => setLayoutExpanded(true)}>
-                    <Text style={styles.layoutFirstActionText}>Open Layout + Preset</Text>
-                  </Pressable>
-                </View>
+                <FadeSection visible>
+                  <View style={styles.collapsibleBody}>
+                    <Text style={styles.sectionHint}>Select a layout first, then configure each stop.</Text>
+                    <Pressable style={styles.layoutFirstAction} onPress={() => setLayoutExpanded(true)}>
+                      <Text style={styles.layoutFirstActionText}>Open Layout + Preset</Text>
+                    </Pressable>
+                  </View>
+                </FadeSection>
               ) : slotEditorExpanded ? (
                 selectedLine ? (
-                  <View style={styles.collapsibleBody}>
+                  <FadeSection visible>
+                    <Animated.View style={[styles.collapsibleBody, stepAnimatedStyle]}>
                     {(editorStep === 'line-transition' || editorStep === 'stop-transition' || editorStep === 'done-transition') && (
                       <StepTransitionMessage
                         message={transitionLabel}
@@ -1156,9 +1208,12 @@ export default function DisplayEditorScreen() {
                         onChange={updateLine}
                       />
                     )}
-                  </View>
+                    </Animated.View>
+                  </FadeSection>
                 ) : (
-                  <Text style={styles.emptyHint}>Select a slot in the preview to start editing.</Text>
+                  <FadeSection visible>
+                    <Text style={styles.emptyHint}>Select a slot in the preview to start editing.</Text>
+                  </FadeSection>
                 )
               ) : null}
             </View>
@@ -1167,10 +1222,10 @@ export default function DisplayEditorScreen() {
               <Pressable style={styles.collapsibleHeader} onPress={toggleScheduleEditor}>
                 <Text style={styles.sectionLabel}>Display Schedule</Text>
                 <View style={styles.collapsibleArrowBubble}>
-                  <Text style={styles.collapsibleArrow}>{scheduleExpanded ? '▲' : '▼'}</Text>
+                  <AnimatedChevron expanded={scheduleExpanded} />
                 </View>
               </Pressable>
-              {scheduleExpanded ? (
+              <FadeSection visible={scheduleExpanded}>
                 <View style={styles.collapsibleBody}>
                   <View style={styles.sectionBlock}>
                     <Text style={styles.sectionHint}>Turn on custom schedule to choose specific days and times. Turn it off to display 24/7.</Text>
@@ -1178,14 +1233,7 @@ export default function DisplayEditorScreen() {
                       style={styles.scheduleToggleRow}
                       onPress={() => setCustomDisplayScheduleEnabled(prev => !prev)}>
                       <Text style={styles.scheduleToggleLabel}>Custom Schedule</Text>
-                      <View style={[styles.scheduleToggle, customDisplayScheduleEnabled && styles.scheduleToggleOn]}>
-                        <View
-                          style={[
-                            styles.scheduleToggleThumb,
-                            customDisplayScheduleEnabled && styles.scheduleToggleThumbOn,
-                          ]}
-                        />
-                      </View>
+                      <ScheduleToggleControl enabled={customDisplayScheduleEnabled} />
                     </Pressable>
                   </View>
                   {customDisplayScheduleEnabled ? (
@@ -1208,7 +1256,7 @@ export default function DisplayEditorScreen() {
                     </View>
                   )}
                 </View>
-              ) : null}
+              </FadeSection>
             </View>
           </View>
         </Animated.View>
@@ -1298,7 +1346,7 @@ function TopBar({
         </View>
       </View>
 
-      {renameOpen ? (
+      <FadeSection visible={renameOpen}>
         <View style={styles.renameRow}>
           <TextInput
             value={draftName}
@@ -1314,7 +1362,7 @@ function TopBar({
             <Text style={styles.renameActionButtonText}>Save</Text>
           </Pressable>
         </View>
-      ) : null}
+      </FadeSection>
     </View>
   );
 }
@@ -1489,18 +1537,54 @@ function SaveBar({
   onPress: () => void;
 }) {
   const disabled = !dirty || loading || !!disabledReason;
+  const visibilityAnim = useRef(new Animated.Value(dirty || loading || success ? 1 : 0.92)).current;
+  const buttonScale = useRef(new Animated.Value(1)).current;
+
+  useEffect(() => {
+    Animated.spring(visibilityAnim, {
+      toValue: dirty || loading || success ? 1 : 0.94,
+      tension: 110,
+      friction: 16,
+      useNativeDriver: true,
+    }).start();
+  }, [dirty, loading, success, visibilityAnim]);
+
+  useEffect(() => {
+    if (!dirty && !success) return;
+    Animated.sequence([
+      Animated.spring(buttonScale, {toValue: 1.03, tension: 180, friction: 10, useNativeDriver: true}),
+      Animated.spring(buttonScale, {toValue: 1, tension: 180, friction: 12, useNativeDriver: true}),
+    ]).start();
+  }, [buttonScale, dirty, success]);
+
   return (
-    <View style={styles.saveBar}>
-      <Pressable
-        disabled={disabled}
-        onPress={onPress}
-        style={[styles.saveButton, disabled && styles.saveButtonDisabled, success && styles.saveButtonSuccess]}>
-        <Text style={styles.saveButtonText}>{loading ? 'Saving...' : success ? 'Synced' : 'Save to Device'}</Text>
-      </Pressable>
+    <Animated.View
+      style={[
+        styles.saveBar,
+        {
+          opacity: visibilityAnim,
+          transform: [
+            {
+              translateY: visibilityAnim.interpolate({
+                inputRange: [0.94, 1],
+                outputRange: [10, 0],
+              }),
+            },
+          ],
+        },
+      ]}>
+      <Animated.View style={{transform: [{scale: buttonScale}]}}>
+        <Pressable
+          disabled={disabled}
+          onPress={onPress}
+          style={[styles.saveButton, disabled && styles.saveButtonDisabled, success && styles.saveButtonSuccess]}>
+          <Text style={styles.saveButtonText}>{loading ? 'Saving...' : success ? 'Synced' : 'Save to Device'}</Text>
+        </Pressable>
+      </Animated.View>
       <Text style={styles.saveHint}>
         {success ? 'Last synced just now' : disabledReason ? disabledReason : dirty ? 'Unsaved changes' : 'No changes'}
       </Text>
-    </View>
+    </Animated.View>
   );
 }
 
@@ -1551,26 +1635,103 @@ function DisplayPresetPickerStep({
       <Text style={styles.stepTitle}>Which device preset?</Text>
       <Text style={styles.stepSubtitle}>Pick the exact diagram shown on your display.</Text>
       <View style={styles.presetChoiceList}>
-        {DISPLAY_PRESET_OPTIONS.map(option => {
-          const active = option.id === selectedPreset;
-          return (
-            <Pressable
-              key={option.id}
-              style={[styles.presetChoiceCard, active && styles.presetChoiceCardActive]}
-              onPress={() => onSelect(option.id)}>
-              <View style={styles.presetChoiceHeader}>
-                <Text style={[styles.presetChoiceLabel, active && styles.presetChoiceLabelActive]}>{option.label}</Text>
-                <View style={[styles.choiceRowCheck, active && styles.choiceRowCheckActive]}>
-                  {active ? <Text style={styles.choiceRowCheckText}>✓</Text> : null}
-                </View>
-              </View>
-              <Text style={styles.presetChoiceDescription}>{option.description}</Text>
-              <PresetDiagram presetId={option.id} />
-            </Pressable>
-          );
-        })}
+        {DISPLAY_PRESET_OPTIONS.map((option, index) => (
+          <PresetChoiceCard
+            key={option.id}
+            option={option}
+            index={index}
+            active={option.id === selectedPreset}
+            onPress={() => onSelect(option.id)}
+          />
+        ))}
       </View>
     </View>
+  );
+}
+
+function PresetChoiceCard({
+  option,
+  index,
+  active,
+  onPress,
+}: {
+  option: (typeof DISPLAY_PRESET_OPTIONS)[number];
+  index: number;
+  active: boolean;
+  onPress: () => void;
+}) {
+  const enterAnim = useRef(new Animated.Value(0)).current;
+  const activeAnim = useRef(new Animated.Value(active ? 1 : 0)).current;
+  const pressAnim = useRef(new Animated.Value(1)).current;
+
+  useEffect(() => {
+    Animated.timing(enterAnim, {
+      toValue: 1,
+      duration: 220,
+      delay: index * 35,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: true,
+    }).start();
+  }, [enterAnim, index]);
+
+  useEffect(() => {
+    Animated.spring(activeAnim, {
+      toValue: active ? 1 : 0,
+      tension: 180,
+      friction: 18,
+      useNativeDriver: true,
+    }).start();
+  }, [active, activeAnim]);
+
+  return (
+    <Animated.View
+      style={{
+        opacity: enterAnim,
+        transform: [
+          {
+            translateY: enterAnim.interpolate({
+              inputRange: [0, 1],
+              outputRange: [10, 0],
+            }),
+          },
+          {
+            scale: activeAnim.interpolate({
+              inputRange: [0, 1],
+              outputRange: [1, 1.03],
+            }),
+          },
+          {scale: pressAnim},
+        ],
+      }}>
+      <Pressable
+        style={[styles.presetChoiceCard, active && styles.presetChoiceCardActive]}
+        onPress={onPress}
+        onPressIn={() => {
+          Animated.spring(pressAnim, {
+            toValue: 0.985,
+            tension: 220,
+            friction: 16,
+            useNativeDriver: true,
+          }).start();
+        }}
+        onPressOut={() => {
+          Animated.spring(pressAnim, {
+            toValue: 1,
+            tension: 220,
+            friction: 14,
+            useNativeDriver: true,
+          }).start();
+        }}>
+        <View style={styles.presetChoiceHeader}>
+          <Text style={[styles.presetChoiceLabel, active && styles.presetChoiceLabelActive]}>{option.label}</Text>
+          <View style={[styles.choiceRowCheck, active && styles.choiceRowCheckActive]}>
+            {active ? <Text style={styles.choiceRowCheckText}>✓</Text> : null}
+          </View>
+        </View>
+        <Text style={styles.presetChoiceDescription}>{option.description}</Text>
+        <PresetDiagram presetId={option.id} />
+      </Pressable>
+    </Animated.View>
   );
 }
 
@@ -1673,6 +1834,123 @@ function StepTransitionMessage({
         <View style={styles.transitionDot} />
       </View>
     </Animated.View>
+  );
+}
+
+function FadeSection({
+  visible,
+  children,
+}: {
+  visible: boolean;
+  children: React.ReactNode;
+}) {
+  const [mounted, setMounted] = useState(visible);
+  const anim = useRef(new Animated.Value(visible ? 1 : 0)).current;
+
+  useEffect(() => {
+    if (visible) {
+      setMounted(true);
+    }
+
+    Animated.timing(anim, {
+      toValue: visible ? 1 : 0,
+      duration: visible ? 220 : 150,
+      easing: visible ? Easing.out(Easing.cubic) : Easing.in(Easing.cubic),
+      useNativeDriver: true,
+    }).start(({finished}) => {
+      if (finished && !visible) {
+        setMounted(false);
+      }
+    });
+  }, [anim, visible]);
+
+  if (!mounted) return null;
+
+  return (
+    <Animated.View
+      pointerEvents={visible ? 'auto' : 'none'}
+      style={{
+        opacity: anim,
+        transform: [
+          {
+            translateY: anim.interpolate({
+              inputRange: [0, 1],
+              outputRange: [18, 0],
+            }),
+          },
+          {
+            scale: anim.interpolate({
+              inputRange: [0, 1],
+              outputRange: [0.98, 1],
+            }),
+          },
+        ],
+      }}>
+      {children}
+    </Animated.View>
+  );
+}
+
+function AnimatedChevron({expanded}: {expanded: boolean}) {
+  const anim = useRef(new Animated.Value(expanded ? 1 : 0)).current;
+
+  useEffect(() => {
+    Animated.timing(anim, {
+      toValue: expanded ? 1 : 0,
+      duration: 160,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: true,
+    }).start();
+  }, [anim, expanded]);
+
+  return (
+    <Animated.View
+      style={{
+        transform: [
+          {
+            rotate: anim.interpolate({
+              inputRange: [0, 1],
+              outputRange: ['0deg', '180deg'],
+            }),
+          },
+        ],
+      }}>
+      <Text style={styles.collapsibleArrow}>▼</Text>
+    </Animated.View>
+  );
+}
+
+function ScheduleToggleControl({enabled}: {enabled: boolean}) {
+  const anim = useRef(new Animated.Value(enabled ? 1 : 0)).current;
+
+  useEffect(() => {
+    Animated.timing(anim, {
+      toValue: enabled ? 1 : 0,
+      duration: 170,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: true,
+    }).start();
+  }, [anim, enabled]);
+
+  return (
+    <View style={[styles.scheduleToggle, enabled && styles.scheduleToggleOn]}>
+      <Animated.View
+        style={[
+          styles.scheduleToggleThumb,
+          enabled && styles.scheduleToggleThumbOn,
+          {
+            transform: [
+              {
+                translateX: anim.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [0, 18],
+                }),
+              },
+            ],
+          },
+        ]}
+      />
+    </View>
   );
 }
 
