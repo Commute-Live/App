@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useRouter } from 'expo-router';
@@ -16,6 +16,7 @@ import { useSelectedDevice } from '../../../hooks/useSelectedDevice';
 import { apiFetch } from '../../../lib/api';
 import {
    fetchDisplays,
+   getLiveArrivalLookup,
    updateDisplay,
    providerToCity,
    toDisplayScheduleText,
@@ -67,12 +68,11 @@ export default function DashboardHomeScreen() {
    const [stopNames, setStopNames] = useState<Record<string, string>>({});
    const [quietHoursEnabled, setQuietHoursEnabled] = useState(true);
    const [quietHours, setQuietHours] = useState({ start: '23:00', end: '05:00' });
-   const [lastCommandJson, setLastCommandJson] = useState('');
-   const [lastCommandTs, setLastCommandTs] = useState('');
-   const [lastCommandError, setLastCommandError] = useState('');
+   const [lastCommandPayload, setLastCommandPayload] = useState<unknown>(null);
    const [espStatus, setEspStatus] = useState<'idle' | 'checking' | 'connected' | 'disconnected'>('idle');
    const [espDeviceId, setEspDeviceId] = useState<string | null>(null);
    const [activating, setActivating] = useState(false);
+   const lastCommandInFlightRef = useRef(false);
 
    const city = appState.selectedCity;
    const cityBrand = CITY_BRANDS[city];
@@ -186,60 +186,52 @@ export default function DashboardHomeScreen() {
       }, [loadDisplays]),
    );
 
-   // Poll the last command sent to the ESP every 5 seconds
-   useEffect(() => {
-      if (!hasLinkedDevice || !selectedDevice.id) return;
-      let cancelled = false;
-      let timer: ReturnType<typeof setInterval> | null = null;
+   // Poll the last command for live preview while this screen is focused
+   useFocusEffect(
+      useCallback(() => {
+         if (!hasLinkedDevice || !selectedDevice.id) return;
+         let cancelled = false;
+         let timer: ReturnType<typeof setInterval> | null = null;
 
-      const loadLastCommand = async () => {
-         try {
-            const response = await apiFetch(
-               `/device/${selectedDevice.id}/last-command`,
-            );
-            const data = await response.json().catch(() => null);
-            if (!response.ok) {
-               const msg =
-                  typeof data?.error === 'string'
-                     ? data.error
-                     : `Failed to load command (${response.status})`;
-               if (!cancelled) setLastCommandError(msg);
-               return;
-            }
-            const event = data?.event;
-            if (!event) {
-               if (!cancelled) {
-                  setLastCommandJson('No command published yet.');
-                  setLastCommandTs('');
-                  setLastCommandError('');
+         const loadLastCommand = async () => {
+            if (lastCommandInFlightRef.current) return;
+            lastCommandInFlightRef.current = true;
+            try {
+               const response = await apiFetch(
+                  `/device/${selectedDevice.id}/last-command`,
+               );
+               const data = await response.json().catch(() => null);
+               if (!response.ok) {
+                  if (!cancelled) setLastCommandPayload(null);
+                  return;
                }
-               return;
+               const event = data?.event;
+               if (!event) {
+                  if (!cancelled) setLastCommandPayload(null);
+                  return;
+               }
+               if (!cancelled) setLastCommandPayload(event.payload ?? null);
+            } catch {
+               if (!cancelled) setLastCommandPayload(null);
+            } finally {
+               lastCommandInFlightRef.current = false;
             }
-            const payload = event.payload;
-            const pretty =
-               payload && typeof payload === 'object'
-                  ? JSON.stringify(payload, null, 2)
-                  : String(payload ?? '');
-            if (!cancelled) {
-               setLastCommandJson(pretty || 'No command payload.');
-               setLastCommandTs(typeof event.ts === 'string' ? event.ts : '');
-               setLastCommandError('');
-            }
-         } catch {
-            if (!cancelled)
-               setLastCommandError('Failed to load latest command payload.');
-         }
-      };
+         };
 
-      void loadLastCommand();
-      timer = setInterval(() => void loadLastCommand(), 5000);
-      return () => {
-         cancelled = true;
-         if (timer) clearInterval(timer);
-      };
-   }, [hasLinkedDevice, selectedDevice.id]);
+         void loadLastCommand();
+         timer = setInterval(() => void loadLastCommand(), 5000);
+         return () => {
+            cancelled = true;
+            if (timer) clearInterval(timer);
+         };
+      }, [hasLinkedDevice, selectedDevice.id]),
+   );
 
    const activePreset = carouselPresets[carouselIndex] ?? null;
+   const liveArrivalLookup = useMemo(
+      () => getLiveArrivalLookup(lastCommandPayload),
+      [lastCommandPayload],
+   );
 
    // Show loading screen while auth hydration is in progress
    if (status === 'loading') {
@@ -254,7 +246,7 @@ export default function DashboardHomeScreen() {
       );
    }
 
-   const activateDisplayOnDevice = useCallback(async (display: DeviceDisplay) => {
+   const activateDisplayOnDevice = async (display: DeviceDisplay) => {
       if (!selectedDevice.id || activating) return;
       setActivating(true);
       try {
@@ -280,7 +272,7 @@ export default function DashboardHomeScreen() {
       } finally {
          setActivating(false);
       }
-   }, [selectedDevice.id, deviceDisplays, activating, loadDisplays]);
+   };
 
    const moveCarousel = (direction: 1 | -1) => {
       if (carouselPresets.length === 0) return;
@@ -430,7 +422,9 @@ export default function DashboardHomeScreen() {
                {activePreset ? (
                   <>
                      <DashboardPreviewSection
-                        slots={toPreviewSlots(activePreset, cityBrand.accent, stopNames)}
+                        slots={toPreviewSlots(activePreset, cityBrand.accent, stopNames, liveArrivalLookup, {
+                           showDirectionFallback: false,
+                        })}
                         onSelectSlot={() => {}}
                         onReorderSlot={() => {}}
                         onDragStateChange={() => {}}
