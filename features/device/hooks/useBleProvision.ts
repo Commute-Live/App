@@ -1,12 +1,15 @@
 import {useCallback, useEffect, useRef, useState} from 'react';
-import {BleManager, Device, BleError, Characteristic} from 'react-native-ble-plx';
+import {BleManager, Device, BleError} from 'react-native-ble-plx';
 import {Platform, PermissionsAndroid} from 'react-native';
 import {Buffer} from 'buffer';
 
 // CommuteLive custom GATT UUIDs — must match firmware ble_provisioner.cpp
 export const BLE_SERVICE_UUID   = 'a1b2c3d4-0000-4a5b-8c7d-9e0f1a2b3c4d';
 export const BLE_PROVISION_UUID = 'a1b2c3d4-0001-4a5b-8c7d-9e0f1a2b3c4d';
-export const BLE_STATUS_UUID    = 'a1b2c3d4-0002-4a5b-8c7d-9e0f1a2b3c4d';
+
+// The firmware advertises as "esp32-XXXX" (same as its MQTT deviceId).
+// Also accept "CommuteLive-" for backwards compatibility with older firmware.
+const BLE_NAME_PREFIXES = ['esp32-', 'CommuteLive-'];
 
 export type BleProvisionPhase =
   | 'idle'
@@ -16,19 +19,17 @@ export type BleProvisionPhase =
   | 'connecting'
   | 'connected'
   | 'provisioning'
-  | 'waiting_wifi'
   | 'done'
   | 'error';
 
 export interface BleProvisionState {
   phase: BleProvisionPhase;
   foundDevice: Device | null;
-  deviceId: string | null;     // ESP32 device ID returned in STATUS notify
+  deviceId: string | null;   // esp32-XXXX — set from BLE device name during scan
   errorMsg: string | null;
 }
 
 // Singleton BleManager — created once per app session, never recreated.
-// Returns null when the native BLE module is unavailable (e.g. Expo Go).
 let managerInstance: BleManager | null = null;
 function getManager(): BleManager | null {
   if (!managerInstance) {
@@ -68,8 +69,7 @@ export function useBleProvision() {
   });
 
   const deviceRef      = useRef<Device | null>(null);
-  const subscriptionRef = useRef<{remove(): void} | null>(null);
-  const scanTimeoutRef  = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const scanTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const setPhase = useCallback((phase: BleProvisionPhase, extra?: Partial<BleProvisionState>) => {
     setState(prev => ({...prev, phase, ...extra}));
@@ -79,16 +79,10 @@ export function useBleProvision() {
     setPhase('error', {errorMsg: msg});
   }, [setPhase]);
 
-  // Clean up BLE resources.
   const cleanup = useCallback(() => {
     if (scanTimeoutRef.current) {
       clearTimeout(scanTimeoutRef.current);
-      clearInterval(scanTimeoutRef.current as unknown as ReturnType<typeof setInterval>);
       scanTimeoutRef.current = null;
-    }
-    if (subscriptionRef.current) {
-      subscriptionRef.current.remove();
-      subscriptionRef.current = null;
     }
     const mgr = getManager();
     mgr?.stopDeviceScan();
@@ -103,6 +97,7 @@ export function useBleProvision() {
   }, [cleanup]);
 
   // Step 1: scan for the CommuteLive device.
+  // Firmware advertises as "esp32-XXXX" — device.name IS the deviceId.
   const startScan = useCallback(async () => {
     setPhase('requesting_permission');
 
@@ -120,7 +115,6 @@ export function useBleProvision() {
 
     setPhase('scanning');
 
-    // Timeout after 20s if nothing found.
     scanTimeoutRef.current = setTimeout(() => {
       mgr.stopDeviceScan();
       fail('No CommuteLive device found nearby. Make sure it is powered on.');
@@ -132,11 +126,13 @@ export function useBleProvision() {
         fail(`Scan error: ${error.message}`);
         return;
       }
-      if (device && device.name && device.name.startsWith('CommuteLive-')) {
+      if (device?.name && BLE_NAME_PREFIXES.some(p => device.name!.startsWith(p))) {
         clearTimeout(scanTimeoutRef.current!);
         mgr.stopDeviceScan();
         deviceRef.current = device;
-        setPhase('device_found', {foundDevice: device});
+        // device.name === "esp32-XXXX" which is also the MQTT deviceId
+        setPhase('device_found', {foundDevice: device, deviceId: device.name});
+        console.log('[BLE] Found device, deviceId =', device.name);
       }
     });
   }, [setPhase, fail]);
@@ -153,38 +149,20 @@ export function useBleProvision() {
       const connected = await device.connect();
       await connected.discoverAllServicesAndCharacteristics();
       deviceRef.current = connected;
-
-      // Read deviceId from STATUS characteristic immediately on connect.
-      // This lets us complete registration even if BLE drops during WiFi connect.
-      try {
-        const statusChar = await connected.readCharacteristicForService(
-          BLE_SERVICE_UUID,
-          BLE_STATUS_UUID,
-        );
-        if (statusChar?.value) {
-          const raw = Buffer.from(statusChar.value, 'base64').toString('utf8');
-          const json: {status?: string; deviceId?: string} = JSON.parse(raw);
-          if (json.deviceId) {
-            setState(prev => ({...prev, deviceId: json.deviceId ?? null}));
-          }
-        }
-      } catch {
-        // Non-fatal — we'll still get deviceId from the notify later.
-      }
-
       setPhase('connected');
     } catch (e: unknown) {
       fail(`Connection failed: ${e instanceof Error ? e.message : String(e)}`);
     }
   }, [setPhase, fail]);
 
-  // Step 3: write WiFi credentials and wait for STATUS notify.
+  // Step 3: write WiFi credentials.
+  // Returns the deviceId (from device name set during scan) — no characteristic read needed.
   const sendCredentials = useCallback(
-    async (ssid: string, password: string, username: string) => {
+    async (ssid: string, password: string, username: string): Promise<string | null> => {
       const device = deviceRef.current;
       if (!device) {
         fail('Device not connected.');
-        return;
+        return null;
       }
       setPhase('provisioning');
 
@@ -197,10 +175,14 @@ export function useBleProvision() {
           BLE_PROVISION_UUID,
           encoded,
         );
-        // Credentials written — registration is handled by the screen immediately after.
         setPhase('done');
+        // device.name is the deviceId (e.g. "esp32-B44AC2F16E20")
+        const deviceId = device.name ?? null;
+        console.log('[BLE] Credentials sent, deviceId =', deviceId);
+        return deviceId;
       } catch (e: unknown) {
         fail(`Failed to send credentials: ${e instanceof Error ? e.message : String(e)}`);
+        return null;
       }
     },
     [setPhase, fail],
