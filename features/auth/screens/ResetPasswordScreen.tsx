@@ -179,7 +179,7 @@ export default function ResetPasswordScreen() {
         keyboardVerticalOffset={Platform.OS === 'ios' ? 12 : 0}>
         <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
           <Text style={styles.title}>Reset password</Text>
-          <Text style={styles.subtitle}>Choose a new password for your Commutelive account.</Text>
+          <Text style={styles.subtitle}>Choose a new password for your CommuteLive account.</Text>
 
           <View style={styles.field}>
             <Text style={styles.label}>New password</Text>
