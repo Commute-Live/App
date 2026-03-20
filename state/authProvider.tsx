@@ -1,5 +1,7 @@
 import React, {createContext, useCallback, useContext, useEffect, useMemo, useState} from 'react';
+import {useMutation, useQuery, useQueryClient} from '@tanstack/react-query';
 import {apiFetch} from '../lib/api';
+import {queryKeys} from '../lib/queryKeys';
 import {useAppState} from './appState';
 
 type AuthStatus = 'loading' | 'authenticated' | 'unauthenticated';
@@ -41,7 +43,18 @@ const toUserProfile = (input: any): UserProfilePayload | null => {
   return {id: input.id, email: input.email, deviceIds};
 };
 
+const fetchAuthProfile = async (): Promise<UserProfilePayload> => {
+  const response = await apiFetch('/auth/me');
+  const data = await response.json().catch(() => null);
+  const profile = toUserProfile(data?.user);
+  if (!response.ok || !profile) {
+    throw new Error('UNAUTHENTICATED');
+  }
+  return profile;
+};
+
 export function AuthProvider({children}: {children: React.ReactNode}) {
+  const queryClient = useQueryClient();
   const {
     state: {deviceId: appDeviceId},
     setUserId,
@@ -78,24 +91,25 @@ export function AuthProvider({children}: {children: React.ReactNode}) {
     clearAppAuth();
   }, [clearAppAuth]);
 
+  const authMeQuery = useQuery({
+    queryKey: queryKeys.auth.me,
+    queryFn: fetchAuthProfile,
+    retry: false,
+    staleTime: 0,
+  });
+
   const hydrate = useCallback(async () => {
     setStatus('loading');
-    try {
-      const response = await apiFetch('/auth/me');
-      const data = await response.json().catch(() => null);
-      const profile = toUserProfile(data?.user);
-      if (!response.ok || !profile) {
-        clearAuth();
-        return;
-      }
-      applyAuthenticatedProfile(profile);
-    } catch {
-      clearAuth();
+    const result = await authMeQuery.refetch();
+    if (result.data) {
+      applyAuthenticatedProfile(result.data);
+      return;
     }
-  }, [applyAuthenticatedProfile, clearAuth]);
+    clearAuth();
+  }, [applyAuthenticatedProfile, authMeQuery, clearAuth]);
 
-  const signIn = useCallback(
-    async (email: string, password: string) => {
+  const signInMutation = useMutation({
+    mutationFn: async ({email, password}: {email: string; password: string}) => {
       try {
         const response = await apiFetch('/auth/login', {
           method: 'POST',
@@ -110,22 +124,44 @@ export function AuthProvider({children}: {children: React.ReactNode}) {
             error: data?.error === 'INVALID_CREDENTIALS' ? 'Invalid email or password' : 'Login failed',
           };
         }
-        applyAuthenticatedProfile(profile);
-        return {ok: true as const, user: {id: profile.id, email: profile.email}, deviceIds: profile.deviceIds};
+        return {ok: true as const, profile};
       } catch {
         return {ok: false as const, error: 'Network error'};
       }
     },
-    [applyAuthenticatedProfile],
+  });
+
+  const signOutMutation = useMutation({
+    mutationFn: async () => {
+      await apiFetch('/auth/logout', {method: 'POST'});
+    },
+  });
+
+  const signIn = useCallback(
+    async (email: string, password: string) => {
+      const result = await signInMutation.mutateAsync({email, password});
+      if (!result.ok) {
+        return result;
+      }
+      applyAuthenticatedProfile(result.profile);
+      queryClient.setQueryData(queryKeys.auth.me, result.profile);
+      return {
+        ok: true as const,
+        user: {id: result.profile.id, email: result.profile.email},
+        deviceIds: result.profile.deviceIds,
+      };
+    },
+    [applyAuthenticatedProfile, queryClient, signInMutation],
   );
 
   const signOut = useCallback(async () => {
     try {
-      await apiFetch('/auth/logout', {method: 'POST'});
+      await signOutMutation.mutateAsync();
     } finally {
+      queryClient.removeQueries({queryKey: queryKeys.auth.me});
       clearAuth();
     }
-  }, [clearAuth]);
+  }, [clearAuth, queryClient, signOutMutation]);
 
   const setDeviceId = useCallback(
     (nextDeviceId: string | null) => {
@@ -135,8 +171,26 @@ export function AuthProvider({children}: {children: React.ReactNode}) {
   );
 
   useEffect(() => {
-    void hydrate();
-  }, [hydrate]);
+    if (authMeQuery.isPending) {
+      setStatus('loading');
+      return;
+    }
+    if (authMeQuery.isSuccess) {
+      applyAuthenticatedProfile(authMeQuery.data);
+      return;
+    }
+    if (authMeQuery.isError && status !== 'unauthenticated') {
+      clearAuth();
+    }
+  }, [
+    applyAuthenticatedProfile,
+    authMeQuery.data,
+    authMeQuery.isError,
+    authMeQuery.isPending,
+    authMeQuery.isSuccess,
+    clearAuth,
+    status,
+  ]);
 
   const value = useMemo(
     () => ({

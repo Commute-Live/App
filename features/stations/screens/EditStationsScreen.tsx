@@ -1,11 +1,13 @@
 import React, {useEffect, useMemo, useState} from 'react';
 import {Pressable, ScrollView, StyleSheet, Text, TextInput, View} from 'react-native';
 import {SafeAreaView} from 'react-native-safe-area-context';
+import {useQuery} from '@tanstack/react-query';
 import {ScreenHeader} from '../../../components/ScreenHeader';
 import {colors, radii, spacing} from '../../../theme';
 import {useAppState} from '../../../state/appState';
 import {CITY_LABELS, CITY_OPTIONS, type CityId} from '../../../constants/cities';
 import {getTransitStations} from '../../../lib/transitApi';
+import {queryKeys} from '../../../lib/queryKeys';
 import type {TransitUiMode} from '../../../types/transit';
 
 type StationSearchResult = {
@@ -19,9 +21,7 @@ const SUPPORTED_LIVE_CITIES: CityId[] = ['new-york', 'philadelphia', 'boston', '
 export default function EditStationsScreen() {
   const {state, addStation, removeStation} = useAppState();
   const [query, setQuery] = useState('');
-  const [results, setResults] = useState<StationSearchResult[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
+  const [debouncedQuery, setDebouncedQuery] = useState('');
 
   const selectedCity = state.selectedCity;
   const selectedCityOption = CITY_OPTIONS.find(option => option.id === selectedCity) ?? CITY_OPTIONS[0];
@@ -29,37 +29,24 @@ export default function EditStationsScreen() {
   const trimmedQuery = query.trim();
 
   useEffect(() => {
-    if (!liveSupported) {
-      setResults([]);
-      setLoading(false);
-      setError('');
-      return;
-    }
-
-    let cancelled = false;
     const timer = setTimeout(() => {
-      setLoading(true);
-      setError('');
-      void fetchLiveStations(selectedCity, trimmedQuery)
-        .then(rows => {
-          if (cancelled) return;
-          setResults(rows.slice(0, 12));
-        })
-        .catch(() => {
-          if (cancelled) return;
-          setResults([]);
-          setError('Unable to load stations right now.');
-        })
-        .finally(() => {
-          if (!cancelled) setLoading(false);
-        });
+      setDebouncedQuery(trimmedQuery);
     }, 220);
-
     return () => {
-      cancelled = true;
       clearTimeout(timer);
     };
-  }, [liveSupported, selectedCity, trimmedQuery]);
+  }, [trimmedQuery]);
+
+  const liveStationsQuery = useQuery({
+    queryKey: queryKeys.liveStationsSearch(selectedCity, debouncedQuery),
+    queryFn: () => fetchLiveStations(selectedCity, debouncedQuery),
+    enabled: liveSupported,
+    retry: false,
+  });
+
+  const results = liveStationsQuery.data?.slice(0, 12) ?? [];
+  const loading = liveStationsQuery.isPending || liveStationsQuery.isFetching;
+  const error = liveStationsQuery.isError ? 'Unable to load stations right now.' : '';
 
   const visibleResults = useMemo(
     () => results.filter(item => !state.selectedStations.includes(item.name)).slice(0, 6),

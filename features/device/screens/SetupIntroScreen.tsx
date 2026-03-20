@@ -3,9 +3,11 @@ import {Pressable, ScrollView, StyleSheet, Text, TextInput, View, ActivityIndica
 import {SafeAreaView} from 'react-native-safe-area-context';
 import {Ionicons} from '@expo/vector-icons';
 import {useRouter} from 'expo-router';
+import {useMutation, useQuery} from '@tanstack/react-query';
 import {colors, spacing, radii} from '../../../theme';
 import {useAppState} from '../../../state/appState';
 import {apiFetch} from '../../../lib/api';
+import {queryKeys} from '../../../lib/queryKeys';
 import {useAuth} from '../../../state/authProvider';
 
 export default function SetupIntroScreen() {
@@ -26,29 +28,113 @@ export default function SetupIntroScreen() {
   const [isLinking, setIsLinking] = useState(false);
   const isConnecting = connectStatus === 'connecting';
 
+  const statusQuery = useQuery({
+    queryKey: queryKeys.espStatus,
+    queryFn: async () => {
+      const response = await fetch(statusUrl, {method: 'GET'});
+      if (!response.ok) return null;
+      return response.json().catch(() => null);
+    },
+    retry: false,
+    refetchOnWindowFocus: false,
+  });
+
+  const registerAndLinkMutation = useMutation({
+    mutationFn: async (deviceIdToLink: string) => {
+      const registerResponse = await apiFetch('/device/register', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({id: deviceIdToLink}),
+      });
+      if (!registerResponse.ok && registerResponse.status !== 409) {
+        const registerData = await registerResponse.json().catch(() => null);
+        return {
+          ok: false as const,
+          error:
+            typeof registerData?.error === 'string'
+              ? `Device register failed: ${registerData.error}`
+              : `Device register failed (${registerResponse.status})`,
+        };
+      }
+
+      const linkResponse = await apiFetch('/user/device/link', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({deviceId: deviceIdToLink}),
+      });
+
+      if (!linkResponse.ok) {
+        const linkData = await linkResponse.json().catch(() => null);
+        return {
+          ok: false as const,
+          error:
+            typeof linkData?.error === 'string'
+              ? `Wi-Fi connected, but device link failed: ${linkData.error}`
+              : `Wi-Fi connected, but device link failed (${linkResponse.status})`,
+        };
+      }
+
+      return {ok: true as const};
+    },
+  });
+
+  const connectWifiMutation = useMutation({
+    mutationFn: async (payload: {
+      ssid: string;
+      wifiPassword: string;
+      wifiUsername: string;
+      currentDeviceId: string | null;
+    }) => {
+      const response = await fetch('http://192.168.4.1/connect', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: `ssid=${encodeURIComponent(payload.ssid)}&password=${encodeURIComponent(payload.wifiPassword)}&user=${encodeURIComponent(payload.wifiUsername)}`,
+      });
+      const text = await response.text();
+      let data: any;
+      try {
+        data = JSON.parse(text);
+      } catch {
+        data = {};
+      }
+
+      let resolvedDeviceId = payload.currentDeviceId;
+      if (!resolvedDeviceId) {
+        try {
+          const infoResponse = await fetch('http://192.168.4.1/device-info', {method: 'GET'});
+          if (infoResponse.ok) {
+            const info = await infoResponse.json().catch(() => null);
+            if (info?.deviceId) {
+              resolvedDeviceId = String(info.deviceId);
+            }
+          }
+        } catch {
+          // ignore
+        }
+      }
+
+      return {
+        responseOk: response.ok,
+        text,
+        data,
+        resolvedDeviceId,
+      };
+    },
+  });
+
   useEffect(() => {
     setDeviceStatus('notPaired');
-
-    const loadStatus = async () => {
-      try {
-        const response = await fetch(statusUrl, {method: 'GET'});
-        if (!response.ok) return;
-        const data = await response.json();
-        if (data?.deviceId) {
-          setDeviceId(String(data.deviceId));
-        }
-        if (data?.wifiConnected === true) {
-          setDeviceStatus('pairedOnline');
-        } else if (data?.wifiConnected === false) {
-          setDeviceStatus('pairedOffline');
-        }
-      } catch {
-        // ignore
-      }
-    };
-
-    loadStatus();
-  }, [setDeviceId, setDeviceStatus, statusUrl]);
+    const data = statusQuery.data;
+    if (!data) return;
+    if (data?.deviceId) {
+      setDeviceId(String(data.deviceId));
+    }
+    if (data?.wifiConnected === true) {
+      setDeviceStatus('pairedOnline');
+    } else if (data?.wifiConnected === false) {
+      setDeviceStatus('pairedOffline');
+    }
+  }, [setDeviceId, setDeviceStatus, statusQuery.data]);
 
   const tryRegisterAndLinkDevice = async (deviceIdToLink: string) => {
     if (deviceIds.includes(deviceIdToLink)) {
@@ -61,40 +147,12 @@ export default function SetupIntroScreen() {
 
     setIsLinking(true);
     try {
-      const registerResponse = await apiFetch('/device/register', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({id: deviceIdToLink}),
-      });
-      if (!registerResponse.ok && registerResponse.status !== 409) {
-        const registerData = await registerResponse.json().catch(() => null);
+      const result = await registerAndLinkMutation.mutateAsync(deviceIdToLink);
+      if (!result.ok) {
         setConnectStatus('error');
         setNeedsHomeWifiForLink(false);
         setPendingLinkDeviceId(null);
-        setErrorMsg(
-          typeof registerData?.error === 'string'
-            ? `Device register failed: ${registerData.error}`
-            : `Device register failed (${registerResponse.status})`,
-        );
-        return false;
-      }
-
-      const linkResponse = await apiFetch('/user/device/link', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({deviceId: deviceIdToLink}),
-      });
-
-      if (!linkResponse.ok) {
-        const linkData = await linkResponse.json().catch(() => null);
-        setConnectStatus('error');
-        setNeedsHomeWifiForLink(false);
-        setPendingLinkDeviceId(null);
-        setErrorMsg(
-          typeof linkData?.error === 'string'
-            ? `Wi-Fi connected, but device link failed: ${linkData.error}`
-            : `Wi-Fi connected, but device link failed (${linkResponse.status})`,
-        );
+        setErrorMsg(result.error);
         return false;
       }
 
@@ -124,22 +182,16 @@ export default function SetupIntroScreen() {
     setPendingLinkDeviceId(null);
 
     try {
-      const response = await fetch('http://192.168.4.1/connect', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: `ssid=${encodeURIComponent(ssid)}&password=${encodeURIComponent(wifiPassword)}&user=${encodeURIComponent(wifiUsername)}`,
+      const result = await connectWifiMutation.mutateAsync({
+        ssid,
+        wifiPassword,
+        wifiUsername,
+        currentDeviceId: state.deviceId,
       });
-      const text = await response.text();
-      setApiResponse(text);
-      let data;
-      try {
-        data = JSON.parse(text);
-      } catch {
-        data = {};
-      }
-      if (!response.ok || data.error) {
+      setApiResponse(result.text);
+      if (!result.responseOk || result.data.error) {
         setConnectStatus('error');
-        const rawError = String(data.error || 'Unknown error');
+        const rawError = String(result.data.error || 'Unknown error');
         if (rawError === 'No Eligible WiFi networks found') {
           setErrorMsg('No eligible Wi‑Fi networks found. Make sure the device can see your network.');
         } else if (rawError === 'Failed to connect to WiFi bc of credentials') {
@@ -156,20 +208,9 @@ export default function SetupIntroScreen() {
         return;
       }
 
-      let resolvedDeviceId = state.deviceId;
-      if (!resolvedDeviceId) {
-        try {
-          const infoResponse = await fetch('http://192.168.4.1/device-info', {method: 'GET'});
-          if (infoResponse.ok) {
-            const info = await infoResponse.json();
-            if (info?.deviceId) {
-              resolvedDeviceId = String(info.deviceId);
-              setDeviceId(resolvedDeviceId);
-            }
-          }
-        } catch {
-          // ignore
-        }
+      const resolvedDeviceId = result.resolvedDeviceId;
+      if (resolvedDeviceId) {
+        setDeviceId(resolvedDeviceId);
       }
 
       setConnectStatus('success');

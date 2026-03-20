@@ -3,6 +3,7 @@ import {Pressable, ScrollView, StyleSheet, Text, View} from 'react-native';
 import {SafeAreaView} from 'react-native-safe-area-context';
 import {Ionicons} from '@expo/vector-icons';
 import {useRouter} from 'expo-router';
+import {useMutation} from '@tanstack/react-query';
 import {PreviewCard} from '../../../components/PreviewCard';
 import {colors, spacing, radii} from '../../../theme';
 import {apiFetch} from '../../../lib/api';
@@ -25,6 +26,30 @@ export default function PairedOnlineScreen() {
   ];
   const [selected, setSelected] = useState(devices[0]);
 
+  const linkDeviceMutation = useMutation({
+    mutationFn: async (nextDeviceId: string) => {
+      const response = await apiFetch('/user/device/link', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({deviceId: nextDeviceId}),
+      });
+      const text = await response.text();
+      let data: any = null;
+      try {
+        data = JSON.parse(text);
+      } catch {
+        data = null;
+      }
+      if (!response.ok) {
+        if (data?.error === 'REFRESH_INVALID' || data?.error === 'REFRESH_REUSED') {
+          return {ok: false as const, authExpired: true, message: data?.error};
+        }
+        return {ok: false as const, authExpired: false, message: data?.error || text || 'Link failed.'};
+      }
+      return {ok: true as const, message: data?.message || 'Device linked successfully.'};
+    },
+  });
+
   useEffect(() => {
     setSelected(devices[0]);
   }, [deviceId]);
@@ -32,41 +57,29 @@ export default function PairedOnlineScreen() {
   useEffect(() => {
     if (!deviceId || !userId) return;
     if (linkStatus !== 'idle') return;
-    const linkDevice = async () => {
-      setLinkStatus('linking');
-      setLinkMessage('');
-      try {
-        const response = await apiFetch('/user/device/link', {
-          method: 'POST',
-          headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({deviceId}),
-        });
-        const text = await response.text();
-        let data: any = null;
-        try {
-          data = JSON.parse(text);
-        } catch {
-          data = null;
+    setLinkStatus('linking');
+    setLinkMessage('');
+    linkDeviceMutation.mutate(deviceId, {
+      onSuccess: result => {
+        if (!result.ok && result.authExpired) {
+          clearAuth();
+          router.replace('/auth');
+          return;
         }
-        if (!response.ok) {
-          if (data?.error === 'REFRESH_INVALID' || data?.error === 'REFRESH_REUSED') {
-            clearAuth();
-            router.replace('/auth');
-            return;
-          }
+        if (!result.ok) {
           setLinkStatus('error');
-          setLinkMessage(data?.error || text || 'Link failed.');
+          setLinkMessage(result.message);
           return;
         }
         setLinkStatus('linked');
-        setLinkMessage(data?.message || 'Device linked successfully.');
-      } catch {
+        setLinkMessage(result.message);
+      },
+      onError: () => {
         setLinkStatus('error');
         setLinkMessage('Network error.');
-      }
-    };
-    linkDevice();
-  }, [clearAuth, deviceId, linkStatus, router, userId]);
+      },
+    });
+  }, [clearAuth, deviceId, linkDeviceMutation, linkStatus, router, userId]);
 
   return (
     <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
