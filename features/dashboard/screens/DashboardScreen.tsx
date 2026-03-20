@@ -166,10 +166,6 @@ export default function DashboardScreen() {
   const stationsRequestedRef = useRef(new Set<string>());
   const routesRequestedRef = useRef(new Set<string>());
   const previousCityRef = useRef(city);
-  const [lastCommandJson, setLastCommandJson] = useState<string>('No command published yet.');
-  const [lastCommandTs, setLastCommandTs] = useState<string>('');
-  const [lastCommandError, setLastCommandError] = useState<string>('');
-
   useEffect(() => {
     if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
       UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -855,55 +851,6 @@ export default function DashboardScreen() {
       },
     ],
   } as const;
-
-  useEffect(() => {
-    if (!hasLinkedDevice || !selectedDevice.id) return;
-    let cancelled = false;
-    let timer: ReturnType<typeof setInterval> | null = null;
-
-    const loadLastCommand = async () => {
-      try {
-        const response = await apiFetch(`/device/${selectedDevice.id}/last-command`);
-        const data = await response.json().catch(() => null);
-        if (!response.ok) {
-          const msg = typeof data?.error === 'string' ? data.error : `Failed to load command (${response.status})`;
-          if (!cancelled) setLastCommandError(msg);
-          return;
-        }
-
-        const event = data?.event;
-        if (!event) {
-          if (!cancelled) {
-            setLastCommandJson('No command published yet.');
-            setLastCommandTs('');
-            setLastCommandError('');
-          }
-          return;
-        }
-
-        const payload = event.payload;
-        const pretty =
-          payload && typeof payload === 'object' ? JSON.stringify(payload, null, 2) : String(payload ?? '');
-        if (!cancelled) {
-          setLastCommandJson(pretty || 'No command payload.');
-          setLastCommandTs(typeof event.ts === 'string' ? event.ts : '');
-          setLastCommandError('');
-        }
-      } catch {
-        if (!cancelled) setLastCommandError('Failed to load latest command payload.');
-      }
-    };
-
-    void loadLastCommand();
-    timer = setInterval(() => {
-      void loadLastCommand();
-    }, 5000);
-
-    return () => {
-      cancelled = true;
-      if (timer) clearInterval(timer);
-    };
-  }, [hasLinkedDevice, selectedDevice.id]);
 
   return (
     <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>

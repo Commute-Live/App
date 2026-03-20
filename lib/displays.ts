@@ -30,6 +30,15 @@ export type DeviceConfig = {
   lines?: LineConfig[];
 };
 
+export type LiveArrivalLookup = {
+  byLineKey: Record<string, string>;
+  byIndex: string[];
+};
+
+export type PreviewSlotOptions = {
+  showDirectionFallback?: boolean;
+};
+
 export type DeviceDisplay = {
   displayId: string;
   deviceId: string;
@@ -84,18 +93,278 @@ export const providerToCity = (provider: string | undefined | null): CityId | nu
   return PROVIDER_TO_CITY[provider] ?? null;
 };
 
+type RecordValue = Record<string, unknown>;
+
+const asRecord = (value: unknown): RecordValue | null => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  return value as RecordValue;
+};
+
+const readPath = (record: RecordValue, path: string[]) => {
+  let current: unknown = record;
+  for (const segment of path) {
+    const next = asRecord(current);
+    if (!next) return undefined;
+    current = next[segment];
+  }
+  return current;
+};
+
+const normalizeDirectionToken = (value: unknown) => {
+  if (typeof value !== 'string') return '';
+  const token = value.trim().toUpperCase();
+  if (!token) return '';
+  if (token === 'N' || token === 'UPTOWN' || token === 'NORTHBOUND') return 'N';
+  if (token === 'S' || token === 'DOWNTOWN' || token === 'SOUTHBOUND') return 'S';
+  return token;
+};
+
+const toLineKeyPart = (value: unknown) => {
+  if (typeof value === 'number' && Number.isFinite(value)) return String(value);
+  if (typeof value !== 'string') return '';
+  return value.trim().toLowerCase();
+};
+
+const toDisplayTimeLabel = (value: unknown): string | null => {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    const rounded = Math.max(0, Math.round(value));
+    return rounded === 0 ? 'DUE' : `${rounded}m`;
+  }
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  const numeric = Number(trimmed);
+  if (Number.isFinite(numeric) && /^-?\d+(\.\d+)?$/.test(trimmed)) {
+    const rounded = Math.max(0, Math.round(numeric));
+    return rounded === 0 ? 'DUE' : `${rounded}m`;
+  }
+  return trimmed;
+};
+
+const PREVIEW_TIME_COLOR_ONTIME = '#34D399';
+const PREVIEW_TIME_COLOR_DUE = '#EF4444';
+
+const isDueTimeLabel = (value: string) => {
+  const normalized = value.trim().toUpperCase();
+  return (
+    normalized === 'DUE' ||
+    normalized === 'NOW' ||
+    normalized === 'ARR' ||
+    normalized === 'ARRIVING' ||
+    normalized === '0M' ||
+    normalized === '0'
+  );
+};
+
+export const buildPreviewLineKey = (line: Pick<LineConfig, 'provider' | 'line' | 'stop' | 'direction'>) => {
+  return [
+    toLineKeyPart(line.provider),
+    toLineKeyPart(line.line),
+    toLineKeyPart(line.stop),
+    normalizeDirectionToken(line.direction),
+  ].join('|');
+};
+
+const toBaseLineKey = (lineKey: string) => {
+  const [provider = '', line = '', stop = ''] = lineKey.split('|');
+  return [provider, line, stop, ''].join('|');
+};
+
+const ENTRY_KEY_PATHS = {
+  provider: [
+    ['provider'],
+    ['providerId'],
+    ['agency'],
+    ['line', 'provider'],
+    ['route', 'provider'],
+  ],
+  line: [
+    ['line'],
+    ['lineId'],
+    ['route'],
+    ['routeId'],
+    ['tripId'],
+    ['line', 'id'],
+    ['route', 'id'],
+  ],
+  stop: [
+    ['stop'],
+    ['stopId'],
+    ['station'],
+    ['stationId'],
+    ['line', 'stop'],
+    ['station', 'id'],
+  ],
+  direction: [
+    ['direction'],
+    ['bound'],
+    ['line', 'direction'],
+    ['route', 'direction'],
+  ],
+};
+
+const TIME_VALUE_PATHS = [
+  ['nextArrivalMinutes'],
+  ['arrivalMinutes'],
+  ['etaMinutes'],
+  ['minutes'],
+  ['nextArrival'],
+  ['arrival'],
+  ['eta'],
+  ['countdown'],
+  ['time'],
+] as const;
+
+const TIME_LIST_PATHS = [
+  ['nextArrivals'],
+  ['arrivals'],
+  ['times'],
+  ['etas'],
+] as const;
+
+const CANDIDATE_ARRAY_PATHS = [
+  ['lines'],
+  ['arrivals'],
+  ['payload', 'lines'],
+  ['payload', 'arrivals'],
+  ['data', 'lines'],
+  ['data', 'arrivals'],
+  ['transit', 'lines'],
+  ['transit', 'arrivals'],
+  ['command', 'lines'],
+  ['command', 'arrivals'],
+] as const;
+
+const readEntryField = (record: RecordValue, paths: ReadonlyArray<readonly string[]>) => {
+  for (const path of paths) {
+    const value = readPath(record, [...path]);
+    if (value == null) continue;
+    if (typeof value === 'string' && value.trim().length === 0) continue;
+    return value;
+  }
+  return undefined;
+};
+
+const extractTimeFromEntry = (entry: unknown): string | null => {
+  const direct = toDisplayTimeLabel(entry);
+  if (direct) return direct;
+
+  const record = asRecord(entry);
+  if (!record) return null;
+
+  for (const path of TIME_VALUE_PATHS) {
+    const label = toDisplayTimeLabel(readPath(record, [...path]));
+    if (label) return label;
+  }
+
+  for (const path of TIME_LIST_PATHS) {
+    const raw = readPath(record, [...path]);
+    if (!Array.isArray(raw)) continue;
+    for (const value of raw) {
+      const label = extractTimeFromEntry(value);
+      if (label) return label;
+    }
+  }
+
+  return null;
+};
+
+const extractEntryLineKey = (entry: unknown): string | null => {
+  const record = asRecord(entry);
+  if (!record) return null;
+
+  const provider = readEntryField(record, ENTRY_KEY_PATHS.provider);
+  const line = readEntryField(record, ENTRY_KEY_PATHS.line);
+  const stop = readEntryField(record, ENTRY_KEY_PATHS.stop);
+  const direction = readEntryField(record, ENTRY_KEY_PATHS.direction);
+
+  if (provider == null && line == null && stop == null) return null;
+
+  return [
+    toLineKeyPart(provider),
+    toLineKeyPart(line),
+    toLineKeyPart(stop),
+    normalizeDirectionToken(direction),
+  ].join('|');
+};
+
+export const getLiveArrivalLookup = (payload: unknown): LiveArrivalLookup => {
+  const byLineKey: Record<string, string> = {};
+  const byIndex: string[] = [];
+
+  let source: unknown = payload;
+  if (typeof source === 'string') {
+    try {
+      source = JSON.parse(source);
+    } catch {
+      source = null;
+    }
+  }
+
+  let root = asRecord(source);
+  if (root && typeof root.payload === 'string') {
+    try {
+      const parsed = JSON.parse(root.payload);
+      const nested = asRecord(parsed);
+      if (nested) root = nested;
+    } catch {
+      // ignore malformed nested payload string
+    }
+  }
+  if (!root) return {byLineKey, byIndex};
+
+  for (const path of CANDIDATE_ARRAY_PATHS) {
+    const entries = readPath(root, [...path]);
+    if (!Array.isArray(entries)) continue;
+
+    entries.forEach((entry, index) => {
+      const label = extractTimeFromEntry(entry);
+      if (!label) return;
+
+      if (!byIndex[index]) byIndex[index] = label;
+
+      const lineKey = extractEntryLineKey(entry);
+      if (lineKey) {
+        if (!byLineKey[lineKey]) byLineKey[lineKey] = label;
+        const baseLineKey = toBaseLineKey(lineKey);
+        if (!byLineKey[baseLineKey]) byLineKey[baseLineKey] = label;
+      }
+    });
+  }
+
+  return {byLineKey, byIndex};
+};
+
 export const toDisplayScheduleText = (display: DeviceDisplay) => {
   const days = Array.isArray(display.scheduleDays) ? display.scheduleDays : [];
   const dayLabel = days.length === 0 ? 'Every day' : days.map((day) => day.toUpperCase()).join(', ');
   return `${dayLabel} ${display.scheduleStart ?? '00:00'}-${display.scheduleEnd ?? '23:59'}`;
 };
 
-export const toPreviewSlots = (display: DeviceDisplay, accent: string, stopNames: Record<string, string> = {}) => {
+export const toPreviewSlots = (
+  display: DeviceDisplay,
+  accent: string,
+  stopNames: Record<string, string> = {},
+  liveArrivals: LiveArrivalLookup | null = null,
+  options: PreviewSlotOptions = {},
+) => {
+  const showDirectionFallback = options.showDirectionFallback ?? true;
   return (display.config.lines ?? []).slice(0, 2).map((line, index) => {
     const city = PROVIDER_TO_CITY[line.provider ?? ''] ?? null;
     const lineColors = city ? (CITY_LINE_COLORS[city] ?? {}) : {};
     const lineId = (line.line ?? '').toUpperCase();
     const {color, textColor: lineTextColor} = lineColors[lineId] ?? hashLineColor(lineId);
+    const lineKey = buildPreviewLineKey(line);
+    const liveTime =
+      liveArrivals?.byLineKey[lineKey] ??
+      liveArrivals?.byLineKey[toBaseLineKey(lineKey)] ??
+      liveArrivals?.byIndex[index];
+    const liveTimeColor =
+      typeof liveTime === 'string' && liveTime.length > 0
+        ? isDueTimeLabel(liveTime)
+          ? PREVIEW_TIME_COLOR_DUE
+          : PREVIEW_TIME_COLOR_ONTIME
+        : undefined;
     return {
       id: `${display.displayId}-${index}`,
       color,
@@ -104,7 +373,8 @@ export const toPreviewSlots = (display: DeviceDisplay, accent: string, stopNames
       selected: false,
       stopName: line.topText || line.label || stopNames[`${line.provider}:${line.stop}`] || line.stop || 'Select stop',
       subLine: line.bottomText || line.secondaryLabel || undefined,
-      times: line.direction || '--',
+      times: liveTime || (showDirectionFallback ? line.direction || '--' : '--'),
+      timesColor: liveTimeColor,
     };
   });
 };

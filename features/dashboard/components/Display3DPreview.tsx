@@ -11,6 +11,7 @@ export type Display3DSlot = {
   stopName: string;
   subLine?: string;
   times: string;
+  timesColor?: string;
 };
 
 type Props = {
@@ -115,7 +116,13 @@ export default function Display3DPreview({
                   </Text>
                 ) : null}
               </View>
-              <Text style={[styles.slotTimes, compact && styles.slotTimesCompact]} numberOfLines={1}>
+              <Text
+                style={[
+                  styles.slotTimes,
+                  compact && styles.slotTimesCompact,
+                  slot.timesColor ? {color: slot.timesColor} : null,
+                ]}
+                numberOfLines={1}>
                 {slot.times}
               </Text>
             </Pressable>
