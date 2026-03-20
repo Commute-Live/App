@@ -1,1 +1,1 @@
-export {default} from '../features/dashboard/screens/DashboardHomeScreen';
+export {default} from '../features/dashboard/screens/DashboardOverviewScreen';
