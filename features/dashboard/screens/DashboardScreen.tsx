@@ -11,7 +11,7 @@ import type {TransitArrival, TransitUiMode, DisplayContent, DisplayFormat} from 
 import type {Display3DSlot} from '../components/Display3DPreview';
 import {CITY_LINE_COLORS, FALLBACK_ROUTE_COLORS, hashLineColor} from '../../../lib/lineColors';
 import {apiFetch} from '../../../lib/api';
-import {createDisplay, fetchDisplay, updateDisplay, validateDisplayDraft} from '../../../lib/displays';
+import {createDisplay, fetchDisplay, fetchDisplays, updateDisplay, validateDisplayDraft} from '../../../lib/displays';
 import {useAuth} from '../../../state/authProvider';
 import {useSelectedDevice} from '../../../hooks/useSelectedDevice';
 
@@ -125,7 +125,6 @@ export default function DashboardScreen() {
   const editorEnter = useRef(new Animated.Value(0)).current;
   const liveSupported = isLiveCitySupported(city);
   const {deviceId, deviceIds, setDeviceId} = useAuth();
-  console.log(deviceId, deviceIds);
   const selectedDevice = useSelectedDevice();
   const hasLinkedDevice = deviceIds.length > 0;
   const [layoutSlots, setLayoutSlots] = useState<number>(DEFAULT_LAYOUT_SLOTS);
@@ -134,7 +133,7 @@ export default function DashboardScreen() {
   const [selectedLineId, setSelectedLineId] = useState<string>(openConfigureStopOnLoad ? 'line-1' : '');
   const [stationSearch, setStationSearch] = useState<Record<string, string>>({});
   const [layoutExpanded, setLayoutExpanded] = useState(openConfigureStopOnLoad);
-  const [slotEditorExpanded, setSlotEditorExpanded] = useState(false);
+  const [slotEditorExpanded, setSlotEditorExpanded] = useState(isCreateMode);
   const [scheduleExpanded, setScheduleExpanded] = useState(false);
   const [customDisplayScheduleEnabled, setCustomDisplayScheduleEnabled] = useState(false);
   const [displaySchedule, setDisplaySchedule] = useState({start: '06:00', end: '09:00'});
@@ -285,6 +284,18 @@ export default function DashboardScreen() {
   }, [city, liveSupported, selectedLine?.routeId, selectedLine?.mode]);
 
   useEffect(() => {
+    if (!isCreateMode || !deviceId) return;
+    fetchDisplays(deviceId)
+      .then(({displays}) => {
+        const names = new Set(displays.map(d => d.name));
+        let n = displays.length + 1;
+        while (names.has(`Display ${n}`)) n++;
+        setPresetName(`Display ${n}`);
+      })
+      .catch(() => {});
+  }, [isCreateMode, deviceId]);
+
+  useEffect(() => {
     if (!liveSupported) return;
     const pending = lines
       .map(line => ({mode: normalizeMode(city, line.mode), stationId: line.stationId}))
@@ -377,7 +388,13 @@ export default function DashboardScreen() {
           const restoredLines: LinePick[] = citySavedLines.slice(0, 2).map((saved: any, i: number) => {
             const displayFormat = normalizeDisplayFormat(saved.displayFormat);
             const mapping = cityModeFromProvider(saved.provider);
-            const mode: ModeId = mapping?.mode ?? 'train';
+            let mode: ModeId = mapping?.mode ?? 'train';
+            if (saved.provider === 'mbta' && saved.stop) {
+              const stopId = saved.stop.trim();
+              if (/^Boat-/i.test(stopId)) mode = 'ferry';
+              else if (/^\d+$/.test(stopId)) mode = 'bus';
+              else if (!/^place-/i.test(stopId)) mode = 'commuter-rail';
+            }
             const normalizedSavedStop = saved.stop.trim().toUpperCase();
             const dir: Direction =
               saved.direction === 'S' || (!saved.direction && normalizedSavedStop.endsWith('S')) ? 'downtown' : 'uptown';
@@ -582,7 +599,7 @@ export default function DashboardScreen() {
         brightness: 60,
         displayType: displayPreset,
         scrolling: false,
-        arrivalsToDisplay: 1,
+        arrivalsToDisplay: Math.max(1, Math.min(3, lines.length)),
         lines: payloadLines,
       },
     };
@@ -781,7 +798,7 @@ export default function DashboardScreen() {
         const route = lineRoutes.find(item => item.id === line.routeId);
         const arrival = arrivals.find(item => item.lineId === line.id);
 
-        const destinationLabel = arrival?.destination ?? station?.name ?? '—';
+        const destinationLabel = arrival?.destination || station?.name || '—';
         const directionLabel = line.direction === 'uptown' ? 'Uptown' : 'Downtown';
         const t0 = arrival?.minutes != null ? String(arrival.minutes) : '—';
         const allTimes = buildNextArrivalTimes(arrival?.minutes ?? 0, line.nextStops);
@@ -994,22 +1011,6 @@ export default function DashboardScreen() {
         <Animated.View style={editorAnimatedStyle}>
           <View style={styles.card}>
             <View style={styles.collapsibleSection}>
-              <Pressable style={styles.collapsibleHeader} onPress={toggleLayoutEditor}>
-                <Text style={styles.sectionLabel}>Layout + Preset</Text>
-                <View style={styles.collapsibleArrowBubble}>
-                  <Text style={styles.collapsibleArrow}>{layoutExpanded ? '▲' : '▼'}</Text>
-                </View>
-              </Pressable>
-
-              {layoutExpanded ? (
-                <View style={styles.collapsibleBody}>
-                  <LayoutSlotsPickerStep selectedSlots={layoutSlots} onSelect={applyLayout} />
-                  <DisplayPresetPickerStep selectedPreset={displayPreset} onSelect={setDisplayPreset} />
-                </View>
-              ) : null}
-            </View>
-
-            <View style={styles.collapsibleSection}>
               <Pressable style={styles.collapsibleHeader} onPress={toggleSlotEditor}>
                 <Text style={styles.sectionLabel}>
                   {selectedLine ? `Configure Stop ${selectedLineIndex + 1}` : 'Configure Stop'}
@@ -1104,6 +1105,21 @@ export default function DashboardScreen() {
             </View>
 
             <View style={styles.collapsibleSection}>
+              <Pressable style={styles.collapsibleHeader} onPress={toggleLayoutEditor}>
+                <Text style={styles.sectionLabel}>Layout + Preset</Text>
+                <View style={styles.collapsibleArrowBubble}>
+                  <Text style={styles.collapsibleArrow}>{layoutExpanded ? '▲' : '▼'}</Text>
+                </View>
+              </Pressable>
+
+              {layoutExpanded ? (
+                <View style={styles.collapsibleBody}>
+                  <DisplayPresetPickerStep selectedPreset={displayPreset} onSelect={setDisplayPreset} />
+                </View>
+              ) : null}
+            </View>
+
+            <View style={styles.collapsibleSection}>
               <Pressable style={styles.collapsibleHeader} onPress={toggleScheduleEditor}>
                 <Text style={styles.sectionLabel}>Display Schedule</Text>
                 <View style={styles.collapsibleArrowBubble}>
@@ -1151,16 +1167,6 @@ export default function DashboardScreen() {
               ) : null}
             </View>
           </View>
-          {hasLinkedDevice ? (
-            <View style={styles.sectionCard}>
-              <Text style={styles.sectionTitle}>Last Payload Sent To ESP</Text>
-              {lastCommandTs ? <Text style={styles.payloadMeta}>Published: {lastCommandTs}</Text> : null}
-              {!!lastCommandError && <Text style={styles.payloadError}>{lastCommandError}</Text>}
-              <View style={styles.payloadBox}>
-                <Text style={styles.payloadText}>{lastCommandJson}</Text>
-              </View>
-            </View>
-          ) : null}
         </Animated.View>
       </ScrollView>
       </KeyboardAvoidingView>
@@ -1240,10 +1246,10 @@ function TopBar({
 
         <View style={styles.topBarSideRight}>
           <Pressable style={styles.layoutPillTopRight} onPress={onLayoutOpen}>
-            <Text style={styles.layoutIcon}>[]</Text>
             <Text style={styles.layoutPillTopRightText}>
-              {(LAYOUT_OPTIONS.find(option => option.slots === layoutSlots)?.label ?? 'Layout')} · P{displayPreset} v
+              {layoutSlots === 1 ? '1 Stop' : '2 Stops'}
             </Text>
+            <Text style={styles.layoutPillChevron}>▾</Text>
           </Pressable>
         </View>
       </View>
@@ -1657,11 +1663,6 @@ function LinePickerStep({
 
   return (
     <View style={styles.stepContainer}>
-      <View style={styles.stepNavRow}>
-        <Pressable style={styles.stepBackButton} onPress={onBack}>
-          <Text style={styles.stepBackText}>← Back</Text>
-        </Pressable>
-      </View>
       <Text style={styles.stepTitle}>Pick a line</Text>
       <View style={styles.segmented}>
         {modeOptions.map(mode => {
@@ -2995,17 +2996,17 @@ const styles = StyleSheet.create({
   layoutPillTopRight: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    backgroundColor: colors.surface,
-    borderColor: colors.border,
+    gap: 4,
+    backgroundColor: colors.accentMuted,
+    borderColor: colors.accent,
     borderWidth: 1,
     borderRadius: radii.md,
     paddingHorizontal: spacing.sm,
     paddingVertical: spacing.xs,
     alignSelf: 'flex-end',
   },
-  layoutIcon: {color: colors.textMuted, fontSize: 12, fontWeight: '800'},
-  layoutPillTopRightText: {color: colors.text, fontSize: 13, fontWeight: '700'},
+  layoutPillTopRightText: {color: colors.accent, fontSize: 13, fontWeight: '700'},
+  layoutPillChevron: {color: colors.accent, fontSize: 12, fontWeight: '700'},
   layoutPill: {
     flex: 1,
     borderRadius: radii.md,

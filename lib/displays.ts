@@ -1,5 +1,6 @@
 import {apiFetch} from './api';
 import type {CityId} from '../constants/cities';
+import {CITY_LINE_COLORS, hashLineColor} from './lineColors';
 
 export type DisplayWeekday = 'sun' | 'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat';
 
@@ -61,11 +62,13 @@ export const DISPLAY_WEEKDAYS: DisplayWeekday[] = ['sun', 'mon', 'tue', 'wed', '
 export const PROVIDER_TO_CITY: Record<string, CityId> = {
   'mta-subway': 'new-york',
   'mta-bus': 'new-york',
+  'mta-lirr': 'new-york',
   'mbta': 'boston',
   'cta-subway': 'chicago',
   'cta-bus': 'chicago',
   'septa-rail': 'philadelphia',
   'septa-bus': 'philadelphia',
+  'septa-trolley': 'philadelphia',
 };
 
 const CLOCK_RE = /^([01]\d|2[0-3]):([0-5]\d)$/;
@@ -87,17 +90,23 @@ export const toDisplayScheduleText = (display: DeviceDisplay) => {
   return `${dayLabel} ${display.scheduleStart ?? '00:00'}-${display.scheduleEnd ?? '23:59'}`;
 };
 
-export const toPreviewSlots = (display: DeviceDisplay, accent: string) => {
-  return (display.config.lines ?? []).slice(0, 2).map((line, index) => ({
-    id: `${display.displayId}-${index}`,
-    color: accent,
-    textColor: line.textColor || '#041015',
-    routeLabel: (line.line || '--').slice(0, 4).toUpperCase(),
-    selected: false,
-    stopName: line.topText || line.label || line.stop || 'Select stop',
-    subLine: line.bottomText || line.secondaryLabel || undefined,
-    times: line.direction || '--',
-  }));
+export const toPreviewSlots = (display: DeviceDisplay, accent: string, stopNames: Record<string, string> = {}) => {
+  return (display.config.lines ?? []).slice(0, 2).map((line, index) => {
+    const city = PROVIDER_TO_CITY[line.provider ?? ''] ?? null;
+    const lineColors = city ? (CITY_LINE_COLORS[city] ?? {}) : {};
+    const lineId = (line.line ?? '').toUpperCase();
+    const {color, textColor: lineTextColor} = lineColors[lineId] ?? hashLineColor(lineId);
+    return {
+      id: `${display.displayId}-${index}`,
+      color,
+      textColor: line.textColor || lineTextColor,
+      routeLabel: lineId.slice(0, 4) || '--',
+      selected: false,
+      stopName: line.topText || line.label || stopNames[`${line.provider}:${line.stop}`] || line.stop || 'Select stop',
+      subLine: line.bottomText || line.secondaryLabel || undefined,
+      times: line.direction || '--',
+    };
+  });
 };
 
 export const validateDisplayDraft = (payload: DisplaySavePayload) => {

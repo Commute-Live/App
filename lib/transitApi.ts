@@ -279,10 +279,13 @@ export const normalizeTransitArrivalGroup = (
     for (const group of groups) {
       if (!isRecord(group)) continue;
       const groupLineId = readFirstString(group, ['lineId', 'id']) ?? lineIds[0] ?? null;
+      const groupDestination = readFirstString(group, ['destination']);
       const groupArrivals = collectArray(group, ['arrivals']);
       for (const row of groupArrivals) {
         const arrival = normalizeTransitArrival(row, groupLineId);
-        if (arrival) arrivals.push(arrival);
+        if (arrival) {
+          arrivals.push(groupDestination && !arrival.destination ? {...arrival, destination: groupDestination} : arrival);
+        }
       }
     }
   } else {
@@ -356,6 +359,39 @@ export const getTransitStopsForLine = async (
   await ensureOk(response, endpoint);
   const payload = await parseJson(response, endpoint);
   return normalizeTransitStationGroup(payload, context);
+};
+
+// Map backend provider string → {provider, mode} for URL building
+const PROVIDER_TO_TRANSIT_CONTEXT: Record<string, {provider: string; mode: string}> = {
+  'mta-subway':    {provider: 'mta',   mode: 'subway'},
+  'mta-bus':       {provider: 'mta',   mode: 'bus'},
+  'mta-lirr':      {provider: 'mta',   mode: 'lirr'},
+  'septa-rail':    {provider: 'septa', mode: 'rail'},
+  'septa-bus':     {provider: 'septa', mode: 'bus'},
+  'septa-trolley': {provider: 'septa', mode: 'trolley'},
+  'mbta':          {provider: 'mbta',  mode: 'subway'},
+  'cta-subway':    {provider: 'cta',   mode: 'subway'},
+  'cta-bus':       {provider: 'cta',   mode: 'bus'},
+};
+
+export const getTransitStationName = async (
+  backendProvider: string,
+  stopId: string,
+): Promise<string | null> => {
+  const ctx = PROVIDER_TO_TRANSIT_CONTEXT[backendProvider];
+  if (!ctx) return null;
+  // Strip direction suffix (e.g. "117N" → "117")
+  const baseStopId = stopId.replace(/[NS]$/i, '');
+  const endpoint = `/${ctx.provider}/stations/${ctx.mode}/${encodeURIComponent(baseStopId)}/lines`;
+  try {
+    const response = await apiFetch(endpoint);
+    if (!response.ok) return null;
+    const payload = await response.json().catch(() => null);
+    if (!isRecord(payload)) return null;
+    return readFirstString(payload, ['name', 'station', 'stopName']) ?? null;
+  } catch {
+    return null;
+  }
 };
 
 export const getTransitArrivals = async (

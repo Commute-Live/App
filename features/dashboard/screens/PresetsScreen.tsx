@@ -2,6 +2,7 @@ import React, {useCallback, useEffect, useMemo, useState} from 'react';
 import {Alert, Pressable, ScrollView, StyleSheet, Text, View} from 'react-native';
 import {SafeAreaView} from 'react-native-safe-area-context';
 import {useRouter} from 'expo-router';
+import {useFocusEffect} from 'expo-router';
 import {BottomNav, type BottomNavItem} from '../../../components/BottomNav';
 import {colors, radii, spacing} from '../../../theme';
 import DashboardPreviewSection from '../components/DashboardPreviewSection';
@@ -17,6 +18,10 @@ import {
   toPreviewSlots,
   type DeviceDisplay,
 } from '../../../lib/displays';
+import {getTransitStationName} from '../../../lib/transitApi';
+
+// Module-level stop name cache — persists across navigations
+const stopNameCache: Record<string, string> = {};
 
 const NAV_ITEMS: BottomNavItem[] = [
   {key: 'home', label: 'Home', icon: 'home-outline', route: '/dashboard'},
@@ -34,40 +39,63 @@ export default function PresetsScreen() {
   const [activeDisplayId, setActiveDisplayId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [errorText, setErrorText] = useState('');
+  const [stopNames, setStopNames] = useState<Record<string, string>>({});
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (isInitial = false) => {
     if (!deviceId) {
       setDisplays([]);
       setActiveDisplayId(null);
       return;
     }
 
-    setLoading(true);
+    if (isInitial) setLoading(true);
     setErrorText('');
     try {
       const data = await fetchDisplays(deviceId);
       setDisplays(data.displays);
       setActiveDisplayId(data.activeDisplayId);
+
+      // Only fetch stop names not already cached
+      const pairs: {key: string; provider: string; stop: string}[] = [];
+      for (const display of data.displays) {
+        for (const line of display.config.lines ?? []) {
+          if (line.provider && line.stop) {
+            const key = `${line.provider}:${line.stop}`;
+            if (!stopNameCache[key] && !pairs.find(p => p.key === key)) {
+              pairs.push({key, provider: line.provider, stop: line.stop});
+            }
+          }
+        }
+      }
+      if (pairs.length > 0) {
+        await Promise.all(
+          pairs.map(async ({key, provider, stop}) => {
+            const name = await getTransitStationName(provider, stop);
+            if (name) stopNameCache[key] = name;
+          }),
+        );
+      }
+      setStopNames({...stopNameCache});
     } catch (err) {
       setErrorText(err instanceof Error ? err.message : 'Failed to load displays');
     } finally {
-      setLoading(false);
+      if (isInitial) setLoading(false);
     }
   }, [deviceId]);
 
   useEffect(() => {
     if (status !== 'authenticated') return;
-    void load();
+    void load(true);
   }, [load, status]);
 
-  const visibleDisplays = useMemo(
-    () =>
-      displays.filter((display) => {
-        const city = providerToCity(display.config.lines?.[0]?.provider ?? null);
-        return city === selectedCity;
-      }),
-    [displays, selectedCity],
+  useFocusEffect(
+    useCallback(() => {
+      if (status !== 'authenticated') return;
+      void load(false);
+    }, [load, status]),
   );
+
+  const visibleDisplays = useMemo(() => displays, [displays]);
 
   const confirmDelete = useCallback(
     (display: DeviceDisplay) => {
@@ -106,14 +134,7 @@ export default function PresetsScreen() {
           </Pressable>
         </View>
 
-        <View style={styles.card}>
-          <Text style={styles.deviceName}>{selectedDevice.name}</Text>
-          <Text style={styles.deviceMeta}>
-            {deviceId ? `Device ID: ${deviceId}` : 'No linked device'} | City: {CITY_LABELS[selectedCity]}
-          </Text>
-        </View>
-
-        {loading ? <Text style={styles.hint}>Loading displays...</Text> : null}
+{loading ? <Text style={styles.hint}>Loading displays...</Text> : null}
         {!loading && errorText ? <Text style={styles.error}>{errorText}</Text> : null}
 
         {!loading && !errorText && visibleDisplays.length === 0 ? (
@@ -143,11 +164,24 @@ export default function PresetsScreen() {
                   <View style={[styles.statusChip, display.paused ? styles.statusChipOff : styles.statusChipOn]}>
                     <Text style={styles.statusChipText}>{display.paused ? 'Paused' : 'Ready'}</Text>
                   </View>
+                  <Pressable
+                    style={styles.editIcon}
+                    onPress={() =>
+                      router.push({
+                        pathname: '/preset-editor',
+                        params: {city: selectedCity, from: 'presets', mode: 'edit', displayId: display.displayId},
+                      })
+                    }>
+                    <Text style={styles.editIconText}>✎</Text>
+                  </Pressable>
+                  <Pressable style={styles.deleteX} onPress={() => confirmDelete(display)}>
+                    <Text style={styles.deleteXText}>✕</Text>
+                  </Pressable>
                 </View>
               </View>
 
               <DashboardPreviewSection
-                slots={toPreviewSlots(display, brand.accent)}
+                slots={toPreviewSlots(display, brand.accent, stopNames)}
                 onSelectSlot={() => {}}
                 onReorderSlot={() => {}}
                 onDragStateChange={() => {}}
@@ -157,22 +191,8 @@ export default function PresetsScreen() {
 
               <View style={styles.summaryBlock}>
                 <SummaryRow label="Schedule" value={toDisplayScheduleText(display)} />
-                <SummaryRow label="Layout" value={`Preset ${display.config.displayType ?? 1} | ${display.config.lines?.length ?? 0} lines`} />
               </View>
 
-              <Pressable
-                style={styles.editButtonFull}
-                onPress={() =>
-                  router.push({
-                    pathname: '/preset-editor',
-                    params: {city: selectedCity, from: 'presets', mode: 'edit', displayId: display.displayId},
-                  })
-                }>
-                <Text style={styles.editButtonFullText}>Edit Display</Text>
-              </Pressable>
-              <Pressable style={styles.deleteButton} onPress={() => confirmDelete(display)}>
-                <Text style={styles.deleteButtonText}>Delete Display</Text>
-              </Pressable>
             </View>
           ))}
       </ScrollView>
@@ -251,23 +271,26 @@ const styles = StyleSheet.create({
   summaryRow: {gap: 2},
   summaryLabel: {color: colors.textMuted, fontSize: 11, fontWeight: '700', textTransform: 'uppercase'},
   summaryValue: {color: colors.text, fontSize: 13, fontWeight: '700'},
-  editButtonFull: {
-    marginTop: spacing.xs,
-    borderRadius: radii.md,
-    backgroundColor: colors.accentMuted,
+  editIcon: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: colors.surface,
     borderWidth: 1,
-    borderColor: colors.accent,
-    paddingVertical: spacing.sm,
+    borderColor: '#FACC15',
     alignItems: 'center',
+    justifyContent: 'center',
   },
-  editButtonFullText: {color: colors.text, fontSize: 13, fontWeight: '900'},
-  deleteButton: {
-    borderRadius: radii.md,
+  editIconText: {color: colors.text, fontSize: 12, fontWeight: '900', lineHeight: 14},
+  deleteX: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: '#231011',
     borderWidth: 1,
     borderColor: '#5B1C1C',
-    backgroundColor: '#231011',
-    paddingVertical: spacing.sm,
     alignItems: 'center',
+    justifyContent: 'center',
   },
-  deleteButtonText: {color: '#FCA5A5', fontSize: 12, fontWeight: '800'},
+  deleteXText: {color: '#FCA5A5', fontSize: 11, fontWeight: '900', lineHeight: 14},
 });

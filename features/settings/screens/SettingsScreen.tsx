@@ -48,12 +48,8 @@ export default function SettingsScreen() {
             </View>
             {openSection === 'Account' ? (
               <View style={styles.cardContent}>
-                <Text style={styles.itemLabel}>Name</Text>
-                <Text style={styles.itemValue}>Alex Johnson</Text>
                 <Text style={styles.itemLabel}>Email</Text>
-                <Text style={styles.itemValue}>alex@example.com</Text>
-                <Text style={styles.itemLabel}>Password</Text>
-                <Text style={styles.itemValue}>Last updated 2 weeks ago</Text>
+                <Text style={styles.itemValue}>{user?.email ?? '-'}</Text>
               </View>
             ) : null}
           </Pressable>
@@ -72,12 +68,10 @@ export default function SettingsScreen() {
             </View>
             {openSection === 'Device' ? (
               <View style={styles.cardContent}>
-                <Text style={styles.itemLabel}>Device name</Text>
-                <Text style={styles.itemValue}>Device 1</Text>
-                <Text style={styles.itemLabel}>Wi‑Fi</Text>
-                <Text style={styles.itemValue}>CommuteLive-Home</Text>
+                <Text style={styles.itemLabel}>Device ID</Text>
+                <Text style={styles.itemValue}>{appState.deviceId ?? '-'}</Text>
                 <Text style={styles.itemLabel}>Status</Text>
-                <Text style={styles.itemValue}>Online</Text>
+                <Text style={styles.itemValue}>{appState.deviceId ? 'Paired' : 'No device paired'}</Text>
               </View>
             ) : null}
           </Pressable>

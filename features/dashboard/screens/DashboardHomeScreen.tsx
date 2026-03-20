@@ -16,11 +16,14 @@ import { useSelectedDevice } from '../../../hooks/useSelectedDevice';
 import { apiFetch } from '../../../lib/api';
 import {
    fetchDisplays,
+   updateDisplay,
    providerToCity,
    toDisplayScheduleText,
    toPreviewSlots,
    type DeviceDisplay,
+   type DisplaySavePayload,
 } from '../../../lib/displays';
+import {getTransitStationName} from '../../../lib/transitApi';
 
 const NAV_ITEMS: BottomNavItem[] = [
    { key: 'home', label: 'Home', icon: 'home-outline', route: '/dashboard' },
@@ -61,6 +64,7 @@ export default function DashboardHomeScreen() {
    const [deviceDisplays, setDeviceDisplays] = useState<DeviceDisplay[]>([]);
    const [displaysLoading, setDisplaysLoading] = useState(false);
    const [displaysError, setDisplaysError] = useState('');
+   const [stopNames, setStopNames] = useState<Record<string, string>>({});
    const [quietHoursEnabled, setQuietHoursEnabled] = useState(true);
    const [quietHours, setQuietHours] = useState({ start: '23:00', end: '05:00' });
    const [lastCommandJson, setLastCommandJson] = useState('');
@@ -68,6 +72,7 @@ export default function DashboardHomeScreen() {
    const [lastCommandError, setLastCommandError] = useState('');
    const [espStatus, setEspStatus] = useState<'idle' | 'checking' | 'connected' | 'disconnected'>('idle');
    const [espDeviceId, setEspDeviceId] = useState<string | null>(null);
+   const [activating, setActivating] = useState(false);
 
    const city = appState.selectedCity;
    const cityBrand = CITY_BRANDS[city];
@@ -87,6 +92,22 @@ export default function DashboardHomeScreen() {
       try {
          const data = await fetchDisplays(selectedDevice.id);
          setDeviceDisplays(data.displays);
+
+         const pairs: {key: string; provider: string; stop: string}[] = [];
+         for (const display of data.displays) {
+            for (const line of display.config.lines ?? []) {
+               if (line.provider && line.stop) {
+                  const key = `${line.provider}:${line.stop}`;
+                  if (!pairs.find(p => p.key === key)) pairs.push({key, provider: line.provider, stop: line.stop});
+               }
+            }
+         }
+         const resolved: Record<string, string> = {};
+         await Promise.all(pairs.map(async ({key, provider, stop}) => {
+            const name = await getTransitStationName(provider, stop);
+            if (name) resolved[key] = name;
+         }));
+         setStopNames(resolved);
       } catch (err) {
          setDisplaysError(err instanceof Error ? err.message : 'Failed to load displays');
          setDeviceDisplays([]);
@@ -166,14 +187,6 @@ export default function DashboardHomeScreen() {
       }, [loadDisplays]),
    );
 
-   useEffect(() => {
-      if (carouselPresets.length <= 1) return;
-      const timer = setInterval(() => {
-         setCarouselIndex((prev) => (prev + 1) % carouselPresets.length);
-      }, 3500);
-      return () => clearInterval(timer);
-   }, [carouselPresets.length]);
-
    // Poll the last command sent to the ESP every 5 seconds
    useEffect(() => {
       if (!hasLinkedDevice || !selectedDevice.id) return;
@@ -242,13 +255,40 @@ export default function DashboardHomeScreen() {
       );
    }
 
+   const activateDisplayOnDevice = useCallback(async (display: DeviceDisplay) => {
+      if (!selectedDevice.id || activating) return;
+      setActivating(true);
+      try {
+         const maxPriority = Math.max(0, ...deviceDisplays.map(d => d.priority));
+         const payload: DisplaySavePayload = {
+            name: display.name,
+            paused: display.paused,
+            priority: maxPriority + 1,
+            sortOrder: display.sortOrder,
+            scheduleStart: display.scheduleStart,
+            scheduleEnd: display.scheduleEnd,
+            scheduleDays: display.scheduleDays,
+            config: display.config,
+         };
+         await updateDisplay(selectedDevice.id, display.displayId, payload);
+         const refreshRes = await apiFetch(`/refresh/device/${selectedDevice.id}`, { method: 'POST' });
+         if (!refreshRes.ok) {
+            console.error('[Carousel] Refresh failed:', refreshRes.status);
+         }
+         void loadDisplays();
+      } catch (err) {
+         console.error('[Carousel] activateDisplayOnDevice error:', err);
+      } finally {
+         setActivating(false);
+      }
+   }, [selectedDevice.id, deviceDisplays, activating, loadDisplays]);
+
    const moveCarousel = (direction: 1 | -1) => {
       if (carouselPresets.length === 0) return;
-      setCarouselIndex(
-         (prev) =>
-            (prev + direction + carouselPresets.length) %
-            carouselPresets.length,
-      );
+      const newIndex = (carouselIndex + direction + carouselPresets.length) % carouselPresets.length;
+      setCarouselIndex(newIndex);
+      const preset = carouselPresets[newIndex];
+      if (preset) void activateDisplayOnDevice(preset);
    };
 
    return (
@@ -368,16 +408,8 @@ export default function DashboardHomeScreen() {
                            Live Transit Preview
                         </Text>
                      </View>
-                     <Text style={styles.heroLabel}>Preview Carousel</Text>
                      <Text style={styles.heroTitle}>
                         {activePreset?.name ?? 'No displays yet'}
-                     </Text>
-                     <Text style={styles.heroMeta}>
-                        {activePreset
-                           ? toDisplayScheduleText(activePreset)
-                           : displaysLoading
-                           ? 'Loading displays for this device'
-                           : 'Create a display to preview it here'}
                      </Text>
                   </View>
                   <View style={styles.heroArrowRow}>
@@ -399,7 +431,7 @@ export default function DashboardHomeScreen() {
                {activePreset ? (
                   <>
                      <DashboardPreviewSection
-                        slots={toPreviewSlots(activePreset, cityBrand.accent)}
+                        slots={toPreviewSlots(activePreset, cityBrand.accent, stopNames)}
                         onSelectSlot={() => {}}
                         onReorderSlot={() => {}}
                         onDragStateChange={() => {}}
@@ -407,11 +439,6 @@ export default function DashboardHomeScreen() {
                         brightness={activePreset.config.brightness ?? 60}
                      />
                      <View style={styles.heroFooter}>
-                        <Text style={styles.heroHint}>
-                           {carouselPresets.length > 1
-                              ? `Looping ${carouselPresets.length} displays. Use arrows to move manually.`
-                              : 'Only one display available for this device/city.'}
-                        </Text>
                         <View style={styles.heroDots}>
                            {carouselPresets.map((preset, index) => (
                               <Pressable
@@ -421,38 +448,13 @@ export default function DashboardHomeScreen() {
                                     index === carouselIndex &&
                                        styles.heroDotActive,
                                  ]}
-                                 onPress={() => setCarouselIndex(index)}
+                                 onPress={() => {
+                                 setCarouselIndex(index);
+                                 const preset = carouselPresets[index];
+                                 if (preset) void activateDisplayOnDevice(preset);
+                              }}
                               />
                            ))}
-                        </View>
-                        <View style={styles.actionsRow}>
-                           <Pressable
-                              style={styles.secondaryButton}
-                              onPress={() =>
-                                 router.push({
-                                    pathname: '/preset-editor',
-                                    params: { city, from: 'dashboard', mode: 'new' },
-                                 })
-                              }
-                           >
-                              <Text style={styles.secondaryButtonText}>Add Display</Text>
-                           </Pressable>
-                           <Pressable
-                              style={styles.ghostButton}
-                              onPress={() =>
-                                 router.push({
-                                    pathname: '/preset-editor',
-                                    params: {
-                                       city,
-                                       from: 'dashboard',
-                                       mode: 'edit',
-                                       displayId: activePreset.displayId,
-                                    },
-                                 })
-                              }
-                           >
-                              <Text style={styles.ghostButtonText}>Edit This Display</Text>
-                           </Pressable>
                         </View>
                      </View>
                   </>
@@ -536,25 +538,6 @@ export default function DashboardHomeScreen() {
                </View>
             </View>}
 
-            {hasLinkedDevice && (
-               <View style={styles.card}>
-                  <Text style={styles.sectionLabel}>
-                     Last Payload Sent To ESP
-                  </Text>
-                  {lastCommandError ? (
-                     <Text style={styles.commandError}>{lastCommandError}</Text>
-                  ) : (
-                     <>
-                        {lastCommandTs ? (
-                           <Text style={styles.commandTs}>{lastCommandTs}</Text>
-                        ) : null}
-                        <Text style={styles.commandJson}>
-                           {lastCommandJson || 'Waiting for data…'}
-                        </Text>
-                     </>
-                  )}
-               </View>
-            )}
          </ScrollView>
 
          <BottomNav items={NAV_ITEMS} />
@@ -742,7 +725,7 @@ const styles = StyleSheet.create({
    },
    heroFooter: { gap: spacing.xs },
    heroHint: { color: colors.textMuted, fontSize: 11 },
-   heroDots: { flexDirection: 'row', gap: 6, alignSelf: 'flex-start' },
+   heroDots: { flexDirection: 'row', gap: 6, alignSelf: 'center' },
    heroDot: {
       width: 8,
       height: 8,
