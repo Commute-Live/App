@@ -20,7 +20,6 @@ import {
 } from '../../../lib/displays';
 import {getTransitStationName} from '../../../lib/transitApi';
 
-// Module-level stop name cache — persists across navigations
 const stopNameCache: Record<string, string> = {};
 
 const NAV_ITEMS: BottomNavItem[] = [
@@ -54,8 +53,6 @@ export default function PresetsScreen() {
       const data = await fetchDisplays(deviceId);
       setDisplays(data.displays);
       setActiveDisplayId(data.activeDisplayId);
-
-      // Only fetch stop names not already cached
       const pairs: {key: string; provider: string; stop: string}[] = [];
       for (const display of data.displays) {
         for (const line of display.config.lines ?? []) {
@@ -95,7 +92,14 @@ export default function PresetsScreen() {
     }, [load, status]),
   );
 
-  const visibleDisplays = useMemo(() => displays, [displays]);
+  const visibleDisplays = useMemo(
+    () =>
+      displays.filter((display) => {
+        const city = providerToCity(display.config.lines?.[0]?.provider ?? null);
+        return city === selectedCity;
+      }),
+    [displays, selectedCity],
+  );
 
   const confirmDelete = useCallback(
     (display: DeviceDisplay) => {

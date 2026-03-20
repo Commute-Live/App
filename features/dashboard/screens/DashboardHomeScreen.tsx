@@ -92,7 +92,6 @@ export default function DashboardHomeScreen() {
       try {
          const data = await fetchDisplays(selectedDevice.id);
          setDeviceDisplays(data.displays);
-
          const pairs: {key: string; provider: string; stop: string}[] = [];
          for (const display of data.displays) {
             for (const line of display.config.lines ?? []) {

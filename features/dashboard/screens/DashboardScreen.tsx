@@ -798,36 +798,7 @@ export default function DashboardScreen() {
         const route = lineRoutes.find(item => item.id === line.routeId);
         const arrival = arrivals.find(item => item.lineId === line.id);
 
-        const destinationLabel = arrival?.destination || station?.name || '—';
-        const directionLabel = line.direction === 'uptown' ? 'Uptown' : 'Downtown';
         const t0 = arrival?.minutes != null ? String(arrival.minutes) : '—';
-        const allTimes = buildNextArrivalTimes(arrival?.minutes ?? 0, line.nextStops);
-        const subTimes = allTimes.slice(1).map(t => t.replace('m', '')).join(', ');
-
-        let stopName: string;
-        let subLine: string | undefined;
-
-        switch (displayPreset) {
-          case 2:
-            stopName = directionLabel;
-            break;
-          case 3:
-            stopName = directionLabel;
-            subLine = destinationLabel !== directionLabel ? destinationLabel : undefined;
-            break;
-          case 4:
-            stopName = destinationLabel;
-            subLine = subTimes || undefined;
-            break;
-          case 5:
-            stopName = directionLabel;
-            subLine = subTimes || undefined;
-            break;
-          case 1:
-          default:
-            stopName = destinationLabel;
-            break;
-        }
 
         return {
           id: line.id,
@@ -835,8 +806,8 @@ export default function DashboardScreen() {
           textColor: line.textColor || route?.textColor || '#FFFFFF',
           routeLabel: route?.label ?? '?',
           selected: line.id === selectedLineId,
-          stopName,
-          subLine,
+          stopName: station?.name || 'Select stop',
+          subLine: undefined,
           times: t0,
         };
       }),
