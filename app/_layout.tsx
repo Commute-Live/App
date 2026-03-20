@@ -37,6 +37,7 @@ function AppNavigator() {
       <Stack.Screen name="login" />
       <Stack.Screen name="sign-up" />
       <Stack.Screen name="register-device" />
+      <Stack.Screen name="ble-provision" />
       <Stack.Screen name="dashboard" options={{animation: 'none'}} />
       <Stack.Screen name="presets" options={{animation: 'none'}} />
       <Stack.Screen name="settings" options={{animation: 'none'}} />

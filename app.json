@@ -15,6 +15,7 @@
     },
     "ios": {
       "infoPlist": {
+        "NSBluetoothAlwaysUsageDescription": "CommuteLive uses Bluetooth to set up your transit display without switching Wi-Fi networks.",
         "NSAppTransportSecurity": {
           "NSAllowsArbitraryLoads": true,
           "NSExceptionDomains": {
@@ -27,7 +28,8 @@
               "NSIncludesSubdomains": false
             }
           }
-        }
+        },
+        "ITSAppUsesNonExemptEncryption": false
       },
       "bundleIdentifier": "com.anonymous.commutelivefresh"
     },
@@ -38,7 +40,12 @@
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
-      "package": "com.anonymous.commutelivefresh"
+      "package": "com.anonymous.commutelivefresh",
+      "permissions": [
+        "android.permission.BLUETOOTH",
+        "android.permission.BLUETOOTH_ADMIN",
+        "android.permission.BLUETOOTH_CONNECT"
+      ]
     },
     "web": {
       "bundler": "metro",
@@ -49,7 +56,17 @@
       "enabled": false
     },
     "plugins": [
-      "expo-router"
+      "expo-router",
+      [
+        "react-native-ble-plx",
+        {
+          "isBackgroundEnabled": false,
+          "modes": [
+            "central"
+          ],
+          "bluetoothAlwaysPermission": "Allow CommuteLive to connect to your transit display via Bluetooth."
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true

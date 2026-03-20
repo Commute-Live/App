@@ -301,13 +301,18 @@ export default function DashboardOverviewScreen() {
                            <Text style={styles.deviceSubMeta}>{user.email}</Text>
                         ) : null}
                      </View>
-                     <View
+                     <Pressable
                         style={[
                            styles.onlineChip,
                            selectedDevice.status === 'Online'
                               ? styles.onlineChipOn
                               : styles.onlineChipOff,
                         ]}
+                        onPress={() => {
+                           if (selectedDevice.status !== 'Online') {
+                              router.push('/reconnect-help');
+                           }
+                        }}
                      >
                         <View
                            style={[
@@ -318,7 +323,7 @@ export default function DashboardOverviewScreen() {
                            ]}
                         />
                         <Text style={styles.onlineChipText}>{selectedDevice.status}</Text>
-                     </View>
+                     </Pressable>
                   </View>
                   {deviceIds.length > 1 && (
                      <View style={styles.deviceSwitcherRow}>
