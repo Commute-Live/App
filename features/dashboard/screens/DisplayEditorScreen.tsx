@@ -2,6 +2,7 @@ import React, {useEffect, useMemo, useRef, useState} from 'react';
 import {Alert, Animated, Easing, Keyboard, KeyboardAvoidingView, LayoutAnimation, Modal, Platform, Pressable, ScrollView, Text, TextInput, UIManager, View} from 'react-native';
 import {SafeAreaView} from 'react-native-safe-area-context';
 import {useLocalSearchParams, useRouter} from 'expo-router';
+import {useMutation, useQueryClient} from '@tanstack/react-query';
 import {colors} from '../../../theme';
 import DashboardPreviewSection from '../components/DashboardPreviewSection';
 import {useAppState} from '../../../state/appState';
@@ -9,7 +10,8 @@ import {CITY_LABELS, type CityId} from '../../../constants/cities';
 import type {DisplayContent, DisplayFormat} from '../../../types/transit';
 import type {Display3DSlot} from '../components/Display3DPreview';
 import {apiFetch} from '../../../lib/api';
-import {createDisplay, fetchDisplay, fetchDisplays, updateDisplay, validateDisplayDraft} from '../../../lib/displays';
+import {queryKeys} from '../../../lib/queryKeys';
+import {createDisplay, fetchDisplay, fetchDisplays, updateDisplay, validateDisplayDraft, type DisplaySavePayload} from '../../../lib/displays';
 import {useAuth} from '../../../state/authProvider';
 import {useSelectedDevice} from '../../../hooks/useSelectedDevice';
 import {
@@ -106,6 +108,7 @@ const DISPLAY_PRESET_OPTIONS = [
 const Haptics = {selectionAsync: async () => {}, notificationAsync: async (_: any) => {}};
 
 export default function DisplayEditorScreen() {
+  const queryClient = useQueryClient();
   const router = useRouter();
   const {state: appState, setPreset, setSelectedStations, setArrivals: setAppArrivals} = useAppState();
   const params = useLocalSearchParams<{city?: string; from?: string; mode?: string; displayId?: string}>();
@@ -220,7 +223,10 @@ export default function DisplayEditorScreen() {
       if (stationsRequestedRef.current.has(key)) return;
       stationsRequestedRef.current.add(key);
       setStationsLoadingByMode(prev => ({...prev, [mode]: true}));
-      void loadStationsForCityMode(city, mode)
+      void queryClient.fetchQuery({
+        queryKey: queryKeys.transitStations(city, mode),
+        queryFn: () => loadStationsForCityMode(city, mode),
+      })
         .then(stations => {
           setStationsByMode(prev => ({...prev, [mode]: stations}));
         })
@@ -232,7 +238,7 @@ export default function DisplayEditorScreen() {
           setStationsLoadingByMode(prev => ({...prev, [mode]: false}));
         });
     });
-  }, [city, lines, liveSupported]); // stationsRequestedRef guards against duplicates
+  }, [city, lines, liveSupported, queryClient]); // stationsRequestedRef guards against duplicates
 
   useEffect(() => {
     if (!liveSupported) return;
@@ -242,7 +248,10 @@ export default function DisplayEditorScreen() {
       if (linesRequestedRef.current.has(key)) return;
       linesRequestedRef.current.add(key);
       setLinesLoadingByMode(prev => ({...prev, [mode]: true}));
-      void loadGlobalLinesForCityMode(city, mode)
+      void queryClient.fetchQuery({
+        queryKey: queryKeys.transitGlobalLines(city, mode),
+        queryFn: () => loadGlobalLinesForCityMode(city, mode),
+      })
         .then(routes => {
           setLinesByMode(prev => ({...prev, [mode]: routes}));
         })
@@ -253,7 +262,7 @@ export default function DisplayEditorScreen() {
           setLinesLoadingByMode(prev => ({...prev, [mode]: false}));
         });
     });
-  }, [city, lines, liveSupported]); // linesRequestedRef guards against duplicates — no cancellation needed
+  }, [city, lines, liveSupported, queryClient]); // linesRequestedRef guards against duplicates — no cancellation needed
 
   const selectedLine = lines.find(line => line.id === selectedLineId) ?? null;
   const selectedLineIndex = selectedLine ? lines.findIndex(line => line.id === selectedLine.id) : -1;
@@ -266,15 +275,21 @@ export default function DisplayEditorScreen() {
     if (stationsByLineRef.current.has(key)) return;
     stationsByLineRef.current.add(key);
     setStationsLoadingByLine(prev => ({...prev, [routeId]: true}));
-    void loadStopsForLine(city, safeMode, routeId)
+    void queryClient.fetchQuery({
+      queryKey: queryKeys.transitStopsForLine(city, safeMode, routeId),
+      queryFn: () => loadStopsForLine(city, safeMode, routeId),
+    })
       .then(stations => setStationsByLine(prev => ({...prev, [routeId]: stations})))
       .catch(() => setStationsByLine(prev => ({...prev, [routeId]: []})))
       .finally(() => setStationsLoadingByLine(prev => ({...prev, [routeId]: false})));
-  }, [city, liveSupported, selectedLine?.routeId, selectedLine?.mode]);
+  }, [city, liveSupported, queryClient, selectedLine?.routeId, selectedLine?.mode]);
 
   useEffect(() => {
     if (!isCreateMode || !deviceId) return;
-    fetchDisplays(deviceId)
+    queryClient.fetchQuery({
+      queryKey: queryKeys.displays(deviceId),
+      queryFn: () => fetchDisplays(deviceId),
+    })
       .then(({displays}) => {
         const names = new Set(displays.map(d => d.name));
         let n = displays.length + 1;
@@ -282,7 +297,7 @@ export default function DisplayEditorScreen() {
         setPresetName(`Display ${n}`);
       })
       .catch(() => {});
-  }, [isCreateMode, deviceId]);
+  }, [deviceId, isCreateMode, queryClient]);
 
   useEffect(() => {
     if (!liveSupported) return;
@@ -295,7 +310,10 @@ export default function DisplayEditorScreen() {
       if (routesRequestedRef.current.has(key)) return;
       routesRequestedRef.current.add(key);
       setRoutesLoadingByStation(prev => ({...prev, [key]: true}));
-      void loadRoutesForStation(city, item.mode, item.stationId)
+      void queryClient.fetchQuery({
+        queryKey: queryKeys.transitLinesForStation(city, item.mode, item.stationId),
+        queryFn: () => loadRoutesForStation(city, item.mode, item.stationId),
+      })
         .then(routes => {
           setRoutesByStation(prev => ({...prev, [key]: routes}));
         })
@@ -306,7 +324,7 @@ export default function DisplayEditorScreen() {
           setRoutesLoadingByStation(prev => ({...prev, [key]: false}));
         });
     });
-  }, [city, lines, liveSupported]); // routesRequestedRef guards against duplicates
+  }, [city, lines, liveSupported, queryClient]); // routesRequestedRef guards against duplicates
 
   useEffect(() => {
     setArrivals(prev => syncArrivals(prev, lines));
@@ -328,12 +346,21 @@ export default function DisplayEditorScreen() {
         let sourceDisplay: any = null;
 
         if (editingDisplayId) {
-          sourceDisplay = await fetchDisplay(selectedDevice.id, editingDisplayId);
+          sourceDisplay = await queryClient.fetchQuery({
+            queryKey: queryKeys.display(selectedDevice.id, editingDisplayId),
+            queryFn: () => fetchDisplay(selectedDevice.id, editingDisplayId),
+          });
         } else if (!isCreateMode) {
-          const res = await apiFetch(`/device/${selectedDevice.id}/config`);
-          if (!res.ok || cancelled) return;
-          const data = await res.json();
-          sourceDisplay = data?.display ?? null;
+          const configResult = await queryClient.fetchQuery({
+            queryKey: queryKeys.deviceConfig(selectedDevice.id),
+            queryFn: async () => {
+              const response = await apiFetch(`/device/${selectedDevice.id}/config`);
+              const data = await response.json().catch(() => null);
+              return {ok: response.ok, data};
+            },
+          });
+          if (!configResult.ok || cancelled) return;
+          sourceDisplay = configResult.data?.display ?? null;
         }
         if (!sourceDisplay || cancelled) return;
 
@@ -460,7 +487,7 @@ export default function DisplayEditorScreen() {
     };
     // Run once on mount when device is known
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [city, editingDisplayId, hasLinkedDevice, isCreateMode, selectedDevice.id]);
+  }, [city, editingDisplayId, hasLinkedDevice, isCreateMode, queryClient, selectedDevice.id]);
 
   const activeLiveSelections = useMemo(
     () => lines.filter(line => line.stationId.trim().length > 0 && line.routeId.trim().length > 0),
@@ -482,7 +509,10 @@ export default function DisplayEditorScreen() {
       try {
         const updates = await Promise.all(
           activeLiveSelections.map(async line => {
-            const liveArrival = await loadArrivalForSelection(city, line);
+            const liveArrival = await queryClient.fetchQuery({
+              queryKey: queryKeys.transitArrivalsForSelection(city, line.mode, line.stationId, line.routeId),
+              queryFn: () => loadArrivalForSelection(city, line),
+            });
             if (!liveArrival) return null;
             return {lineId: line.id, ...liveArrival};
           }),
@@ -508,7 +538,7 @@ export default function DisplayEditorScreen() {
       cancelled = true;
       clearInterval(timer);
     };
-  }, [activeSelectionKey, activeLiveSelections, city, lines, liveSupported]);
+  }, [activeSelectionKey, activeLiveSelections, city, lines, liveSupported, queryClient]);
 
   useEffect(() => {
     headerEnter.setValue(0);
@@ -596,6 +626,38 @@ export default function DisplayEditorScreen() {
 
   const displayValidationError = useMemo(() => validateDisplayDraft(draftPayload), [draftPayload]);
 
+  const saveDisplayMutation = useMutation({
+    mutationFn: async ({
+      nextDeviceId,
+      nextEditingDisplayId,
+      payload,
+    }: {
+      nextDeviceId: string;
+      nextEditingDisplayId: string | null;
+      payload: DisplaySavePayload;
+    }) => {
+      const result = nextEditingDisplayId
+        ? await updateDisplay(nextDeviceId, nextEditingDisplayId, payload)
+        : await createDisplay(nextDeviceId, payload);
+      const nextDisplayId =
+        typeof result?.displayId === 'string'
+          ? result.displayId
+          : typeof result?.display?.displayId === 'string'
+            ? result.display.displayId
+            : nextEditingDisplayId;
+      await apiFetch(`/refresh/device/${nextDeviceId}`, {method: 'POST'});
+      return {nextDisplayId};
+    },
+    onSuccess: (_result, variables) => {
+      void queryClient.invalidateQueries({queryKey: queryKeys.displays(variables.nextDeviceId)});
+      if (variables.nextEditingDisplayId) {
+        void queryClient.invalidateQueries({
+          queryKey: queryKeys.display(variables.nextDeviceId, variables.nextEditingDisplayId),
+        });
+      }
+    },
+  });
+
   const handleSave = async () => {
     if (!isDirty || saving) return;
     setSaving(true);
@@ -610,15 +672,12 @@ export default function DisplayEditorScreen() {
         }
 
         try {
-          const result = editingDisplayId
-            ? await updateDisplay(selectedDevice.id, editingDisplayId, draftPayload)
-            : await createDisplay(selectedDevice.id, draftPayload);
-          const nextDisplayId =
-            typeof result?.displayId === 'string'
-              ? result.displayId
-              : typeof result?.display?.displayId === 'string'
-                ? result.display.displayId
-                : editingDisplayId;
+          const result = await saveDisplayMutation.mutateAsync({
+            nextDeviceId: selectedDevice.id,
+            nextEditingDisplayId: editingDisplayId,
+            payload: draftPayload,
+          });
+          const nextDisplayId = result.nextDisplayId;
           if (nextDisplayId) {
             setEditingDisplayId(nextDisplayId);
           }
@@ -628,7 +687,6 @@ export default function DisplayEditorScreen() {
           setSaving(false);
           return;
         }
-        await apiFetch(`/refresh/device/${selectedDevice.id}`, {method: 'POST'});
       }
 
       snapshotRef.current = {city, layoutSlots, displayPreset, lines, displaySchedule, displayDays, presetName, customDisplayScheduleEnabled};

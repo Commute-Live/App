@@ -1,7 +1,8 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useRouter } from 'expo-router';
+import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
 import { BottomNav, type BottomNavItem } from '../../../components/BottomNav';
 import { colors, spacing } from '../../../theme';
 import DashboardPreviewSection from '../components/DashboardPreviewSection';
@@ -14,6 +15,7 @@ import {
 import { useAuth } from '../../../state/authProvider';
 import { useSelectedDevice } from '../../../hooks/useSelectedDevice';
 import { apiFetch } from '../../../lib/api';
+import { queryKeys } from '../../../lib/queryKeys';
 import {
    fetchDisplays,
    getLiveArrivalLookup,
@@ -45,64 +47,135 @@ const NAV_ITEMS: BottomNavItem[] = [
    },
 ];
 export default function DashboardOverviewScreen() {
+   const queryClient = useQueryClient();
    const router = useRouter();
    const { state: appState } = useAppState();
    const { status, user, deviceId, deviceIds, setDeviceId } = useAuth();
    const selectedDevice = useSelectedDevice();
    const hasLinkedDevice = deviceIds.length > 0;
    const [carouselIndex, setCarouselIndex] = useState(0);
-   const [deviceDisplays, setDeviceDisplays] = useState<DeviceDisplay[]>([]);
-   const [displaysLoading, setDisplaysLoading] = useState(false);
-   const [displaysError, setDisplaysError] = useState('');
-   const [stopNames, setStopNames] = useState<Record<string, string>>({});
    const [quietHoursEnabled, setQuietHoursEnabled] = useState(true);
    const [quietHours, setQuietHours] = useState({ start: '23:00', end: '05:00' });
-   const [lastCommandPayload, setLastCommandPayload] = useState<unknown>(null);
-   const [espStatus, setEspStatus] = useState<'idle' | 'checking' | 'connected' | 'disconnected'>('idle');
-   const [espDeviceId, setEspDeviceId] = useState<string | null>(null);
-   const [activating, setActivating] = useState(false);
-   const lastCommandInFlightRef = useRef(false);
+   const [isScreenFocused, setIsScreenFocused] = useState(false);
 
    const city = appState.selectedCity;
    const cityBrand = CITY_BRANDS[city];
    const cityAgency =
       CITY_OPTIONS.find((option) => option.id === city)?.agencyCode ??
       CITY_LABELS[city];
-   const loadDisplays = useCallback(async () => {
-      if (!hasLinkedDevice || !selectedDevice.id || status !== 'authenticated') {
-         setDeviceDisplays([]);
-         setDisplaysError('');
-         setDisplaysLoading(false);
-         return;
-      }
 
-      setDisplaysLoading(true);
-      setDisplaysError('');
-      try {
-         const data = await fetchDisplays(selectedDevice.id);
-         setDeviceDisplays(data.displays);
-         const pairs: {key: string; provider: string; stop: string}[] = [];
-         for (const display of data.displays) {
-            for (const line of display.config.lines ?? []) {
-               if (line.provider && line.stop) {
-                  const key = `${line.provider}:${line.stop}`;
-                  if (!pairs.find(p => p.key === key)) pairs.push({key, provider: line.provider, stop: line.stop});
+   useFocusEffect(
+      useCallback(() => {
+         setIsScreenFocused(true);
+         return () => setIsScreenFocused(false);
+      }, []),
+   );
+
+   const displaysQuery = useQuery({
+      queryKey: queryKeys.displays(selectedDevice.id || 'none'),
+      queryFn: () => fetchDisplays(selectedDevice.id),
+      enabled: isScreenFocused && hasLinkedDevice && !!selectedDevice.id && status === 'authenticated',
+   });
+
+   const deviceDisplays = displaysQuery.data?.displays ?? [];
+   const displaysLoading = displaysQuery.isPending || displaysQuery.isFetching;
+   const displaysError = displaysQuery.error instanceof Error ? displaysQuery.error.message : '';
+
+   const stopPairs = useMemo(() => {
+      const pairs: {key: string; provider: string; stop: string}[] = [];
+      for (const display of deviceDisplays) {
+         for (const line of display.config.lines ?? []) {
+            if (line.provider && line.stop) {
+               const key = `${line.provider}:${line.stop}`;
+               if (!pairs.find(p => p.key === key)) {
+                  pairs.push({key, provider: line.provider, stop: line.stop});
                }
             }
          }
-         const resolved: Record<string, string> = {};
-         await Promise.all(pairs.map(async ({key, provider, stop}) => {
-            const name = await getTransitStationName(provider, stop);
-            if (name) resolved[key] = name;
-         }));
-         setStopNames(resolved);
-      } catch (err) {
-         setDisplaysError(err instanceof Error ? err.message : 'Failed to load displays');
-         setDeviceDisplays([]);
-      } finally {
-         setDisplaysLoading(false);
       }
-   }, [hasLinkedDevice, selectedDevice.id, status]);
+      return pairs;
+   }, [deviceDisplays]);
+
+   const stopNameQueries = useQueries({
+      queries: stopPairs.map(({provider, stop}) => ({
+         queryKey: queryKeys.transitStationName(provider, stop),
+         queryFn: () => getTransitStationName(provider, stop),
+         staleTime: 10 * 60 * 1000,
+      })),
+   });
+
+   const stopNames = useMemo(() => {
+      const resolved: Record<string, string> = {};
+      stopPairs.forEach((pair, index) => {
+         const name = stopNameQueries[index]?.data;
+         if (name) {
+            resolved[pair.key] = name;
+         }
+      });
+      return resolved;
+   }, [stopNameQueries, stopPairs]);
+
+   const espHeartbeatQuery = useQuery({
+      queryKey: queryKeys.espHeartbeat,
+      queryFn: async () => {
+         const controller = new AbortController();
+         const timeout = setTimeout(() => controller.abort(), 4000);
+         try {
+            const response = await fetch('http://192.168.4.1/heartbeat', {
+               method: 'GET',
+               signal: controller.signal,
+            });
+            return response.ok;
+         } catch {
+            return false;
+         } finally {
+            clearTimeout(timeout);
+         }
+      },
+      enabled: isScreenFocused && !hasLinkedDevice,
+      retry: false,
+      refetchOnWindowFocus: false,
+   });
+
+   const espDeviceInfoQuery = useQuery({
+      queryKey: queryKeys.espDeviceInfo,
+      queryFn: async () => {
+         const response = await fetch('http://192.168.4.1/device-info', { method: 'GET' });
+         if (!response.ok) return null;
+         const data = await response.json().catch(() => null);
+         return data?.deviceId ? String(data.deviceId) : null;
+      },
+      enabled: isScreenFocused && !hasLinkedDevice && espHeartbeatQuery.data === true,
+      retry: false,
+      refetchOnWindowFocus: false,
+   });
+
+   const espStatus: 'idle' | 'checking' | 'connected' | 'disconnected' = hasLinkedDevice
+      ? 'idle'
+      : (espHeartbeatQuery.isPending || espHeartbeatQuery.isFetching)
+         ? 'checking'
+         : espHeartbeatQuery.data
+            ? 'connected'
+            : 'disconnected';
+   const espDeviceId = espDeviceInfoQuery.data ?? null;
+
+   const lastCommandQuery = useQuery({
+      queryKey: queryKeys.lastCommand(selectedDevice.id || 'none'),
+      queryFn: async () => {
+         const response = await apiFetch(`/device/${selectedDevice.id}/last-command`);
+         const data = await response.json().catch(() => null);
+         if (!response.ok) return null;
+         const event = data?.event;
+         if (!event) return null;
+         return event.payload ?? null;
+      },
+      enabled: isScreenFocused && hasLinkedDevice && !!selectedDevice.id,
+      refetchInterval: 5000,
+      retry: false,
+      refetchOnWindowFocus: false,
+   });
+   const lastCommandPayload = lastCommandQuery.data ?? null;
+
    const carouselPresets = useMemo(
       () =>
          deviceDisplays.filter((display) => {
@@ -126,94 +199,22 @@ export default function DashboardOverviewScreen() {
       }
    }, [deviceId, deviceIds, setDeviceId]);
 
-   // ESP local pairing — check for a nearby CommuteLive device over its AP WiFi
-   const checkEspConnection = useCallback(async () => {
-      setEspStatus('checking');
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 4000);
-      try {
-         const response = await fetch('http://192.168.4.1/heartbeat', {
-            method: 'GET',
-            signal: controller.signal,
-         });
-         setEspStatus(response.ok ? 'connected' : 'disconnected');
-      } catch {
-         setEspStatus('disconnected');
-      } finally {
-         clearTimeout(timeout);
-      }
-   }, []);
-
-   // Run connection check once when there is no linked device
-   useEffect(() => {
-      if (hasLinkedDevice) return;
-      void checkEspConnection();
-   }, [hasLinkedDevice, checkEspConnection]);
-
-   // Fetch device ID from the ESP once a local connection is confirmed
-   useEffect(() => {
-      if (espStatus !== 'connected') return;
-      (async () => {
-         try {
-            const response = await fetch('http://192.168.4.1/device-info', { method: 'GET' });
-            if (!response.ok) return;
-            const data = await response.json();
-            if (data?.deviceId) setEspDeviceId(String(data.deviceId));
-         } catch {
-            // ignore — device info is best-effort
-         }
-      })();
-   }, [espStatus]);
-
    useEffect(() => {
       setCarouselIndex(0);
    }, [city, carouselPresets.length]);
 
+
    useFocusEffect(
       useCallback(() => {
-         void loadDisplays();
-      }, [loadDisplays]),
-   );
-
-   // Poll the last command for live preview while this screen is focused
-   useFocusEffect(
-      useCallback(() => {
-         if (!hasLinkedDevice || !selectedDevice.id) return;
-         let cancelled = false;
-         let timer: ReturnType<typeof setInterval> | null = null;
-
-         const loadLastCommand = async () => {
-            if (lastCommandInFlightRef.current) return;
-            lastCommandInFlightRef.current = true;
-            try {
-               const response = await apiFetch(
-                  `/device/${selectedDevice.id}/last-command`,
-               );
-               const data = await response.json().catch(() => null);
-               if (!response.ok) {
-                  if (!cancelled) setLastCommandPayload(null);
-                  return;
-               }
-               const event = data?.event;
-               if (!event) {
-                  if (!cancelled) setLastCommandPayload(null);
-                  return;
-               }
-               if (!cancelled) setLastCommandPayload(event.payload ?? null);
-            } catch {
-               if (!cancelled) setLastCommandPayload(null);
-            } finally {
-               lastCommandInFlightRef.current = false;
-            }
-         };
-
-         void loadLastCommand();
-         timer = setInterval(() => void loadLastCommand(), 5000);
-         return () => {
-            cancelled = true;
-            if (timer) clearInterval(timer);
-         };
-      }, [hasLinkedDevice, selectedDevice.id]),
+         if (hasLinkedDevice && selectedDevice.id && status === 'authenticated') {
+            void queryClient.invalidateQueries({queryKey: queryKeys.displays(selectedDevice.id)});
+            void queryClient.invalidateQueries({queryKey: queryKeys.lastCommand(selectedDevice.id)});
+         }
+         if (!hasLinkedDevice) {
+            void queryClient.invalidateQueries({queryKey: queryKeys.espHeartbeat});
+            void queryClient.invalidateQueries({queryKey: queryKeys.espDeviceInfo});
+         }
+      }, [hasLinkedDevice, queryClient, selectedDevice.id, status]),
    );
 
    const activePreset = carouselPresets[carouselIndex] ?? null;
@@ -222,23 +223,9 @@ export default function DashboardOverviewScreen() {
       [lastCommandPayload],
    );
 
-   // Show loading screen while auth hydration is in progress
-   if (status === 'loading') {
-      return (
-         <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
-            <View style={styles.loadingContainer}>
-               <ActivityIndicator size="large" color={colors.accent} />
-               <Text style={styles.loadingText}>Loading…</Text>
-            </View>
-            <BottomNav items={NAV_ITEMS} />
-         </SafeAreaView>
-      );
-   }
-
-   const activateDisplayOnDevice = async (display: DeviceDisplay) => {
-      if (!selectedDevice.id || activating) return;
-      setActivating(true);
-      try {
+   const activateDisplayMutation = useMutation({
+      mutationFn: async (display: DeviceDisplay) => {
+         if (!selectedDevice.id) return;
          const maxPriority = Math.max(0, ...deviceDisplays.map(d => d.priority));
          const payload: DisplaySavePayload = {
             name: display.name,
@@ -255,11 +242,34 @@ export default function DashboardOverviewScreen() {
          if (!refreshRes.ok) {
             console.error('[Carousel] Refresh failed:', refreshRes.status);
          }
-         void loadDisplays();
+      },
+      onSuccess: () => {
+         if (!selectedDevice.id) return;
+         void queryClient.invalidateQueries({queryKey: queryKeys.displays(selectedDevice.id)});
+         void queryClient.invalidateQueries({queryKey: queryKeys.lastCommand(selectedDevice.id)});
+      },
+   });
+   const activating = activateDisplayMutation.isPending;
+
+   // Show loading screen while auth hydration is in progress
+   if (status === 'loading') {
+      return (
+         <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
+            <View style={styles.loadingContainer}>
+               <ActivityIndicator size="large" color={colors.accent} />
+               <Text style={styles.loadingText}>Loading…</Text>
+            </View>
+            <BottomNav items={NAV_ITEMS} />
+         </SafeAreaView>
+      );
+   }
+
+   const activateDisplayOnDevice = async (display: DeviceDisplay) => {
+      if (!selectedDevice.id || activating) return;
+      try {
+         await activateDisplayMutation.mutateAsync(display);
       } catch (err) {
          console.error('[Carousel] activateDisplayOnDevice error:', err);
-      } finally {
-         setActivating(false);
       }
    };
 

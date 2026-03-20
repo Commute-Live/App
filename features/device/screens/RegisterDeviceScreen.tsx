@@ -1,58 +1,70 @@
-import React, {useCallback, useEffect, useState} from 'react';
+import React, {useEffect} from 'react';
 import {Image, Pressable, StyleSheet, Text, View} from 'react-native';
 import {SafeAreaView} from 'react-native-safe-area-context';
 import {useRouter} from 'expo-router';
+import {useQuery} from '@tanstack/react-query';
 import {ScreenHeader} from '../../../components/ScreenHeader';
 import {colors, spacing, radii} from '../../../theme';
 import {useAppState} from '../../../state/appState';
+import {queryKeys} from '../../../lib/queryKeys';
 
 export default function RegisterDeviceScreen() {
   const router = useRouter();
   const {state, setDeviceId} = useAppState();
-  const [status, setStatus] = useState<'checking' | 'connected' | 'disconnected'>('checking');
 
-  const checkConnection = useCallback(async () => {
-    setStatus('checking');
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 4000);
-    try {
-      const response = await fetch('http://192.168.4.1/heartbeat', {
-        method: 'GET',
-        signal: controller.signal,
-      });
-      if (response.ok) {
-        setStatus('connected');
-      } else {
-        setStatus('disconnected');
-      }
-    } catch {
-      setStatus('disconnected');
-    } finally {
-      clearTimeout(timeout);
-    }
-  }, []);
-
-  useEffect(() => {
-    checkConnection();
-  }, [checkConnection]);
-
-  useEffect(() => {
-    if (status !== 'connected') return;
-    if (state.deviceId) return;
-    const fetchDeviceInfo = async () => {
+  const heartbeatQuery = useQuery({
+    queryKey: queryKeys.espHeartbeat,
+    queryFn: async () => {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 4000);
       try {
-        const response = await fetch('http://192.168.4.1/device-info', {method: 'GET'});
-        if (!response.ok) return;
-        const data = await response.json();
-        if (data?.deviceId) {
-          setDeviceId(String(data.deviceId));
-        }
+        const response = await fetch('http://192.168.4.1/heartbeat', {
+          method: 'GET',
+          signal: controller.signal,
+        });
+        return response.ok;
       } catch {
-        // ignore
+        return false;
+      } finally {
+        clearTimeout(timeout);
       }
-    };
-    fetchDeviceInfo();
-  }, [status, state.deviceId, setDeviceId]);
+    },
+    retry: false,
+    refetchOnWindowFocus: false,
+  });
+
+  const deviceInfoQuery = useQuery({
+    queryKey: queryKeys.espDeviceInfo,
+    queryFn: async () => {
+      const response = await fetch('http://192.168.4.1/device-info', {method: 'GET'});
+      if (!response.ok) return null;
+      const data = await response.json().catch(() => null);
+      return data?.deviceId ? String(data.deviceId) : null;
+    },
+    enabled: heartbeatQuery.data === true && !state.deviceId,
+    retry: false,
+    refetchOnWindowFocus: false,
+  });
+
+  const status: 'checking' | 'connected' | 'disconnected' =
+    heartbeatQuery.isPending || heartbeatQuery.isFetching
+      ? 'checking'
+      : heartbeatQuery.data
+        ? 'connected'
+        : 'disconnected';
+
+  useEffect(() => {
+    if (!deviceInfoQuery.data) return;
+    setDeviceId(deviceInfoQuery.data);
+  }, [deviceInfoQuery.data, setDeviceId]);
+
+  const checkConnection = () => {
+    void heartbeatQuery.refetch().then(result => {
+      if (result.data === true) {
+        void deviceInfoQuery.refetch();
+      }
+    });
+  };
 
   return (
     <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>

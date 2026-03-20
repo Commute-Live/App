@@ -1,15 +1,15 @@
-import React, {useCallback, useEffect, useMemo, useState} from 'react';
+import React, {useCallback, useMemo} from 'react';
 import {Alert, Pressable, ScrollView, StyleSheet, Text, View} from 'react-native';
 import {SafeAreaView} from 'react-native-safe-area-context';
 import {useRouter} from 'expo-router';
 import {useFocusEffect} from 'expo-router';
+import {useMutation, useQueries, useQuery, useQueryClient} from '@tanstack/react-query';
 import {BottomNav, type BottomNavItem} from '../../../components/BottomNav';
 import {colors, radii, spacing} from '../../../theme';
 import DashboardPreviewSection from '../components/DashboardPreviewSection';
 import {CITY_BRANDS, CITY_LABELS} from '../../../constants/cities';
 import {useAppState} from '../../../state/appState';
 import {useAuth} from '../../../state/authProvider';
-import {useSelectedDevice} from '../../../hooks/useSelectedDevice';
 import {
   deleteDisplay,
   fetchDisplays,
@@ -19,6 +19,7 @@ import {
   type DeviceDisplay,
 } from '../../../lib/displays';
 import {getTransitStationName} from '../../../lib/transitApi';
+import {queryKeys} from '../../../lib/queryKeys';
 
 const stopNameCache: Record<string, string> = {};
 
@@ -29,67 +30,74 @@ const NAV_ITEMS: BottomNavItem[] = [
 ];
 
 export default function PresetsScreen() {
+  const queryClient = useQueryClient();
   const router = useRouter();
   const {state: appState} = useAppState();
   const {deviceId, status} = useAuth();
-  const selectedDevice = useSelectedDevice();
   const selectedCity = appState.selectedCity;
-  const [displays, setDisplays] = useState<DeviceDisplay[]>([]);
-  const [activeDisplayId, setActiveDisplayId] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [errorText, setErrorText] = useState('');
-  const [stopNames, setStopNames] = useState<Record<string, string>>({});
+  const displaysQuery = useQuery({
+    queryKey: queryKeys.displays(deviceId || 'none'),
+    queryFn: () => {
+      if (!deviceId) throw new Error('No device selected');
+      return fetchDisplays(deviceId);
+    },
+    enabled: !!deviceId && status === 'authenticated',
+  });
 
-  const load = useCallback(async (isInitial = false) => {
-    if (!deviceId) {
-      setDisplays([]);
-      setActiveDisplayId(null);
-      return;
-    }
+  const displays = displaysQuery.data?.displays ?? [];
+  const activeDisplayId = displaysQuery.data?.activeDisplayId ?? null;
+  const loading = displaysQuery.isPending || displaysQuery.isFetching;
+  const errorText = displaysQuery.error instanceof Error ? displaysQuery.error.message : '';
 
-    if (isInitial) setLoading(true);
-    setErrorText('');
-    try {
-      const data = await fetchDisplays(deviceId);
-      setDisplays(data.displays);
-      setActiveDisplayId(data.activeDisplayId);
-      const pairs: {key: string; provider: string; stop: string}[] = [];
-      for (const display of data.displays) {
-        for (const line of display.config.lines ?? []) {
-          if (line.provider && line.stop) {
-            const key = `${line.provider}:${line.stop}`;
-            if (!stopNameCache[key] && !pairs.find(p => p.key === key)) {
-              pairs.push({key, provider: line.provider, stop: line.stop});
-            }
-          }
+  const stopPairs = useMemo(() => {
+    const pairs: {key: string; provider: string; stop: string}[] = [];
+    for (const display of displays) {
+      for (const line of display.config.lines ?? []) {
+        if (!line.provider || !line.stop) continue;
+        const key = `${line.provider}:${line.stop}`;
+        if (!pairs.find(pair => pair.key === key)) {
+          pairs.push({key, provider: line.provider, stop: line.stop});
         }
       }
-      if (pairs.length > 0) {
-        await Promise.all(
-          pairs.map(async ({key, provider, stop}) => {
-            const name = await getTransitStationName(provider, stop);
-            if (name) stopNameCache[key] = name;
-          }),
-        );
-      }
-      setStopNames({...stopNameCache});
-    } catch (err) {
-      setErrorText(err instanceof Error ? err.message : 'Failed to load displays');
-    } finally {
-      if (isInitial) setLoading(false);
     }
-  }, [deviceId]);
+    return pairs;
+  }, [displays]);
 
-  useEffect(() => {
-    if (status !== 'authenticated') return;
-    void load(true);
-  }, [load, status]);
+  const stopNameQueries = useQueries({
+    queries: stopPairs.map(({provider, stop}) => ({
+      queryKey: queryKeys.transitStationName(provider, stop),
+      queryFn: () => getTransitStationName(provider, stop),
+      staleTime: 10 * 60 * 1000,
+    })),
+  });
+
+  const stopNames = useMemo(() => {
+    const next = {...stopNameCache};
+    stopPairs.forEach((pair, index) => {
+      const resolved = stopNameQueries[index]?.data;
+      if (!resolved) return;
+      next[pair.key] = resolved;
+    });
+    Object.assign(stopNameCache, next);
+    return next;
+  }, [stopNameQueries, stopPairs]);
+
+  const deleteDisplayMutation = useMutation({
+    mutationFn: async (display: DeviceDisplay) => {
+      if (!deviceId) return;
+      await deleteDisplay(deviceId, display.displayId);
+    },
+    onSuccess: () => {
+      if (!deviceId) return;
+      void queryClient.invalidateQueries({queryKey: queryKeys.displays(deviceId)});
+    },
+  });
 
   useFocusEffect(
     useCallback(() => {
-      if (status !== 'authenticated') return;
-      void load(false);
-    }, [load, status]),
+      if (!deviceId || status !== 'authenticated') return;
+      void queryClient.invalidateQueries({queryKey: queryKeys.displays(deviceId)});
+    }, [deviceId, queryClient, status]),
   );
 
   const visibleDisplays = useMemo(
@@ -111,8 +119,7 @@ export default function PresetsScreen() {
           style: 'destructive',
           onPress: async () => {
             try {
-              await deleteDisplay(deviceId, display.displayId);
-              await load();
+              await deleteDisplayMutation.mutateAsync(display);
             } catch (err) {
               Alert.alert('Delete failed', err instanceof Error ? err.message : 'Failed to delete display');
             }
@@ -120,7 +127,7 @@ export default function PresetsScreen() {
         },
       ]);
     },
-    [deviceId, load],
+    [deleteDisplayMutation, deviceId],
   );
 
   const brand = CITY_BRANDS[selectedCity];

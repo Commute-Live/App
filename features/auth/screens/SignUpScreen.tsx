@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
+import { useMutation } from '@tanstack/react-query';
 import { ScreenHeader } from '../../../components/ScreenHeader';
 import { colors, spacing, radii } from '../../../theme';
 import { apiFetch } from '../../../lib/api';
@@ -36,6 +37,24 @@ export default function SignUpScreen() {
    const [timezoneOpen, setTimezoneOpen] = useState(false);
    const [isSubmitting, setIsSubmitting] = useState(false);
    const [errorText, setErrorText] = useState('');
+
+   const signUpMutation = useMutation({
+      mutationFn: async (payload: {
+         email: string;
+         password: string;
+         username: string;
+         timezone: string;
+      }) => {
+         const response = await apiFetch('/user/register', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+         });
+         const data = await response.json().catch(() => null);
+         return { ok: response.ok, data };
+      },
+   });
+
    const selectedTimezone =
       TIMEZONES.find((item) => item.value === timezone) ?? TIMEZONES[0];
 
@@ -50,22 +69,16 @@ export default function SignUpScreen() {
       setErrorText('');
 
       try {
-         const response = await apiFetch('/user/register', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-               email: nextEmail,
-               password,
-               username: username.trim(),
-               timezone,
-            }),
+         const result = await signUpMutation.mutateAsync({
+            email: nextEmail,
+            password,
+            username: username.trim(),
+            timezone,
          });
-         console.log(response);
 
-         const data = await response.json().catch(() => null);
-         if (!response.ok) {
+         if (!result.ok) {
             setErrorText(
-               data?.error === 'email already registered'
+               result.data?.error === 'email already registered'
                   ? 'Email already registered'
                   : 'Sign up failed',
             );

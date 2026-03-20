@@ -1,8 +1,10 @@
 import React, {useCallback, useEffect, useMemo, useState} from 'react';
 import {Pressable, ScrollView, StyleSheet, Text, View} from 'react-native';
+import {useMutation, useQueryClient} from '@tanstack/react-query';
 import {colors, radii, spacing} from '../../../theme';
 import {apiFetch} from '../../../lib/api';
 import {extractConfigDisplayId} from '../../../lib/deviceConfig';
+import {queryKeys} from '../../../lib/queryKeys';
 
 const DEFAULT_STOP_ID = '';
 const DEFAULT_STOP_NAME = 'Select stop';
@@ -20,6 +22,7 @@ type Props = {
 };
 
 export default function NycSubwayConfig({deviceId, providerId = 'mta-subway'}: Props) {
+  const queryClient = useQueryClient();
   const isBusMode = providerId === 'mta-bus';
   const [selectedLines, setSelectedLines] = useState<string[]>([]);
   const [stopId, setStopId] = useState(DEFAULT_STOP_ID);
@@ -75,9 +78,16 @@ export default function NycSubwayConfig({deviceId, providerId = 'mta-subway'}: P
     let cancelled = false;
     const loadConfig = async () => {
       try {
-        const response = await apiFetch(`/device/${deviceId}/config`);
-        if (!response.ok) return;
-        const data = await response.json();
+        const result = await queryClient.fetchQuery({
+          queryKey: queryKeys.deviceConfig(deviceId),
+          queryFn: async () => {
+            const response = await apiFetch(`/device/${deviceId}/config`);
+            const data = await response.json().catch(() => null);
+            return {ok: response.ok, data};
+          },
+        });
+        if (!result.ok) return;
+        const data = result.data;
         if (!cancelled) {
           setActiveDisplayId(extractConfigDisplayId(data));
         }
@@ -145,7 +155,7 @@ export default function NycSubwayConfig({deviceId, providerId = 'mta-subway'}: P
     return () => {
       cancelled = true;
     };
-  }, [deviceId, isBusMode, normalizeStopId]);
+  }, [deviceId, isBusMode, normalizeStopId, normalizeSubwayDirection, queryClient]);
 
   useEffect(() => {
     setAllStops([]);
@@ -180,9 +190,16 @@ export default function NycSubwayConfig({deviceId, providerId = 'mta-subway'}: P
     const run = async () => {
       setIsLoadingBusRoutes(true);
       try {
-        const response = await apiFetch('/providers/new-york/routes/bus?limit=1000');
-        if (!response.ok) return;
-        const data = await response.json();
+        const result = await queryClient.fetchQuery({
+          queryKey: ['providers', 'new-york', 'routes', 'bus', 'limit:1000'],
+          queryFn: async () => {
+            const response = await apiFetch('/providers/new-york/routes/bus?limit=1000');
+            const data = await response.json().catch(() => null);
+            return {ok: response.ok, data};
+          },
+        });
+        if (!result.ok) return;
+        const data = result.data;
         if (!cancelled) {
           const routes = Array.isArray(data?.routes) ? (data.routes as BusRouteOption[]) : [];
           setBusRouteOptions(routes);
@@ -209,7 +226,7 @@ export default function NycSubwayConfig({deviceId, providerId = 'mta-subway'}: P
     return () => {
       cancelled = true;
     };
-  }, [isBusMode]);
+  }, [isBusMode, queryClient]);
 
   useEffect(() => {
     let cancelled = false;
@@ -227,12 +244,19 @@ export default function NycSubwayConfig({deviceId, providerId = 'mta-subway'}: P
       setIsLoadingStops(true);
       setStopsError('');
       try {
-        const response = await apiFetch(`/providers/new-york/stops/bus?route=${encodeURIComponent(primaryRoute)}&limit=1000`);
-        if (!response.ok) {
+        const result = await queryClient.fetchQuery({
+          queryKey: ['providers', 'new-york', 'stops', 'bus', primaryRoute, 'limit:1000'],
+          queryFn: async () => {
+            const response = await apiFetch(`/providers/new-york/stops/bus?route=${encodeURIComponent(primaryRoute)}&limit=1000`);
+            const data = await response.json().catch(() => null);
+            return {ok: response.ok, data};
+          },
+        });
+        if (!result.ok) {
           if (!cancelled) setStopsError('Failed to load stops');
           return;
         }
-        const data = await response.json();
+        const data = result.data;
         if (!cancelled) {
           const options = Array.isArray(data?.stops) ? (data.stops as StopOption[]) : [];
           setAllStops(options);
@@ -253,7 +277,7 @@ export default function NycSubwayConfig({deviceId, providerId = 'mta-subway'}: P
     return () => {
       cancelled = true;
     };
-  }, [stopDropdownOpen, selectedLines, isBusMode]);
+  }, [isBusMode, queryClient, selectedLines, stopDropdownOpen]);
 
   useEffect(() => {
     if (!isBusMode || !stopDropdownOpen) {
@@ -271,12 +295,19 @@ export default function NycSubwayConfig({deviceId, providerId = 'mta-subway'}: P
       setIsLoadingStops(true);
       setStopsError('');
       try {
-        const response = await apiFetch('/mta/stations?mode=subway&limit=1000');
-        if (!response.ok) {
+        const result = await queryClient.fetchQuery({
+          queryKey: ['mta', 'stations', 'subway', 'limit:1000'],
+          queryFn: async () => {
+            const response = await apiFetch('/mta/stations?mode=subway&limit=1000');
+            const data = await response.json().catch(() => null);
+            return {ok: response.ok, data};
+          },
+        });
+        if (!result.ok) {
           if (!cancelled) setStopsError('Failed to load stops');
           return;
         }
-        const data = await response.json();
+        const data = result.data;
         if (!cancelled) {
           const options: StopOption[] = Array.isArray(data?.stations)
             ? data.stations
@@ -303,7 +334,7 @@ export default function NycSubwayConfig({deviceId, providerId = 'mta-subway'}: P
     return () => {
       cancelled = true;
     };
-  }, [isBusMode]);
+  }, [isBusMode, queryClient]);
 
   useEffect(() => {
     if (isBusMode || subwayAllStops.length === 0) return;
@@ -339,8 +370,15 @@ export default function NycSubwayConfig({deviceId, providerId = 'mta-subway'}: P
         return next;
       });
       try {
-        const response = await apiFetch(`/mta/stations/subway/${encodeURIComponent(normalizedStopId)}/lines`);
-        if (!response.ok) {
+        const result = await queryClient.fetchQuery({
+          queryKey: queryKeys.transitLinesForStation('new-york', 'train', normalizedStopId),
+          queryFn: async () => {
+            const response = await apiFetch(`/mta/stations/subway/${encodeURIComponent(normalizedStopId)}/lines`);
+            const data = await response.json().catch(() => null);
+            return {ok: response.ok, data};
+          },
+        });
+        if (!result.ok) {
           if (!cancelled) {
             setSubwayAvailableLines(prev => {
               const next = [...prev];
@@ -351,7 +389,7 @@ export default function NycSubwayConfig({deviceId, providerId = 'mta-subway'}: P
           return;
         }
 
-        const data = await response.json();
+        const data = result.data;
         const lines = Array.isArray(data?.lines)
           ? data.lines
               .map((line: unknown) => {
@@ -405,7 +443,7 @@ export default function NycSubwayConfig({deviceId, providerId = 'mta-subway'}: P
     return () => {
       cancelled = true;
     };
-  }, [isBusMode, subwaySelections[0]?.stopId, subwaySelections[1]?.stopId]);
+  }, [isBusMode, queryClient, subwaySelections[0]?.stopId, subwaySelections[1]?.stopId]);
 
   useEffect(() => {
     if (!isBusMode) return;
@@ -476,6 +514,42 @@ export default function NycSubwayConfig({deviceId, providerId = 'mta-subway'}: P
     });
   }, [isBusMode]);
 
+  const saveConfigMutation = useMutation({
+    mutationFn: async (payload: {
+      nextDeviceId: string;
+      nextDisplayId: string | null;
+      nextDisplayType: number;
+      payloadLines: Array<{provider: string; line: string; stop: string; direction?: 'N' | 'S'}>;
+    }) => {
+      const configResponse = await apiFetch(`/device/${payload.nextDeviceId}/config`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+          displayId: payload.nextDisplayId ?? undefined,
+          displayType: payload.nextDisplayType,
+          lines: payload.payloadLines,
+        }),
+      });
+      const configData = await configResponse.json().catch(() => null);
+      if (!configResponse.ok) {
+        return {
+          ok: false as const,
+          status: configResponse.status,
+          configData,
+        };
+      }
+      await apiFetch(`/refresh/device/${payload.nextDeviceId}`, {method: 'POST'});
+      return {
+        ok: true as const,
+        configData,
+      };
+    },
+    onSuccess: (_result, variables) => {
+      void queryClient.invalidateQueries({queryKey: queryKeys.deviceConfig(variables.nextDeviceId)});
+      void queryClient.invalidateQueries({queryKey: queryKeys.displays(variables.nextDeviceId)});
+    },
+  });
+
   const saveConfig = useCallback(async () => {
     if (!deviceId) return;
     setIsSaving(true);
@@ -526,29 +600,23 @@ export default function NycSubwayConfig({deviceId, providerId = 'mta-subway'}: P
         }));
       }
 
-      const configResponse = await apiFetch(`/device/${deviceId}/config`, {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({
-          displayId: activeDisplayId ?? undefined,
-          displayType,
-          lines: payloadLines,
-        }),
+      const result = await saveConfigMutation.mutateAsync({
+        nextDeviceId: deviceId,
+        nextDisplayId: activeDisplayId,
+        nextDisplayType: displayType,
+        payloadLines,
       });
 
-      if (!configResponse.ok) {
-        const data = await configResponse.json().catch(() => null);
+      if (!result.ok) {
         const message =
-          typeof data?.error === 'string'
-            ? data.error
-            : `Failed to save line (${configResponse.status})`;
+          typeof result.configData?.error === 'string'
+            ? result.configData.error
+            : `Failed to save line (${result.status})`;
         setStatusText(message);
         return;
       }
 
-      const configData = await configResponse.json().catch(() => null);
-      setActiveDisplayId(extractConfigDisplayId(configData));
-      await apiFetch(`/refresh/device/${deviceId}`, {method: 'POST'});
+      setActiveDisplayId(extractConfigDisplayId(result.configData));
       if (isBusMode) {
         const normalizedStopId = stopId.trim().toUpperCase();
         setStatusText(`Updated ${selectedLines.join(', ')} at ${normalizedStopId}`);
@@ -560,7 +628,16 @@ export default function NycSubwayConfig({deviceId, providerId = 'mta-subway'}: P
     } finally {
       setIsSaving(false);
     }
-  }, [activeDisplayId, deviceId, selectedLines, stopId, isBusMode, displayType, subwaySelections]);
+  }, [
+    activeDisplayId,
+    deviceId,
+    displayType,
+    isBusMode,
+    saveConfigMutation,
+    selectedLines,
+    stopId,
+    subwaySelections,
+  ]);
 
   const subwayLineButtons = useCallback((index: 0 | 1) => {
     const lines = subwayAvailableLines[index] ?? [];

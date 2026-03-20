@@ -1,8 +1,10 @@
 import React, {useCallback, useEffect, useMemo, useState} from 'react';
 import {Pressable, ScrollView, StyleSheet, Text, View} from 'react-native';
+import {useMutation, useQueryClient} from '@tanstack/react-query';
 import {colors, radii, spacing} from '../../../theme';
 import {apiFetch} from '../../../lib/api';
 import {extractConfigDisplayId} from '../../../lib/deviceConfig';
+import {queryKeys} from '../../../lib/queryKeys';
 
 const CTA_DEFAULT_STOP_ID = '40380';
 const CTA_DEFAULT_STOP_NAME = 'Clark/Lake';
@@ -16,6 +18,7 @@ type Props = {
 };
 
 export default function ChicagoSubwayConfig({deviceId}: Props) {
+  const queryClient = useQueryClient();
   const [stops, setStops] = useState<StopOption[]>([]);
   const [isLoadingStops, setIsLoadingStops] = useState(false);
   const [stopsError, setStopsError] = useState('');
@@ -40,13 +43,20 @@ export default function ChicagoSubwayConfig({deviceId}: Props) {
         setStopsError('');
       }
       try {
-        const stopsResponse = await apiFetch('/providers/chicago/stops/subway?limit=1000');
-        console.log('[CTA stops] request', {status: stopsResponse.status, ok: stopsResponse.ok});
+        const stopsResult = await queryClient.fetchQuery({
+          queryKey: ['providers', 'chicago', 'stops', 'subway', 'limit:1000'],
+          queryFn: async () => {
+            const response = await apiFetch('/providers/chicago/stops/subway?limit=1000');
+            const data = await response.json().catch(() => null);
+            return {ok: response.ok, status: response.status, data};
+          },
+        });
+        console.log('[CTA stops] request', {status: stopsResult.status, ok: stopsResult.ok});
 
         if (cancelled) return;
 
-        if (stopsResponse.ok) {
-          const data = await stopsResponse.json();
+        if (stopsResult.ok) {
+          const data = stopsResult.data;
           console.log('[CTA stops] response', {
             count: Array.isArray(data?.stops) ? data.stops.length : -1,
             sample: Array.isArray(data?.stops) ? data.stops.slice(0, 2) : data,
@@ -83,17 +93,24 @@ export default function ChicagoSubwayConfig({deviceId}: Props) {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [queryClient]);
 
   useEffect(() => {
     let cancelled = false;
 
     const loadConfig = async () => {
       try {
-        const response = await apiFetch(`/device/${deviceId}/config`);
-        if (!response.ok) return;
+        const result = await queryClient.fetchQuery({
+          queryKey: queryKeys.deviceConfig(deviceId),
+          queryFn: async () => {
+            const response = await apiFetch(`/device/${deviceId}/config`);
+            const data = await response.json().catch(() => null);
+            return {ok: response.ok, data};
+          },
+        });
+        if (!result.ok) return;
 
-        const data = await response.json();
+        const data = result.data;
         if (!cancelled) {
           setActiveDisplayId(extractConfigDisplayId(data));
         }
@@ -133,7 +150,7 @@ export default function ChicagoSubwayConfig({deviceId}: Props) {
     return () => {
       cancelled = true;
     };
-  }, [deviceId]);
+  }, [deviceId, queryClient]);
 
   useEffect(() => {
     if (stops.length === 0) return;
@@ -153,9 +170,16 @@ export default function ChicagoSubwayConfig({deviceId}: Props) {
         setAvailableLines([]);
       }
       try {
-        const response = await apiFetch(`/providers/chicago/stops/${encodeURIComponent(stopId)}/lines`);
-        console.log('[CTA lines] request', {stopId, status: response.status, ok: response.ok});
-        if (!response.ok) {
+        const result = await queryClient.fetchQuery({
+          queryKey: queryKeys.transitLinesForStation('chicago', 'train', stopId),
+          queryFn: async () => {
+            const response = await apiFetch(`/providers/chicago/stops/${encodeURIComponent(stopId)}/lines`);
+            const data = await response.json().catch(() => null);
+            return {ok: response.ok, status: response.status, data};
+          },
+        });
+        console.log('[CTA lines] request', {stopId, status: result.status, ok: result.ok});
+        if (!result.ok) {
           if (!cancelled) {
             setAvailableLines([]);
             setSelectedLines([]);
@@ -164,7 +188,7 @@ export default function ChicagoSubwayConfig({deviceId}: Props) {
           return;
         }
 
-        const data = await response.json();
+        const data = result.data;
         console.log('[CTA lines] response', {
           stopId,
           lines: Array.isArray(data?.lines) ? data.lines : data,
@@ -198,7 +222,7 @@ export default function ChicagoSubwayConfig({deviceId}: Props) {
     return () => {
       cancelled = true;
     };
-  }, [stopId]);
+  }, [queryClient, stopId]);
 
   const chooseStop = useCallback((option: StopOption) => {
     setStopId(option.stopId);
@@ -220,6 +244,47 @@ export default function ChicagoSubwayConfig({deviceId}: Props) {
     });
   }, []);
 
+  const saveConfigMutation = useMutation({
+    mutationFn: async (payload: {
+      nextDeviceId: string;
+      nextDisplayId: string | null;
+      nextDisplayType: number;
+      nextSelectedLines: string[];
+      nextStopId: string;
+    }) => {
+      const configResponse = await apiFetch(`/device/${payload.nextDeviceId}/config`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+          displayId: payload.nextDisplayId ?? undefined,
+          displayType: payload.nextDisplayType,
+          lines: payload.nextSelectedLines.map(line => ({
+            provider: 'cta-subway',
+            line,
+            stop: payload.nextStopId,
+          })),
+        }),
+      });
+      const configData = await configResponse.json().catch(() => null);
+      if (!configResponse.ok) {
+        return {
+          ok: false as const,
+          status: configResponse.status,
+          configData,
+        };
+      }
+      await apiFetch(`/refresh/device/${payload.nextDeviceId}`, {method: 'POST'});
+      return {
+        ok: true as const,
+        configData,
+      };
+    },
+    onSuccess: (_result, variables) => {
+      void queryClient.invalidateQueries({queryKey: queryKeys.deviceConfig(variables.nextDeviceId)});
+      void queryClient.invalidateQueries({queryKey: queryKeys.displays(variables.nextDeviceId)});
+    },
+  });
+
   const saveConfig = useCallback(async () => {
     if (!deviceId) return;
     setIsSaving(true);
@@ -232,40 +297,31 @@ export default function ChicagoSubwayConfig({deviceId}: Props) {
     }
 
     try {
-      const configResponse = await apiFetch(`/device/${deviceId}/config`, {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({
-          displayId: activeDisplayId ?? undefined,
-          displayType,
-          lines: selectedLines.map(line => ({
-            provider: 'cta-subway',
-            line,
-            stop: stopId,
-          })),
-        }),
+      const result = await saveConfigMutation.mutateAsync({
+        nextDeviceId: deviceId,
+        nextDisplayId: activeDisplayId,
+        nextDisplayType: displayType,
+        nextSelectedLines: selectedLines,
+        nextStopId: stopId,
       });
 
-      if (!configResponse.ok) {
-        const data = await configResponse.json().catch(() => null);
+      if (!result.ok) {
         const message =
-          typeof data?.error === 'string'
-            ? data.error
-            : `Failed to save line (${configResponse.status})`;
+          typeof result.configData?.error === 'string'
+            ? result.configData.error
+            : `Failed to save line (${result.status})`;
         setStatusText(message);
         return;
       }
 
-      const configData = await configResponse.json().catch(() => null);
-      setActiveDisplayId(extractConfigDisplayId(configData));
-      await apiFetch(`/refresh/device/${deviceId}`, {method: 'POST'});
+      setActiveDisplayId(extractConfigDisplayId(result.configData));
       setStatusText(`Updated ${selectedLines.join(', ')} at ${stopName} (${stopId})`);
     } catch {
       setStatusText('Network error');
     } finally {
       setIsSaving(false);
     }
-  }, [activeDisplayId, deviceId, selectedLines, stopId, stopName, displayType]);
+  }, [activeDisplayId, deviceId, displayType, saveConfigMutation, selectedLines, stopId, stopName]);
 
   const lineButtons = useMemo(
     () =>

@@ -1,8 +1,10 @@
 import React, {useCallback, useEffect, useMemo, useState} from 'react';
 import {Pressable, ScrollView, Share, StyleSheet, Text, TextInput, View} from 'react-native';
+import {useMutation, useQueryClient} from '@tanstack/react-query';
 import {colors, radii, spacing} from '../../../theme';
 import {apiFetch} from '../../../lib/api';
 import {extractConfigDisplayId} from '../../../lib/deviceConfig';
+import {queryKeys} from '../../../lib/queryKeys';
 
 const MAX_PHILLY_LINES = 2;
 const DISPLAY_PRESETS = [1, 2, 3, 4, 5] as const;
@@ -49,6 +51,7 @@ const directionHint = (dir: 'N' | 'S') => (dir === 'N' ? 'Northbound (N)' : 'Sou
 const cityTitle = (city: City) => (city === 'boston' ? 'Boston' : 'Philly');
 
 export default function RegionalTransitConfig({deviceId, city, mode}: Props) {
+  const queryClient = useQueryClient();
   const [route, setRoute] = useState('');
   const [selectedLines, setSelectedLines] = useState<string[]>([]);
   const [lineOptions, setLineOptions] = useState<string[]>([]);
@@ -91,12 +94,19 @@ export default function RegionalTransitConfig({deviceId, city, mode}: Props) {
     const loadLines = async () => {
       setIsLoadingRoutes(true);
       try {
-        const response = await apiFetch(linesForStopEndpointFor(city, mode, stopId, phillyDirection));
-        if (!response.ok) {
+        const result = await queryClient.fetchQuery({
+          queryKey: ['providers', city, mode, 'lines-for-stop', stopId, phillyDirection],
+          queryFn: async () => {
+            const response = await apiFetch(linesForStopEndpointFor(city, mode, stopId, phillyDirection));
+            const data = await response.json().catch(() => null);
+            return {ok: response.ok, data};
+          },
+        });
+        if (!result.ok) {
           if (!cancelled) setLineOptions([]);
           return;
         }
-        const data = await response.json();
+        const data = result.data;
         const nextLines = Array.isArray(data?.lines)
           ? data.lines
               .map((line: unknown) => (typeof line === 'string' ? line.toUpperCase() : ''))
@@ -122,16 +132,23 @@ export default function RegionalTransitConfig({deviceId, city, mode}: Props) {
     return () => {
       cancelled = true;
     };
-  }, [city, mode, stopId, phillyDirection]);
+  }, [city, mode, phillyDirection, queryClient, stopId]);
 
   useEffect(() => {
     let cancelled = false;
 
     const loadConfig = async () => {
       try {
-        const response = await apiFetch(`/device/${deviceId}/config`);
-        if (!response.ok) return;
-        const data = await response.json();
+        const result = await queryClient.fetchQuery({
+          queryKey: queryKeys.deviceConfig(deviceId),
+          queryFn: async () => {
+            const response = await apiFetch(`/device/${deviceId}/config`);
+            const data = await response.json().catch(() => null);
+            return {ok: response.ok, data};
+          },
+        });
+        if (!result.ok) return;
+        const data = result.data;
         if (!cancelled) {
           setActiveDisplayId(extractConfigDisplayId(data));
         }
@@ -170,7 +187,7 @@ export default function RegionalTransitConfig({deviceId, city, mode}: Props) {
     return () => {
       cancelled = true;
     };
-  }, [city, deviceId, mode, provider]);
+  }, [city, deviceId, mode, provider, queryClient]);
 
   useEffect(() => {
     let cancelled = false;
@@ -194,12 +211,19 @@ export default function RegionalTransitConfig({deviceId, city, mode}: Props) {
           endpoint = `${endpoint}?${params.toString()}`;
         }
 
-        const response = await apiFetch(endpoint);
-        if (!response.ok) {
+        const result = await queryClient.fetchQuery({
+          queryKey: ['providers', city, mode, 'stops', route.trim() || 'none', phillyStopQuery.trim() || 'none'],
+          queryFn: async () => {
+            const response = await apiFetch(endpoint);
+            const data = await response.json().catch(() => null);
+            return {ok: response.ok, data};
+          },
+        });
+        if (!result.ok) {
           if (!cancelled) setStops([]);
           return;
         }
-        const data = await response.json();
+        const data = result.data;
         const options: StopOption[] = Array.isArray(data?.stops)
           ? data.stops
               .map((row: any) => ({
@@ -225,7 +249,7 @@ export default function RegionalTransitConfig({deviceId, city, mode}: Props) {
     return () => {
       cancelled = true;
     };
-  }, [city, mode, route, stopDropdownOpen, stopId, phillyStopQuery]);
+  }, [city, mode, phillyStopQuery, queryClient, route, stopDropdownOpen, stopId]);
 
   const chooseStop = useCallback((option: StopOption) => {
     setStopId(option.stopId);
@@ -233,6 +257,51 @@ export default function RegionalTransitConfig({deviceId, city, mode}: Props) {
     setStopDropdownOpen(false);
     setStatusText('');
   }, []);
+
+  const saveConfigMutation = useMutation({
+    mutationFn: async (payload: {
+      nextDeviceId: string;
+      nextDisplayId: string | null;
+      nextDisplayType: number;
+      payloadLines: Array<{provider: string; line: string; stop: string; direction?: 'N' | 'S'}>;
+    }) => {
+      const response = await apiFetch(`/device/${payload.nextDeviceId}/config`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+          displayId: payload.nextDisplayId ?? undefined,
+          displayType: payload.nextDisplayType,
+          lines: payload.payloadLines,
+        }),
+      });
+      const data = await response.json().catch(() => null);
+      if (!response.ok) {
+        return {
+          ok: false as const,
+          status: response.status,
+          data,
+        };
+      }
+      await apiFetch(`/refresh/device/${payload.nextDeviceId}`, {method: 'POST'});
+      return {
+        ok: true as const,
+        data,
+      };
+    },
+    onSuccess: (_result, variables) => {
+      void queryClient.invalidateQueries({queryKey: queryKeys.deviceConfig(variables.nextDeviceId)});
+      void queryClient.invalidateQueries({queryKey: queryKeys.displays(variables.nextDeviceId)});
+    },
+  });
+
+  const septaDebugMutation = useMutation({
+    mutationFn: async ({stationValue, direction}: {stationValue: string; direction: 'N' | 'S'}) => {
+      const endpoint = `/providers/philly/debug/arrivals?station=${encodeURIComponent(stationValue)}&direction=${direction}&results=30`;
+      const response = await apiFetch(endpoint);
+      const data = await response.json().catch(() => null);
+      return {ok: response.ok, status: response.status, data};
+    },
+  });
 
   const saveConfig = useCallback(async () => {
     if (!deviceId) return;
@@ -249,41 +318,48 @@ export default function RegionalTransitConfig({deviceId, city, mode}: Props) {
     setIsSaving(true);
     setStatusText('');
     try {
-      const response = await apiFetch(`/device/${deviceId}/config`, {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({
-          displayId: activeDisplayId ?? undefined,
-          displayType,
-          lines: linesToSave.map(line => ({
-              provider,
-              line,
-              stop: stopTrimmed,
-              ...(city === 'philadelphia' && mode === 'train' ? {direction: phillyDirection} : {}),
-            })),
-        }),
+      const result = await saveConfigMutation.mutateAsync({
+        nextDeviceId: deviceId,
+        nextDisplayId: activeDisplayId,
+        nextDisplayType: displayType,
+        payloadLines: linesToSave.map(line => ({
+          provider,
+          line,
+          stop: stopTrimmed,
+          ...(city === 'philadelphia' && mode === 'train' ? {direction: phillyDirection} : {}),
+        })),
       });
 
-      if (!response.ok) {
-        const data = await response.json().catch(() => null);
+      if (!result.ok) {
         const message =
-          typeof data?.error === 'string'
-            ? data.error
-            : `Failed to save line (${response.status})`;
+          typeof result.data?.error === 'string'
+            ? result.data.error
+            : `Failed to save line (${result.status})`;
         setStatusText(message);
         return;
       }
 
-      const configData = await response.json().catch(() => null);
-      setActiveDisplayId(extractConfigDisplayId(configData));
-      await apiFetch(`/refresh/device/${deviceId}`, {method: 'POST'});
+      setActiveDisplayId(extractConfigDisplayId(result.data));
       setStatusText(`Updated ${linesToSave.join(', ')} @ ${stopName} (${stopTrimmed})`);
     } catch {
       setStatusText('Network error');
     } finally {
       setIsSaving(false);
     }
-  }, [activeDisplayId, city, deviceId, provider, route, selectedLines, stopId, stopName, displayType, mode, phillyDirection]);
+  }, [
+    activeDisplayId,
+    city,
+    deviceId,
+    displayType,
+    mode,
+    phillyDirection,
+    provider,
+    route,
+    saveConfigMutation,
+    selectedLines,
+    stopId,
+    stopName,
+  ]);
 
   const loadSeptaDebugJson = useCallback(async () => {
     if (city !== 'philadelphia' || mode !== 'train') return;
@@ -295,21 +371,19 @@ export default function RegionalTransitConfig({deviceId, city, mode}: Props) {
 
     setSeptaDebugLoading(true);
     try {
-      const endpoint = `/providers/philly/debug/arrivals?station=${encodeURIComponent(stationValue)}&direction=${phillyDirection}&results=30`;
-      const response = await apiFetch(endpoint);
-      const data = await response.json().catch(() => null);
-      if (!response.ok) {
-        const message = typeof data?.error === 'string' ? data.error : `Debug fetch failed (${response.status})`;
-        setSeptaDebugJson(JSON.stringify({error: message, details: data ?? null}, null, 2));
+      const result = await septaDebugMutation.mutateAsync({stationValue, direction: phillyDirection});
+      if (!result.ok) {
+        const message = typeof result.data?.error === 'string' ? result.data.error : `Debug fetch failed (${result.status})`;
+        setSeptaDebugJson(JSON.stringify({error: message, details: result.data ?? null}, null, 2));
         return;
       }
-      setSeptaDebugJson(JSON.stringify(data, null, 2));
+      setSeptaDebugJson(JSON.stringify(result.data, null, 2));
     } catch {
       setSeptaDebugJson(JSON.stringify({error: 'Network error while loading SEPTA debug JSON'}, null, 2));
     } finally {
       setSeptaDebugLoading(false);
     }
-  }, [city, mode, stopId, stopName, phillyDirection]);
+  }, [city, mode, phillyDirection, septaDebugMutation, stopId, stopName]);
 
   const shareSeptaDebugJson = useCallback(async () => {
     if (!septaDebugJson) return;
