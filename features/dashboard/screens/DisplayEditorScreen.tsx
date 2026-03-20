@@ -21,7 +21,6 @@ import {
   cityModeFromProvider,
   clampNextStops,
   cycleTimeOption,
-  describePresetBehavior,
   ensureLineCount,
   formatRoutePickerLabel,
   getAvailableModes,
@@ -99,11 +98,11 @@ const LAYOUT_OPTIONS = [
   {id: 'layout-2', slots: 2, label: '2 stops'},
 ];
 const DISPLAY_PRESET_OPTIONS = [
-  {id: 1, label: 'Preset 1', hint: 'Default destination with ETA on the right.'},
-  {id: 2, label: 'Preset 2', hint: 'Direction-focused label with the same base layout.'},
-  {id: 3, label: 'Preset 3', hint: 'Two-line compact label stack.'},
-  {id: 4, label: 'Preset 4', hint: 'Destination with extra ETA line underneath.'},
-  {id: 5, label: 'Preset 5', hint: 'Direction with extra ETA line underneath.'},
+  {id: 1, label: 'Destination + ETA', description: 'Single destination name with next arrival time on the right.'},
+  {id: 2, label: 'Direction + ETA', description: 'Direction-focused row with next arrival time on the right.'},
+  {id: 3, label: 'Stacked Destinations', description: 'Two destination lines stacked in one row with no extra ETA line.'},
+  {id: 4, label: 'Destination + Multi ETA', description: 'Single destination with additional ETA values under the main text.'},
+  {id: 5, label: 'Direction + Multi ETA', description: 'Direction-focused row with additional ETA values under the main text.'},
 ] as const;
 const Haptics = {selectionAsync: async () => {}, notificationAsync: async (_: any) => {}};
 
@@ -114,7 +113,6 @@ export default function DisplayEditorScreen() {
   const params = useLocalSearchParams<{city?: string; from?: string; mode?: string; displayId?: string}>();
   const city = normalizeCityIdParam(params.city ?? appState.selectedCity);
   const isCreateMode = params.mode === 'new';
-  const openConfigureStopOnLoad = params.mode === 'new';
   const fallbackRoute = params.from === 'presets' ? '/presets' : '/dashboard';
   const headerEnter = useRef(new Animated.Value(0)).current;
   const previewEnter = useRef(new Animated.Value(0)).current;
@@ -126,10 +124,12 @@ export default function DisplayEditorScreen() {
   const [layoutSlots, setLayoutSlots] = useState<number>(DEFAULT_LAYOUT_SLOTS);
   const [displayPreset, setDisplayPreset] = useState<number>(DEFAULT_DISPLAY_PRESET);
   const [lines, setLines] = useState<LinePick[]>(() => ensureLineCount([], city, DEFAULT_LAYOUT_SLOTS, {}, {}));
-  const [selectedLineId, setSelectedLineId] = useState<string>(openConfigureStopOnLoad ? 'line-1' : '');
+  const [selectedLineId, setSelectedLineId] = useState<string>('');
   const [stationSearch, setStationSearch] = useState<Record<string, string>>({});
-  const [layoutExpanded, setLayoutExpanded] = useState(openConfigureStopOnLoad);
-  const [slotEditorExpanded, setSlotEditorExpanded] = useState(isCreateMode);
+  const [layoutExpanded, setLayoutExpanded] = useState(isCreateMode);
+  const [slotEditorExpanded, setSlotEditorExpanded] = useState(false);
+  const [layoutConfirmed, setLayoutConfirmed] = useState(!isCreateMode);
+  const [presetConfirmed, setPresetConfirmed] = useState(!isCreateMode);
   const [scheduleExpanded, setScheduleExpanded] = useState(false);
   const [customDisplayScheduleEnabled, setCustomDisplayScheduleEnabled] = useState(false);
   const [displaySchedule, setDisplaySchedule] = useState({start: '06:00', end: '09:00'});
@@ -152,7 +152,7 @@ export default function DisplayEditorScreen() {
   const [routesLoadingByStation, setRoutesLoadingByStation] = useState<Record<string, boolean>>({});
   const [arrivals, setArrivals] = useState<Arrival[]>([]);
   const [liveStatusText, setLiveStatusText] = useState('');
-  const [editorStep, setEditorStep] = useState<EditorStep>(openConfigureStopOnLoad ? 'lines' : 'done');
+  const [editorStep, setEditorStep] = useState<EditorStep>(isCreateMode ? 'lines' : 'done');
   const [transitionLabel, setTransitionLabel] = useState('');
   const [linesByMode, setLinesByMode] = useState<Partial<Record<ModeId, Route[]>>>({});
   const [linesLoadingByMode, setLinesLoadingByMode] = useState<Partial<Record<ModeId, boolean>>>({});
@@ -162,6 +162,15 @@ export default function DisplayEditorScreen() {
   const stationsRequestedRef = useRef(new Set<string>());
   const routesRequestedRef = useRef(new Set<string>());
   const previousCityRef = useRef(city);
+  const animateSectionLayout = () => {
+    LayoutAnimation.configureNext({
+      duration: 180,
+      create: {type: LayoutAnimation.Types.easeInEaseOut, property: LayoutAnimation.Properties.opacity},
+      update: {type: LayoutAnimation.Types.easeInEaseOut},
+      delete: {type: LayoutAnimation.Types.easeInEaseOut, property: LayoutAnimation.Properties.opacity},
+    });
+  };
+
   useEffect(() => {
     if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
       UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -265,7 +274,6 @@ export default function DisplayEditorScreen() {
   }, [city, lines, liveSupported, queryClient]); // linesRequestedRef guards against duplicates — no cancellation needed
 
   const selectedLine = lines.find(line => line.id === selectedLineId) ?? null;
-  const selectedLineIndex = selectedLine ? lines.findIndex(line => line.id === selectedLine.id) : -1;
 
   useEffect(() => {
     if (!liveSupported || !selectedLine?.routeId) return;
@@ -398,6 +406,8 @@ export default function DisplayEditorScreen() {
         if (!cancelled) {
           setLayoutSlots(nextLayoutSlots);
           setDisplayPreset(nextDisplayPreset);
+          setLayoutConfirmed(true);
+          setPresetConfirmed(true);
         }
 
         if (citySavedLines.length > 0) {
@@ -573,6 +583,16 @@ export default function DisplayEditorScreen() {
     ]).start();
   }, [editorEnter, headerEnter, previewEnter]);
 
+  useEffect(() => {
+    stepAnim.setValue(0);
+    Animated.spring(stepAnim, {
+      toValue: 1,
+      tension: 110,
+      friction: 14,
+      useNativeDriver: true,
+    }).start();
+  }, [editorStep, selectedLineId, stepAnim]);
+
   const snapshotRef = useRef({city, layoutSlots, displayPreset, lines, displaySchedule, displayDays, presetName, customDisplayScheduleEnabled});
   const isDirty = useMemo(() => {
     const snap = snapshotRef.current;
@@ -665,6 +685,11 @@ export default function DisplayEditorScreen() {
 
     try {
       if (hasLinkedDevice && selectedDevice.id) {
+        if (!presetConfirmed) {
+          setLiveStatusText('Choose a preset before saving.');
+          setSaving(false);
+          return;
+        }
         if (displayValidationError) {
           setLiveStatusText(displayValidationError);
           setSaving(false);
@@ -754,12 +779,57 @@ export default function DisplayEditorScreen() {
   };
 
   const applyLayout = (slots: number) => {
+    animateSectionLayout();
     const safeSlots = slots === 1 ? 1 : 2;
-    if (safeSlots === layoutSlots) return;
-    setLayoutSlots(safeSlots);
-    setLines(prev => ensureLineCount(prev, city, safeSlots, stationsByMode, routesByStation));
-    setSelectedLineId('line-1');
+    const nextLines =
+      safeSlots === layoutSlots ? lines : ensureLineCount(lines, city, safeSlots, stationsByMode, routesByStation);
+
+    setLayoutConfirmed(true);
+    setOpenLayoutPicker(false);
+
+    if (safeSlots !== layoutSlots) {
+      setLayoutSlots(safeSlots);
+      setLines(nextLines);
+    }
+
+    const nextSelectedLineId =
+      selectedLineId && nextLines.some(line => line.id === selectedLineId)
+        ? selectedLineId
+        : nextLines[0]?.id ?? 'line-1';
+    const nextSelectedLine = nextLines.find(line => line.id === nextSelectedLineId);
+
+    setSelectedLineId(nextSelectedLineId);
+    setEditorStep(nextSelectedLine && nextSelectedLine.stationId && nextSelectedLine.routeId ? 'done' : 'lines');
+    setLayoutExpanded(false);
+    setSlotEditorExpanded(true);
+
     void Haptics.selectionAsync();
+  };
+
+  const openStopConfiguration = (nextLines: LinePick[] = lines) => {
+    animateSectionLayout();
+    const nextSelectedLineId =
+      selectedLineId && nextLines.some(line => line.id === selectedLineId)
+        ? selectedLineId
+        : nextLines[0]?.id ?? '';
+    const nextSelectedLine = nextLines.find(line => line.id === nextSelectedLineId);
+
+    setSelectedLineId(nextSelectedLineId);
+    setEditorStep(nextSelectedLine && nextSelectedLine.stationId && nextSelectedLine.routeId ? 'done' : 'lines');
+    setLayoutExpanded(false);
+    setSlotEditorExpanded(true);
+    setScheduleExpanded(false);
+  };
+
+  const advanceToNextSlotIfNeeded = (completedLineId: string) => {
+    if (layoutSlots < 2 || completedLineId !== lines[0]?.id) return false;
+
+    const nextLine = lines[1];
+    if (!nextLine || (nextLine.routeId && nextLine.stationId)) return false;
+
+    setSelectedLineId(nextLine.id);
+    setEditorStep(nextLine.routeId ? 'stops' : 'lines');
+    return true;
   };
 
   const updateLine = (id: string, next: Partial<LinePick>) => {
@@ -771,6 +841,12 @@ export default function DisplayEditorScreen() {
   };
 
   const handleSelectSlotForEdit = (id: string) => {
+    animateSectionLayout();
+    if (!layoutConfirmed) {
+      setLayoutExpanded(true);
+      setSlotEditorExpanded(false);
+      return;
+    }
     if (slotEditorExpanded && selectedLineId === id) {
       setSlotEditorExpanded(false);
       setSelectedLineId('');
@@ -784,6 +860,7 @@ export default function DisplayEditorScreen() {
   };
 
   const toggleLayoutEditor = () => {
+    animateSectionLayout();
     setLayoutExpanded(prev => {
       if (!prev) setSlotEditorExpanded(false);
       return !prev;
@@ -791,6 +868,11 @@ export default function DisplayEditorScreen() {
   };
 
   const toggleSlotEditor = () => {
+    animateSectionLayout();
+    if (!layoutConfirmed) {
+      setLayoutExpanded(true);
+      return;
+    }
     setSlotEditorExpanded(prev => {
       const next = !prev;
       if (!next) {
@@ -808,6 +890,7 @@ export default function DisplayEditorScreen() {
   };
 
   const toggleScheduleEditor = () => {
+    animateSectionLayout();
     setScheduleExpanded(prev => !prev);
   };
   const reorderLineByHold = (id: string) => {
@@ -903,6 +986,30 @@ export default function DisplayEditorScreen() {
     ],
   } as const;
 
+  const stepAnimatedStyle = {
+    opacity: stepAnim,
+    transform: [
+      {
+        translateX: stepAnim.interpolate({
+          inputRange: [0, 1],
+          outputRange: [28, 0],
+        }),
+      },
+      {
+        translateY: stepAnim.interpolate({
+          inputRange: [0, 1],
+          outputRange: [10, 0],
+        }),
+      },
+      {
+        scale: stepAnim.interpolate({
+          inputRange: [0, 1],
+          outputRange: [0.985, 1],
+        }),
+      },
+    ],
+  } as const;
+
   return (
     <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
       <KeyboardAvoidingView
@@ -970,28 +1077,59 @@ export default function DisplayEditorScreen() {
           visible={openLayoutPicker}
           options={LAYOUT_OPTIONS.map(option => ({id: String(option.slots), label: option.label}))}
           value={String(layoutSlots)}
-          onSelect={val => {
-            applyLayout(Number(val));
-            setOpenLayoutPicker(false);
-          }}
+          onSelect={val => applyLayout(Number(val))}
           onClose={() => setOpenLayoutPicker(false)}
         />
 
         <Animated.View style={editorAnimatedStyle}>
           <View style={styles.card}>
             <View style={styles.collapsibleSection}>
-              <Pressable style={styles.collapsibleHeader} onPress={toggleSlotEditor}>
-                <Text style={styles.sectionLabel}>
-                  {selectedLine ? `Configure Stop ${selectedLineIndex + 1}` : 'Configure Stop'}
-                </Text>
+              <Pressable style={styles.collapsibleHeader} onPress={toggleLayoutEditor}>
+                <Text style={styles.sectionLabel}>Layout + Preset</Text>
                 <View style={styles.collapsibleArrowBubble}>
-                  <Text style={styles.collapsibleArrow}>{slotEditorExpanded ? '▲' : '▼'}</Text>
+                  <AnimatedChevron expanded={layoutExpanded} />
                 </View>
               </Pressable>
 
-              {slotEditorExpanded ? (
-                selectedLine ? (
+              <FadeSection visible={layoutExpanded}>
+                <View style={styles.collapsibleBody}>
+                  {!layoutConfirmed ? (
+                    <Text style={styles.sectionHint}>Use the top-right layout chip to choose 1 stop or 2 stops first.</Text>
+                  ) : null}
+                  <DisplayPresetPickerStep
+                    selectedPreset={presetConfirmed ? displayPreset : null}
+                    onSelect={preset => {
+                      setDisplayPreset(preset);
+                      setLayoutConfirmed(true);
+                      setPresetConfirmed(true);
+                      openStopConfiguration();
+                    }}
+                  />
+                </View>
+              </FadeSection>
+            </View>
+
+            <View style={styles.collapsibleSection}>
+              <Pressable style={styles.collapsibleHeader} onPress={toggleSlotEditor}>
+                <Text style={styles.sectionLabel}>Configure Stops</Text>
+                <View style={styles.collapsibleArrowBubble}>
+                  <AnimatedChevron expanded={slotEditorExpanded} />
+                </View>
+              </Pressable>
+
+              {!layoutConfirmed ? (
+                <FadeSection visible>
                   <View style={styles.collapsibleBody}>
+                    <Text style={styles.sectionHint}>Select a layout first, then configure each stop.</Text>
+                    <Pressable style={styles.layoutFirstAction} onPress={() => setLayoutExpanded(true)}>
+                      <Text style={styles.layoutFirstActionText}>Open Layout + Preset</Text>
+                    </Pressable>
+                  </View>
+                </FadeSection>
+              ) : slotEditorExpanded ? (
+                selectedLine ? (
+                  <FadeSection visible>
+                    <Animated.View style={[styles.collapsibleBody, stepAnimatedStyle]}>
                     {(editorStep === 'line-transition' || editorStep === 'stop-transition' || editorStep === 'done-transition') && (
                       <StepTransitionMessage
                         message={transitionLabel}
@@ -1030,19 +1168,22 @@ export default function DisplayEditorScreen() {
                       />
                     )}
 
-                      {editorStep === 'stops' && (
-                        <StopPickerStep
-                          city={city}
-                          selectedMode={normalizeMode(city, selectedLine.mode)}
-                          selectedRoute={(linesByMode[normalizeMode(city, selectedLine.mode)] ?? []).find(r => r.id === selectedLine.routeId)}
-                          stations={stationsByLine[selectedLine.routeId] ?? []}
-                          loading={!!stationsLoadingByLine[selectedLine.routeId]}
+                    {editorStep === 'stops' && (
+                      <StopPickerStep
+                        city={city}
+                        selectedMode={normalizeMode(city, selectedLine.mode)}
+                        selectedRoute={(linesByMode[normalizeMode(city, selectedLine.mode)] ?? []).find(r => r.id === selectedLine.routeId)}
+                        stations={stationsByLine[selectedLine.routeId] ?? []}
+                        loading={!!stationsLoadingByLine[selectedLine.routeId]}
                         selectedStationId={selectedLine.stationId}
                         selectedRouteId={selectedLine.routeId}
                         search={stationSearch[selectedLine.id] ?? ''}
                         onSearch={text => setStationSearch(prev => ({...prev, [selectedLine.id]: text}))}
                         onSelectStation={id => {
                           updateLine(selectedLine.id, {stationId: id});
+                          if (advanceToNextSlotIfNeeded(selectedLine.id)) {
+                            return;
+                          }
                           playStepTransition('All set! Loading arrivals…', 'done', 0);
                         }}
                         onBack={() => setEditorStep('lines')}
@@ -1053,6 +1194,7 @@ export default function DisplayEditorScreen() {
                       <DoneStep
                         city={city}
                         displayPreset={displayPreset}
+                        presetConfirmed={presetConfirmed}
                         line={selectedLine}
                         selectedRoute={
                           (routesByStation[routeLookupKey(normalizeMode(city, selectedLine.mode), selectedLine.stationId)] ?? []).find(
@@ -1066,25 +1208,13 @@ export default function DisplayEditorScreen() {
                         onChange={updateLine}
                       />
                     )}
-                  </View>
+                    </Animated.View>
+                  </FadeSection>
                 ) : (
-                  <Text style={styles.emptyHint}>Select a slot in the preview to start editing.</Text>
+                  <FadeSection visible>
+                    <Text style={styles.emptyHint}>Select a slot in the preview to start editing.</Text>
+                  </FadeSection>
                 )
-              ) : null}
-            </View>
-
-            <View style={styles.collapsibleSection}>
-              <Pressable style={styles.collapsibleHeader} onPress={toggleLayoutEditor}>
-                <Text style={styles.sectionLabel}>Layout + Preset</Text>
-                <View style={styles.collapsibleArrowBubble}>
-                  <Text style={styles.collapsibleArrow}>{layoutExpanded ? '▲' : '▼'}</Text>
-                </View>
-              </Pressable>
-
-              {layoutExpanded ? (
-                <View style={styles.collapsibleBody}>
-                  <DisplayPresetPickerStep selectedPreset={displayPreset} onSelect={setDisplayPreset} />
-                </View>
               ) : null}
             </View>
 
@@ -1092,10 +1222,10 @@ export default function DisplayEditorScreen() {
               <Pressable style={styles.collapsibleHeader} onPress={toggleScheduleEditor}>
                 <Text style={styles.sectionLabel}>Display Schedule</Text>
                 <View style={styles.collapsibleArrowBubble}>
-                  <Text style={styles.collapsibleArrow}>{scheduleExpanded ? '▲' : '▼'}</Text>
+                  <AnimatedChevron expanded={scheduleExpanded} />
                 </View>
               </Pressable>
-              {scheduleExpanded ? (
+              <FadeSection visible={scheduleExpanded}>
                 <View style={styles.collapsibleBody}>
                   <View style={styles.sectionBlock}>
                     <Text style={styles.sectionHint}>Turn on custom schedule to choose specific days and times. Turn it off to display 24/7.</Text>
@@ -1103,14 +1233,7 @@ export default function DisplayEditorScreen() {
                       style={styles.scheduleToggleRow}
                       onPress={() => setCustomDisplayScheduleEnabled(prev => !prev)}>
                       <Text style={styles.scheduleToggleLabel}>Custom Schedule</Text>
-                      <View style={[styles.scheduleToggle, customDisplayScheduleEnabled && styles.scheduleToggleOn]}>
-                        <View
-                          style={[
-                            styles.scheduleToggleThumb,
-                            customDisplayScheduleEnabled && styles.scheduleToggleThumbOn,
-                          ]}
-                        />
-                      </View>
+                      <ScheduleToggleControl enabled={customDisplayScheduleEnabled} />
                     </Pressable>
                   </View>
                   {customDisplayScheduleEnabled ? (
@@ -1133,7 +1256,7 @@ export default function DisplayEditorScreen() {
                     </View>
                   )}
                 </View>
-              ) : null}
+              </FadeSection>
             </View>
           </View>
         </Animated.View>
@@ -1223,7 +1346,7 @@ function TopBar({
         </View>
       </View>
 
-      {renameOpen ? (
+      <FadeSection visible={renameOpen}>
         <View style={styles.renameRow}>
           <TextInput
             value={draftName}
@@ -1239,7 +1362,7 @@ function TopBar({
             <Text style={styles.renameActionButtonText}>Save</Text>
           </Pressable>
         </View>
-      ) : null}
+      </FadeSection>
     </View>
   );
 }
@@ -1414,18 +1537,54 @@ function SaveBar({
   onPress: () => void;
 }) {
   const disabled = !dirty || loading || !!disabledReason;
+  const visibilityAnim = useRef(new Animated.Value(dirty || loading || success ? 1 : 0.92)).current;
+  const buttonScale = useRef(new Animated.Value(1)).current;
+
+  useEffect(() => {
+    Animated.spring(visibilityAnim, {
+      toValue: dirty || loading || success ? 1 : 0.94,
+      tension: 110,
+      friction: 16,
+      useNativeDriver: true,
+    }).start();
+  }, [dirty, loading, success, visibilityAnim]);
+
+  useEffect(() => {
+    if (!dirty && !success) return;
+    Animated.sequence([
+      Animated.spring(buttonScale, {toValue: 1.03, tension: 180, friction: 10, useNativeDriver: true}),
+      Animated.spring(buttonScale, {toValue: 1, tension: 180, friction: 12, useNativeDriver: true}),
+    ]).start();
+  }, [buttonScale, dirty, success]);
+
   return (
-    <View style={styles.saveBar}>
-      <Pressable
-        disabled={disabled}
-        onPress={onPress}
-        style={[styles.saveButton, disabled && styles.saveButtonDisabled, success && styles.saveButtonSuccess]}>
-        <Text style={styles.saveButtonText}>{loading ? 'Saving...' : success ? 'Synced' : 'Save to Device'}</Text>
-      </Pressable>
+    <Animated.View
+      style={[
+        styles.saveBar,
+        {
+          opacity: visibilityAnim,
+          transform: [
+            {
+              translateY: visibilityAnim.interpolate({
+                inputRange: [0.94, 1],
+                outputRange: [10, 0],
+              }),
+            },
+          ],
+        },
+      ]}>
+      <Animated.View style={{transform: [{scale: buttonScale}]}}>
+        <Pressable
+          disabled={disabled}
+          onPress={onPress}
+          style={[styles.saveButton, disabled && styles.saveButtonDisabled, success && styles.saveButtonSuccess]}>
+          <Text style={styles.saveButtonText}>{loading ? 'Saving...' : success ? 'Synced' : 'Save to Device'}</Text>
+        </Pressable>
+      </Animated.View>
       <Text style={styles.saveHint}>
         {success ? 'Last synced just now' : disabledReason ? disabledReason : dirty ? 'Unsaved changes' : 'No changes'}
       </Text>
-    </View>
+    </Animated.View>
   );
 }
 
@@ -1444,18 +1603,22 @@ function SimplePicker({
 }) {
   return (
     <Modal transparent visible={visible} animationType="fade" onRequestClose={onClose}>
-      <Pressable style={styles.modalOverlay} onPress={onClose}>
+      <View style={styles.modalOverlay}>
+        <Pressable style={styles.modalBackdrop} onPress={onClose} />
         <View style={styles.modalSheet}>
           {options.map(option => (
             <Pressable
               key={option.id}
               style={[styles.modalOption, option.id === value && styles.modalOptionActive]}
-              onPress={() => onSelect(option.id)}>
+              onPress={() => {
+                onSelect(option.id);
+                onClose();
+              }}>
               <Text style={[styles.modalOptionText, option.id === value && styles.modalOptionTextActive]}>{option.label}</Text>
             </Pressable>
           ))}
         </View>
-      </Pressable>
+      </View>
     </Modal>
   );
 }
@@ -1464,32 +1627,138 @@ function DisplayPresetPickerStep({
   selectedPreset,
   onSelect,
 }: {
-  selectedPreset: number;
+  selectedPreset: number | null;
   onSelect: (preset: number) => void;
 }) {
   return (
     <View style={styles.stepSection}>
       <Text style={styles.stepTitle}>Which device preset?</Text>
-      <Text style={styles.stepSubtitle}>This maps directly to the ESP render preset.</Text>
-      <View style={styles.choiceList}>
-        {DISPLAY_PRESET_OPTIONS.map(option => {
-          const active = option.id === selectedPreset;
-          return (
-            <Pressable
-              key={option.id}
-              style={[styles.choiceRow, active && styles.choiceRowActive]}
-              onPress={() => onSelect(option.id)}>
-              <View style={styles.choiceRowCopy}>
-                <Text style={[styles.choiceRowLabel, active && styles.choiceRowLabelActive]}>{option.label}</Text>
-                <Text style={[styles.choiceRowHint, active && styles.choiceRowHintActive]}>{option.hint}</Text>
-              </View>
-              <View style={[styles.choiceRowCheck, active && styles.choiceRowCheckActive]}>
-                {active ? <Text style={styles.choiceRowCheckText}>✓</Text> : null}
-              </View>
-            </Pressable>
-          );
-        })}
+      <Text style={styles.stepSubtitle}>Pick the exact diagram shown on your display.</Text>
+      <View style={styles.presetChoiceList}>
+        {DISPLAY_PRESET_OPTIONS.map((option, index) => (
+          <PresetChoiceCard
+            key={option.id}
+            option={option}
+            index={index}
+            active={option.id === selectedPreset}
+            onPress={() => onSelect(option.id)}
+          />
+        ))}
       </View>
+    </View>
+  );
+}
+
+function PresetChoiceCard({
+  option,
+  index,
+  active,
+  onPress,
+}: {
+  option: (typeof DISPLAY_PRESET_OPTIONS)[number];
+  index: number;
+  active: boolean;
+  onPress: () => void;
+}) {
+  const enterAnim = useRef(new Animated.Value(0)).current;
+  const activeAnim = useRef(new Animated.Value(active ? 1 : 0)).current;
+  const pressAnim = useRef(new Animated.Value(1)).current;
+
+  useEffect(() => {
+    Animated.timing(enterAnim, {
+      toValue: 1,
+      duration: 220,
+      delay: index * 35,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: true,
+    }).start();
+  }, [enterAnim, index]);
+
+  useEffect(() => {
+    Animated.spring(activeAnim, {
+      toValue: active ? 1 : 0,
+      tension: 180,
+      friction: 18,
+      useNativeDriver: true,
+    }).start();
+  }, [active, activeAnim]);
+
+  return (
+    <Animated.View
+      style={{
+        opacity: enterAnim,
+        transform: [
+          {
+            translateY: enterAnim.interpolate({
+              inputRange: [0, 1],
+              outputRange: [10, 0],
+            }),
+          },
+          {
+            scale: activeAnim.interpolate({
+              inputRange: [0, 1],
+              outputRange: [1, 1.03],
+            }),
+          },
+          {scale: pressAnim},
+        ],
+      }}>
+      <Pressable
+        style={[styles.presetChoiceCard, active && styles.presetChoiceCardActive]}
+        onPress={onPress}
+        onPressIn={() => {
+          Animated.spring(pressAnim, {
+            toValue: 0.985,
+            tension: 220,
+            friction: 16,
+            useNativeDriver: true,
+          }).start();
+        }}
+        onPressOut={() => {
+          Animated.spring(pressAnim, {
+            toValue: 1,
+            tension: 220,
+            friction: 14,
+            useNativeDriver: true,
+          }).start();
+        }}>
+        <View style={styles.presetChoiceHeader}>
+          <Text style={[styles.presetChoiceLabel, active && styles.presetChoiceLabelActive]}>{option.label}</Text>
+          <View style={[styles.choiceRowCheck, active && styles.choiceRowCheckActive]}>
+            {active ? <Text style={styles.choiceRowCheckText}>✓</Text> : null}
+          </View>
+        </View>
+        <Text style={styles.presetChoiceDescription}>{option.description}</Text>
+        <PresetDiagram presetId={option.id} />
+      </Pressable>
+    </Animated.View>
+  );
+}
+
+function PresetDiagram({presetId}: {presetId: number}) {
+  const isDirection = presetId === 2 || presetId === 5;
+  const isDualLabel = presetId === 3;
+  const hasSecondaryEtaLine = presetId === 4 || presetId === 5;
+
+  return (
+    <View style={styles.presetDiagramFrame}>
+      <View style={styles.presetDiagramLineBadge}>
+        <Text style={styles.presetDiagramLineBadgeText}>4</Text>
+      </View>
+
+      <View style={styles.presetDiagramCenter}>
+        {isDualLabel ? (
+          <>
+            <Text style={styles.presetDiagramPrimaryText}>Uptown</Text>
+            <Text style={[styles.presetDiagramPrimaryText, styles.presetDiagramSecondaryTextMuted]}>Woodlawn</Text>
+          </>
+        ) : (
+          <Text style={styles.presetDiagramPrimaryText}>{isDirection ? 'Uptown' : 'Woodlawn'}</Text>
+        )}
+        {hasSecondaryEtaLine ? <Text style={styles.presetDiagramSecondaryEta}>5m, 10m</Text> : null}
+      </View>
+
+      <Text style={styles.presetDiagramRightEta}>2m</Text>
     </View>
   );
 }
@@ -1565,6 +1834,123 @@ function StepTransitionMessage({
         <View style={styles.transitionDot} />
       </View>
     </Animated.View>
+  );
+}
+
+function FadeSection({
+  visible,
+  children,
+}: {
+  visible: boolean;
+  children: React.ReactNode;
+}) {
+  const [mounted, setMounted] = useState(visible);
+  const anim = useRef(new Animated.Value(visible ? 1 : 0)).current;
+
+  useEffect(() => {
+    if (visible) {
+      setMounted(true);
+    }
+
+    Animated.timing(anim, {
+      toValue: visible ? 1 : 0,
+      duration: visible ? 220 : 150,
+      easing: visible ? Easing.out(Easing.cubic) : Easing.in(Easing.cubic),
+      useNativeDriver: true,
+    }).start(({finished}) => {
+      if (finished && !visible) {
+        setMounted(false);
+      }
+    });
+  }, [anim, visible]);
+
+  if (!mounted) return null;
+
+  return (
+    <Animated.View
+      pointerEvents={visible ? 'auto' : 'none'}
+      style={{
+        opacity: anim,
+        transform: [
+          {
+            translateY: anim.interpolate({
+              inputRange: [0, 1],
+              outputRange: [18, 0],
+            }),
+          },
+          {
+            scale: anim.interpolate({
+              inputRange: [0, 1],
+              outputRange: [0.98, 1],
+            }),
+          },
+        ],
+      }}>
+      {children}
+    </Animated.View>
+  );
+}
+
+function AnimatedChevron({expanded}: {expanded: boolean}) {
+  const anim = useRef(new Animated.Value(expanded ? 1 : 0)).current;
+
+  useEffect(() => {
+    Animated.timing(anim, {
+      toValue: expanded ? 1 : 0,
+      duration: 160,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: true,
+    }).start();
+  }, [anim, expanded]);
+
+  return (
+    <Animated.View
+      style={{
+        transform: [
+          {
+            rotate: anim.interpolate({
+              inputRange: [0, 1],
+              outputRange: ['0deg', '180deg'],
+            }),
+          },
+        ],
+      }}>
+      <Text style={styles.collapsibleArrow}>▼</Text>
+    </Animated.View>
+  );
+}
+
+function ScheduleToggleControl({enabled}: {enabled: boolean}) {
+  const anim = useRef(new Animated.Value(enabled ? 1 : 0)).current;
+
+  useEffect(() => {
+    Animated.timing(anim, {
+      toValue: enabled ? 1 : 0,
+      duration: 170,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: true,
+    }).start();
+  }, [anim, enabled]);
+
+  return (
+    <View style={[styles.scheduleToggle, enabled && styles.scheduleToggleOn]}>
+      <Animated.View
+        style={[
+          styles.scheduleToggleThumb,
+          enabled && styles.scheduleToggleThumbOn,
+          {
+            transform: [
+              {
+                translateX: anim.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [0, 18],
+                }),
+              },
+            ],
+          },
+        ]}
+      />
+    </View>
   );
 }
 
@@ -1880,6 +2266,7 @@ function StopRow({
 function DoneStep({
   city,
   displayPreset,
+  presetConfirmed,
   line,
   selectedRoute,
   selectedStation,
@@ -1890,6 +2277,7 @@ function DoneStep({
 }: {
   city: CityId;
   displayPreset: number;
+  presetConfirmed: boolean;
   line: LinePick;
   selectedRoute: Route | undefined;
   selectedStation: Station | undefined;
@@ -1902,7 +2290,6 @@ function DoneStep({
   const showBusBadge = isNycBusBadge(city, mode);
   const selectedRouteBadgeLabel = selectedRoute ? formatRoutePickerLabel(city, mode, selectedRoute) : '';
   const presetOption = DISPLAY_PRESET_OPTIONS.find(option => option.id === displayPreset);
-  const presetBehavior = describePresetBehavior(displayPreset);
 
   return (
     <View style={styles.doneStepContainer}>
@@ -1946,13 +2333,10 @@ function DoneStep({
         <View style={styles.sectionBlock}>
           <Text style={styles.sectionLabel}>Device Preset</Text>
           <Text style={styles.sectionHint}>
-            {presetOption ? `${presetOption.label}: ${presetOption.hint}` : `Preset ${displayPreset}`}
+            {presetConfirmed ? presetOption?.label ?? `Display Type ${displayPreset}` : 'Not selected yet'}
           </Text>
-        </View>
-        <View style={styles.sectionBlock}>
-          <Text style={styles.sectionLabel}>What The ESP Shows</Text>
-          <Text style={styles.sectionHint}>{presetBehavior.primary}</Text>
-          {presetBehavior.secondary ? <Text style={styles.sectionHint}>{presetBehavior.secondary}</Text> : null}
+          {presetConfirmed && presetOption?.description ? <Text style={styles.sectionHint}>{presetOption.description}</Text> : null}
+          <PresetDiagram presetId={displayPreset} />
         </View>
         <DirectionToggle value={line.direction} onChange={direction => onChange(line.id, {direction})} />
         <Text style={styles.sectionHint}>

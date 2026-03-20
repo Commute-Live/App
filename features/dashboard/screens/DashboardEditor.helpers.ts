@@ -714,9 +714,8 @@ export function normalizeLine(
 function seedDefaultLines(city: CityId, stationsByMode: StationsByMode, routesByStation: RoutesByStation): LinePick[] {
   const modes = getAvailableModes(city);
   const primary = modes[0] ?? 'train';
-  const secondary = modes[1] ?? primary;
   const defaults = [newLine(city, primary, 'line-1', stationsByMode, routesByStation)];
-  defaults.push(newLine(city, secondary, 'line-2', stationsByMode, routesByStation));
+  defaults.push(newLine(city, primary, 'line-2', stationsByMode, routesByStation));
   return defaults;
 }
 

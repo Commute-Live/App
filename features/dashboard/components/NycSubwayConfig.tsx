@@ -14,7 +14,8 @@ const DISPLAY_PRESETS = [1, 2, 3, 4, 5] as const;
 
 type StopOption = {stopId: string; stop: string; direction?: 'N' | 'S' | ''};
 type BusRouteOption = {id: string; label: string};
-type SubwaySelection = {line: string; stopId: string; stopName: string; direction: 'N' | 'S'};
+type SubwayDirection = '' | 'N' | 'S';
+type SubwaySelection = {line: string; stopId: string; stopName: string; direction: SubwayDirection};
 
 type Props = {
   deviceId: string;
@@ -44,7 +45,7 @@ export default function NycSubwayConfig({deviceId, providerId = 'mta-subway'}: P
   const [presetDropdownOpen, setPresetDropdownOpen] = useState(false);
   const [activeDisplayId, setActiveDisplayId] = useState<string | null>(null);
   const [subwaySelections, setSubwaySelections] = useState<SubwaySelection[]>([
-    {line: '', stopId: DEFAULT_STOP_ID, stopName: DEFAULT_STOP_NAME, direction: 'N'},
+    {line: '', stopId: DEFAULT_STOP_ID, stopName: DEFAULT_STOP_NAME, direction: ''},
   ]);
   const [activeSubwaySelectionIndex, setActiveSubwaySelectionIndex] = useState<0 | 1>(0);
   const [subwayStopDropdownOpen, setSubwayStopDropdownOpen] = useState(false);
@@ -176,7 +177,7 @@ export default function NycSubwayConfig({deviceId, providerId = 'mta-subway'}: P
       setSelectedLines(prev => (prev.length > 0 ? prev.slice(0, MAX_SELECTED_LINES) : []));
       setStopId(DEFAULT_STOP_ID);
       setStopName(DEFAULT_STOP_NAME);
-      setSubwaySelections([{line: '', stopId: DEFAULT_STOP_ID, stopName: DEFAULT_STOP_NAME, direction: 'N'}]);
+      setSubwaySelections([{line: '', stopId: DEFAULT_STOP_ID, stopName: DEFAULT_STOP_NAME, direction: ''}]);
       setSubwayAvailableLines([[], []]);
       setSubwayLoadingLines([false, false]);
       setActiveSubwaySelectionIndex(0);
@@ -467,7 +468,7 @@ export default function NycSubwayConfig({deviceId, providerId = 'mta-subway'}: P
         const next = [...prev];
         const index = activeSubwaySelectionIndex;
         if (!next[index]) return prev;
-        next[index] = {...next[index], stopId: normalizedStopId, stopName: option.stop};
+        next[index] = {...next[index], stopId: normalizedStopId, stopName: option.stop, direction: ''};
         return next;
       });
       setSubwayStopDropdownOpen(false);
@@ -505,14 +506,24 @@ export default function NycSubwayConfig({deviceId, providerId = 'mta-subway'}: P
 
   const toggleSubwayDirectionAtIndex = useCallback((direction: 'N' | 'S', index: 0 | 1) => {
     if (isBusMode) return;
+    const shouldAdvanceToSecondStop = index === 0 && !(subwaySelections[1]?.stopId?.trim());
     setStatusText('');
+    setStopError('');
     setSubwaySelections(prev => {
       const next = [...prev];
       if (!next[index]) return prev;
       next[index] = {...next[index], direction};
       return next;
     });
-  }, [isBusMode]);
+    if (shouldAdvanceToSecondStop) {
+      setSubwaySelections(prev => {
+        if (prev.length >= 2) return prev;
+        return [...prev, {line: '', stopId: '', stopName: 'Select stop', direction: ''}];
+      });
+      setActiveSubwaySelectionIndex(1);
+      setSubwayStopDropdownOpen(true);
+    }
+  }, [isBusMode, subwaySelections]);
 
   const saveConfigMutation = useMutation({
     mutationFn: async (payload: {
@@ -576,13 +587,26 @@ export default function NycSubwayConfig({deviceId, providerId = 'mta-subway'}: P
           stop: normalizedStopId,
         }));
       } else {
-        const validSelections = subwaySelections
+        const normalizedSelections = subwaySelections
           .map(sel => ({
             line: sel.line.trim().toUpperCase(),
             stopId: sel.stopId.trim().toUpperCase(),
             direction: sel.direction,
-          }))
-          .filter(sel => sel.line.length > 0 && sel.stopId.length > 0)
+          }));
+        const incompleteDirection = normalizedSelections.find(
+          sel => (sel.line.length > 0 || sel.stopId.length > 0) && !sel.direction,
+        );
+        if (incompleteDirection) {
+          setStatusText('Select a direction for each chosen train stop');
+          setStopError('Choose northbound or southbound before saving');
+          setIsSaving(false);
+          return;
+        }
+        const validSelections = normalizedSelections
+          .filter(
+            (sel): sel is {line: string; stopId: string; direction: 'N' | 'S'} =>
+              sel.line.length > 0 && sel.stopId.length > 0 && (sel.direction === 'N' || sel.direction === 'S'),
+          )
           .slice(0, MAX_SELECTED_LINES);
 
         if (validSelections.length === 0) {
@@ -777,6 +801,24 @@ export default function NycSubwayConfig({deviceId, providerId = 'mta-subway'}: P
               </Text>
             </Pressable>
 
+            <Text style={styles.hintText}>Train 1 direction</Text>
+            <View style={styles.lineGrid}>
+              {(['N', 'S'] as const).map(direction => {
+                const isActive = subwaySelections[0]?.direction === direction;
+                return (
+                  <Pressable
+                    key={`station-direction-0-${direction}`}
+                    style={[styles.lineChip, isActive && styles.lineChipActive]}
+                    onPress={() => toggleSubwayDirectionAtIndex(direction, 0)}
+                    disabled={isSaving || !subwaySelections[0]?.stopId}>
+                    <Text style={[styles.lineChipText, isActive && styles.lineChipTextActive]}>
+                      {direction === 'N' ? 'Northbound' : 'Southbound'}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+
             <Text style={styles.hintText}>Train 2 stop (optional)</Text>
             <Pressable
               style={({pressed}) => [
@@ -785,9 +827,17 @@ export default function NycSubwayConfig({deviceId, providerId = 'mta-subway'}: P
                 pressed && styles.stationSelectorPressed,
               ]}
               onPress={() => {
+                if (!subwaySelections[0]?.stopId) {
+                  setStopError('Select train 1 stop first');
+                  return;
+                }
+                if (!subwaySelections[0]?.direction) {
+                  setStopError('Select train 1 direction before choosing train 2');
+                  return;
+                }
                 setSubwaySelections(prev => {
                   if (prev.length >= 2) return prev;
-                  return [...prev, {line: '', stopId: '', stopName: 'Select stop', direction: 'N'}];
+                  return [...prev, {line: '', stopId: '', stopName: 'Select stop', direction: ''}];
                 });
                 setActiveSubwaySelectionIndex(1);
                 setSubwayStopDropdownOpen(prev => (activeSubwaySelectionIndex === 1 ? !prev : true));
@@ -814,6 +864,28 @@ export default function NycSubwayConfig({deviceId, providerId = 'mta-subway'}: P
                 }}>
                 <Text style={styles.stationSelectorText}>Remove Train 2</Text>
               </Pressable>
+            )}
+
+            {subwaySelections.length > 1 && (
+              <>
+                <Text style={styles.hintText}>Train 2 direction</Text>
+                <View style={styles.lineGrid}>
+                  {(['N', 'S'] as const).map(direction => {
+                    const isActive = subwaySelections[1]?.direction === direction;
+                    return (
+                      <Pressable
+                        key={`station-direction-1-${direction}`}
+                        style={[styles.lineChip, isActive && styles.lineChipActive]}
+                        onPress={() => toggleSubwayDirectionAtIndex(direction, 1)}
+                        disabled={isSaving || !subwaySelections[1]?.stopId}>
+                        <Text style={[styles.lineChipText, isActive && styles.lineChipTextActive]}>
+                          {direction === 'N' ? 'Northbound' : 'Southbound'}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              </>
             )}
 
             {isLoadingStops && <Text style={styles.hintText}>Loading NYC subway stops...</Text>}
@@ -907,22 +979,6 @@ export default function NycSubwayConfig({deviceId, providerId = 'mta-subway'}: P
             {!subwayLoadingLines[0] && (subwayAvailableLines[0]?.length ?? 0) === 0 && (
               <Text style={styles.hintText}>No lines for train 1 stop.</Text>
             )}
-            <View style={styles.lineGrid}>
-              {(['N', 'S'] as const).map(direction => {
-                const isActive = subwaySelections[0]?.direction === direction;
-                return (
-                  <Pressable
-                    key={`direction-0-${direction}`}
-                    style={[styles.lineChip, isActive && styles.lineChipActive]}
-                    onPress={() => toggleSubwayDirectionAtIndex(direction, 0)}
-                    disabled={isSaving}>
-                    <Text style={[styles.lineChipText, isActive && styles.lineChipTextActive]}>
-                      {direction === 'N' ? 'Northbound' : 'Southbound'}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </View>
             <View style={styles.lineGrid}>{subwayLineButtons(0)}</View>
 
             {subwaySelections.length > 1 && (
@@ -932,29 +988,13 @@ export default function NycSubwayConfig({deviceId, providerId = 'mta-subway'}: P
                 {!subwayLoadingLines[1] && (subwayAvailableLines[1]?.length ?? 0) === 0 && (
                   <Text style={styles.hintText}>No lines for train 2 stop.</Text>
                 )}
-                <View style={styles.lineGrid}>
-                  {(['N', 'S'] as const).map(direction => {
-                    const isActive = subwaySelections[1]?.direction === direction;
-                    return (
-                      <Pressable
-                        key={`direction-1-${direction}`}
-                        style={[styles.lineChip, isActive && styles.lineChipActive]}
-                        onPress={() => toggleSubwayDirectionAtIndex(direction, 1)}
-                        disabled={isSaving}>
-                        <Text style={[styles.lineChipText, isActive && styles.lineChipTextActive]}>
-                          {direction === 'N' ? 'Northbound' : 'Southbound'}
-                        </Text>
-                      </Pressable>
-                    );
-                  })}
-                </View>
                 <View style={styles.lineGrid}>{subwayLineButtons(1)}</View>
               </>
             )}
             <Text style={styles.destFixed}>
               Selected:{' '}
               {subwaySelections
-                .filter(sel => sel.line && sel.stopId)
+                .filter(sel => sel.line && sel.stopId && sel.direction)
                 .map(sel => `${sel.line}@${sel.stopId}(${sel.direction})`)
                 .join(', ') || 'None'}
             </Text>
