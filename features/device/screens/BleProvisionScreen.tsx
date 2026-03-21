@@ -19,7 +19,7 @@ import {useBleProvision} from '../hooks/useBleProvision';
 export default function BleProvisionScreen() {
   const router = useRouter();
   const {setDeviceId, setDeviceStatus} = useAppState();
-  const {deviceIds} = useAuth();
+  const {deviceIds, hydrate} = useAuth();
 
   const {state, startScan, connectToDevice, sendCredentials, reset} = useBleProvision();
 
@@ -39,25 +39,31 @@ export default function BleProvisionScreen() {
     isLinking;
 
   const registerAndLink = async (espDeviceId: string) => {
+    console.log('[BLE] registerAndLink called with', espDeviceId);
     setIsLinking(true);
     setLinkError('');
     setDeviceId(espDeviceId);
 
     if (deviceIds.includes(espDeviceId)) {
+      console.log('[BLE] device already in deviceIds, skipping registration');
       setDeviceStatus('pairedOnline');
+      await hydrate();
       setIsLinking(false);
       router.replace('/dashboard');
       return;
     }
 
     try {
+      console.log('[BLE] calling /device/register');
       const regRes = await apiFetch('/device/register', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({id: espDeviceId}),
       });
+      console.log('[BLE] /device/register status:', regRes.status);
       if (!regRes.ok && regRes.status !== 409) {
         const data = await regRes.json().catch(() => null);
+        console.log('[BLE] register failed:', data);
         setLinkError(
           typeof data?.error === 'string'
             ? `Register failed: ${data.error}`
@@ -67,13 +73,16 @@ export default function BleProvisionScreen() {
         return;
       }
 
+      console.log('[BLE] calling /user/device/link');
       const linkRes = await apiFetch('/user/device/link', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({deviceId: espDeviceId}),
       });
+      console.log('[BLE] /user/device/link status:', linkRes.status);
       if (!linkRes.ok && linkRes.status !== 409) {
         const data = await linkRes.json().catch(() => null);
+        console.log('[BLE] link failed:', data);
         setLinkError(
           typeof data?.error === 'string'
             ? `Link failed: ${data.error}`
@@ -82,11 +91,13 @@ export default function BleProvisionScreen() {
         setIsLinking(false);
         return;
       }
-      // 409 = device already linked to this user (e.g. re-provisioning) — treat as success.
 
+      console.log('[BLE] registration complete, hydrating auth');
       setDeviceStatus('pairedOnline');
+      await hydrate();
       router.replace('/dashboard');
     } catch (e: unknown) {
+      console.log('[BLE] registerAndLink error:', e);
       setLinkError(`Network error: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
       setIsLinking(false);
@@ -94,15 +105,12 @@ export default function BleProvisionScreen() {
   };
 
   const handleSendCredentials = async () => {
-    // Write credentials to device via BLE.
-    await sendCredentials(ssid.trim(), password, username.trim());
-
-    // deviceId from STATUS char read; fall back to BLE device name (same value on firmware).
-    const deviceId = state.deviceId ?? state.foundDevice?.name ?? null;
+    const deviceId = await sendCredentials(ssid.trim(), password, username.trim());
+    console.log('[BLE] sendCredentials returned deviceId:', deviceId);
     if (deviceId) {
       await registerAndLink(deviceId);
     } else {
-      setLinkError('Could not determine device ID. Please reconnect and try again.');
+      setLinkError('Could not read device ID from display. Please reconnect and try again.');
     }
   };
 
