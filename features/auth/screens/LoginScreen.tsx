@@ -93,7 +93,7 @@ export default function LoginScreen() {
 
           {errorText ? <Text style={styles.errorText}>{errorText}</Text> : null}
 
-          <Pressable style={styles.resetLink} onPress={() => router.push('/forgot-password')}>
+          <Pressable style={styles.resetLink} onPress={() => router.replace('/forgot-password')}>
             <Text style={styles.resetText}>Forgot password?</Text>
           </Pressable>
 
@@ -101,7 +101,7 @@ export default function LoginScreen() {
             style={styles.secondaryButton}
             onPress={() => {
               clearAuth();
-              router.push('/auth');
+              router.replace('/auth');
             }}>
             <Text style={styles.secondaryText}>Back</Text>
           </Pressable>

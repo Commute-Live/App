@@ -14,11 +14,11 @@ export default function AuthScreen() {
         <Image source={require('../../../app-logo.png')} style={styles.logo} resizeMode="contain" />
         <Text style={styles.subtitle}>Welcome back. Continue to your account.</Text>
 
-        <Pressable style={styles.primaryButton} onPress={() => router.push('/login')}>
+        <Pressable style={styles.primaryButton} onPress={() => router.replace('/login')}>
           <Text style={styles.primaryText}>Login</Text>
         </Pressable>
 
-        <Pressable style={styles.secondaryButton} onPress={() => router.push('/sign-up')}>
+        <Pressable style={styles.secondaryButton} onPress={() => router.replace('/sign-up')}>
           <Text style={styles.secondaryText}>Sign Up</Text>
         </Pressable>
 

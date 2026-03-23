@@ -31,6 +31,7 @@ export default function BleProvisionScreen() {
   const [password, setPassword] = useState('');
   const [username, setUsername] = useState('');
   const [linkError, setLinkError] = useState('');
+  const [isVerifyingWifi, setIsVerifyingWifi] = useState(false);
   const [isLinking, setIsLinking] = useState(false);
 
   const canSend = ssid.trim().length > 0 && password.trim().length > 0;
@@ -39,6 +40,7 @@ export default function BleProvisionScreen() {
     state.phase === 'scanning' ||
     state.phase === 'connecting' ||
     state.phase === 'provisioning' ||
+    isVerifyingWifi ||
     isLinking;
 
   const registerAndLink = async (espDeviceId: string) => {
@@ -142,7 +144,9 @@ export default function BleProvisionScreen() {
     const deviceId = await sendCredentials(ssid.trim(), password, username.trim());
     console.log('[BLE] sendCredentials returned deviceId:', deviceId);
     if (deviceId) {
+      setIsVerifyingWifi(true);
       const verification = await verifyProvisionedWifi(deviceId);
+      setIsVerifyingWifi(false);
       if (!verification.ok) {
         setLinkError(verification.error);
         return;
@@ -263,6 +267,13 @@ export default function BleProvisionScreen() {
               editable={!isBusy}
             />
 
+            {isVerifyingWifi && (
+              <View style={styles.progressCard}>
+                <StatusLine label="Credentials sent" active={true} />
+                <StatusLine label="Device connecting to Wi-Fi..." active={true} />
+                <ActivityIndicator color={colors.accent} style={{marginTop: spacing.sm}} />
+              </View>
+            )}
             {linkError.length > 0 && (
               <Text style={styles.errorInline}>{linkError}</Text>
             )}
@@ -279,7 +290,7 @@ export default function BleProvisionScreen() {
               style={[styles.primaryButton, (!canSend || isBusy) && styles.primaryButtonDisabled]}
               disabled={!canSend || isBusy}
               onPress={handleSendCredentials}>
-              {state.phase === 'provisioning' || isLinking ? (
+              {state.phase === 'provisioning' || isVerifyingWifi || isLinking ? (
                 <ActivityIndicator color={colors.background} />
               ) : (
                 <Text style={[styles.primaryText, (!canSend || isBusy) && styles.primaryTextDisabled]}>

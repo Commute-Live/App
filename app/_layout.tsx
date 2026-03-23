@@ -36,11 +36,11 @@ function AppNavigator() {
         contentStyle: {backgroundColor: colors.background},
       }}>
       <Stack.Screen name="index" />
-      <Stack.Screen name="auth" />
-      <Stack.Screen name="login" />
-      <Stack.Screen name="sign-up" />
-      <Stack.Screen name="forgot-password" />
-      <Stack.Screen name="reset-password" />
+      <Stack.Screen name="auth" options={{animation: 'none'}} />
+      <Stack.Screen name="login" options={{animation: 'none'}} />
+      <Stack.Screen name="sign-up" options={{animation: 'none'}} />
+      <Stack.Screen name="forgot-password" options={{animation: 'none'}} />
+      <Stack.Screen name="reset-password" options={{animation: 'none'}} />
       <Stack.Screen name="register-device" />
       <Stack.Screen name="ble-provision" />
       <Stack.Screen name="dashboard" options={{animation: 'none'}} />
