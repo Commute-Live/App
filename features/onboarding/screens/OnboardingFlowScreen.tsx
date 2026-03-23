@@ -31,6 +31,11 @@ import StaggeredEntrance from '../components/StaggeredEntrance';
 import { ONBOARDING_MAX_WIDTH, onboardingPalette } from '../constants';
 import { apiFetch } from '../../../lib/api';
 import {
+   getDeviceLinkFailureMessage,
+   isBenignDeviceLinkConflict,
+   readApiError,
+} from '../../../lib/deviceLinking';
+import {
    getHapticsModule,
    getLocalAuthenticationModule,
    useBleProvisionCompat,
@@ -303,24 +308,39 @@ export default function OnboardingFlowScreen({
             let attempt = 0;
             attempt < WIFI_VERIFICATION_ATTEMPTS;
             attempt += 1
-         ) {
-            try {
+      ) {
+         try {
+               await apiFetch(`/refresh/device/${encodeURIComponent(nextDeviceId)}`, {
+                  method: 'POST',
+               }).catch(() => null);
+
                const response = await apiFetch(
                   `/refresh/device/${encodeURIComponent(nextDeviceId)}`,
                   {
-                     method: 'POST',
+                     method: 'GET',
                   },
                );
 
-               if (response.ok) {
-                  return { ok: true as const };
-               }
+               if (response.status === 403) {
+                  lastError =
+                     'Refresh endpoint is denying access before the device is linked.';
+               } else if (!response.ok) {
+                  const data = await response.json().catch(() => null);
+                  lastError =
+                     typeof data?.error === 'string'
+                        ? data.error
+                        : `Verification failed (${response.status})`;
+               } else {
+                  const data = await response.json().catch(() => null);
+                  if (data?.online === true) {
+                     return { ok: true as const };
+                  }
 
-               const data = await response.json().catch(() => null);
-               lastError =
-                  typeof data?.error === 'string'
-                     ? data.error
-                     : `Verification failed (${response.status})`;
+                  lastError =
+                     typeof data?.status === 'string'
+                        ? `Device is still ${data.status}.`
+                        : 'The display is still offline.';
+               }
             } catch {
                lastError = 'Verification timeout';
             }
@@ -336,51 +356,44 @@ export default function OnboardingFlowScreen({
       [],
    );
 
-   const registerAndLinkDevice = useCallback(
+   const prepareDeviceLink = useCallback(
       async (nextDeviceId: string) => {
-         setStep('linking');
          setDeviceError('');
          setDeviceId(nextDeviceId);
 
-         try {
-            await ensureDeviceRegistered(nextDeviceId);
+         await ensureDeviceRegistered(nextDeviceId);
 
-            const linkResponse = await apiFetch('/user/device/link', {
-               method: 'POST',
-               headers: { 'Content-Type': 'application/json' },
-               body: JSON.stringify({ deviceId: nextDeviceId }),
-            });
+         const linkResponse = await apiFetch('/user/device/link', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ deviceId: nextDeviceId }),
+         });
 
-            if (!linkResponse.ok && linkResponse.status !== 409) {
-               const data = await linkResponse.json().catch(() => null);
-               throw new Error(
-                  typeof data?.error === 'string'
-                     ? `Device link failed: ${data.error}`
-                     : `Device link failed (${linkResponse.status})`,
-               );
-            }
-
-            setDeviceStatus('pairedOnline');
-            await hydrate();
-            setStep('complete');
-            triggerNotification('success');
-            await wait(420);
-            router.replace('/presets');
-            return true;
-         } catch (error) {
-            setStep('deviceMethod');
-            setDeviceStatus('notPaired');
-            setDeviceError(
-               error instanceof Error
-                  ? error.message
-                  : 'Unable to finish setup.',
+         const data = await linkResponse.json().catch(() => null);
+         const linkError = readApiError(data);
+         if (!linkResponse.ok && !isBenignDeviceLinkConflict(linkResponse.status, linkError)) {
+            throw new Error(
+               getDeviceLinkFailureMessage(
+                  linkResponse.status,
+                  linkError,
+                  'Device link failed',
+               ),
             );
-            triggerNotification('error');
-            return false;
          }
+
+         setDeviceStatus('pairedOffline');
       },
-      [ensureDeviceRegistered, hydrate, router, setDeviceId, setDeviceStatus],
+      [ensureDeviceRegistered, setDeviceId, setDeviceStatus],
    );
+
+   const completeLinkedDeviceSetup = useCallback(async () => {
+      setDeviceStatus('pairedOnline');
+      await hydrate();
+      setStep('complete');
+      triggerNotification('success');
+      await wait(420);
+      router.replace('/presets');
+   }, [hydrate, router, setDeviceStatus]);
 
    const submitAuth = useCallback(async () => {
       const nextEmail = email.trim().toLowerCase();
@@ -491,22 +504,36 @@ export default function OnboardingFlowScreen({
             return;
          }
 
+         setStep('linking');
+         await prepareDeviceLink(nextDeviceId);
+
          const verification = await verifyProvisionedWifi(nextDeviceId);
          if (!verification.ok) {
+            setStep('wifiSheet');
+            setDeviceStatus('pairedOffline');
             setWifiError(verification.error);
             triggerNotification('error');
             return;
          }
 
          setWifiSheetVisible(false);
-         await registerAndLinkDevice(nextDeviceId);
+         await completeLinkedDeviceSetup();
+      } catch (error) {
+         setStep('wifiSheet');
+         setDeviceStatus('notPaired');
+         setWifiError(
+            error instanceof Error ? error.message : 'Unable to finish setup.',
+         );
+         triggerNotification('error');
       } finally {
          setWifiSubmitting(false);
       }
    }, [
       bleProvision,
-      registerAndLinkDevice,
+      completeLinkedDeviceSetup,
+      prepareDeviceLink,
       ssid,
+      setDeviceStatus,
       verifyProvisionedWifi,
       wifiPassword,
       wifiUsername,

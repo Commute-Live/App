@@ -7,6 +7,11 @@ import {useMutation} from '@tanstack/react-query';
 import {PreviewCard} from '../../../components/PreviewCard';
 import {colors, spacing, radii} from '../../../theme';
 import {apiFetch} from '../../../lib/api';
+import {
+  getDeviceLinkFailureMessage,
+  isBenignDeviceLinkConflict,
+  readApiError,
+} from '../../../lib/deviceLinking';
 import {useAuth} from '../../../state/authProvider';
 
 const fallbackDevice = {id: 'commutelive-001', name: 'Commute Live Display'};
@@ -40,11 +45,16 @@ export default function PairedOnlineScreen() {
       } catch {
         data = null;
       }
-      if (!response.ok) {
+      const error = readApiError(data);
+      if (!response.ok && !isBenignDeviceLinkConflict(response.status, error)) {
         if (data?.error === 'REFRESH_INVALID' || data?.error === 'REFRESH_REUSED') {
           return {ok: false as const, authExpired: true, message: data?.error};
         }
-        return {ok: false as const, authExpired: false, message: data?.error || text || 'Link failed.'};
+        return {
+          ok: false as const,
+          authExpired: false,
+          message: getDeviceLinkFailureMessage(response.status, error ?? text, 'Link failed'),
+        };
       }
       return {ok: true as const, message: data?.message || 'Device linked successfully.'};
     },

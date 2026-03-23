@@ -7,6 +7,11 @@ import {useMutation, useQuery} from '@tanstack/react-query';
 import {colors, spacing, radii} from '../../../theme';
 import {useAppState} from '../../../state/appState';
 import {apiFetch} from '../../../lib/api';
+import {
+  getDeviceLinkFailureMessage,
+  isBenignDeviceLinkConflict,
+  readApiError,
+} from '../../../lib/deviceLinking';
 import {queryKeys} from '../../../lib/queryKeys';
 import {useAuth} from '../../../state/authProvider';
 
@@ -62,15 +67,18 @@ export default function SetupIntroScreen() {
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({deviceId: deviceIdToLink}),
       });
+      const linkData = await linkResponse.json().catch(() => null);
+      const linkError = readApiError(linkData);
 
-      if (!linkResponse.ok) {
-        const linkData = await linkResponse.json().catch(() => null);
+      if (!linkResponse.ok && !isBenignDeviceLinkConflict(linkResponse.status, linkError)) {
         return {
           ok: false as const,
           error:
-            typeof linkData?.error === 'string'
-              ? `Wi-Fi connected, but device link failed: ${linkData.error}`
-              : `Wi-Fi connected, but device link failed (${linkResponse.status})`,
+            getDeviceLinkFailureMessage(
+              linkResponse.status,
+              linkError,
+              'Wi-Fi connected, but device link failed',
+            ),
         };
       }
 
