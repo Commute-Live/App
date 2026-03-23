@@ -3,7 +3,6 @@ import {Image, StyleSheet} from 'react-native';
 import {SafeAreaView} from 'react-native-safe-area-context';
 import {useRouter} from 'expo-router';
 import {colors} from '../../../theme';
-import AuthScreen from '../../auth/screens/AuthScreen';
 import {useAuth} from '../../../state/authProvider';
 
 const DEV_BYPASS_LOGIN = true;
@@ -24,8 +23,8 @@ export default function MainEntryScreen() {
       router.replace('/dashboard');
       return;
     }
-    if (showLogo || status === 'loading' || !isAuthenticated) return;
-    router.replace('/dashboard');
+    if (status === 'loading') return;
+    router.replace(isAuthenticated ? '/dashboard' : '/auth');
   }, [isAuthenticated, router, showLogo, status]);
 
   if (showLogo || status === 'loading') {
@@ -40,8 +39,7 @@ export default function MainEntryScreen() {
     );
   }
 
-  if (DEV_BYPASS_LOGIN) return null;
-  return <AuthScreen />;
+  return null;
 }
 
 const styles = StyleSheet.create({

@@ -170,15 +170,31 @@ export function useBleProvision() {
       const encoded = Buffer.from(payload, 'utf8').toString('base64');
 
       try {
-        await device.writeCharacteristicWithResponseForService(
-          BLE_SERVICE_UUID,
-          BLE_PROVISION_UUID,
-          encoded,
-        );
+        try {
+          // Let the ESP drop BLE immediately after it stores credentials.
+          await device.writeCharacteristicWithoutResponseForService(
+            BLE_SERVICE_UUID,
+            BLE_PROVISION_UUID,
+            encoded,
+          );
+        } catch (error: unknown) {
+          const stillConnected = await device.isConnected().catch(() => false);
+
+          if (stillConnected) {
+            await device.writeCharacteristicWithResponseForService(
+              BLE_SERVICE_UUID,
+              BLE_PROVISION_UUID,
+              encoded,
+            );
+          } else {
+            console.log('[BLE] Device disconnected after credentials handoff; continuing with network verification');
+          }
+        }
+
         setPhase('done');
         // device.name is the deviceId (e.g. "esp32-B44AC2F16E20")
         const deviceId = device.name ?? null;
-        console.log('[BLE] Credentials sent, deviceId =', deviceId);
+        console.log('[BLE] Credentials handed off, deviceId =', deviceId);
         return deviceId;
       } catch (e: unknown) {
         fail(`Failed to send credentials: ${e instanceof Error ? e.message : String(e)}`);

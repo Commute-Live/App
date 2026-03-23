@@ -4,11 +4,13 @@ import {Ionicons} from '@expo/vector-icons';
 import {useRouter} from 'expo-router';
 import {colors, spacing} from '../theme';
 
-export const ScreenHeader = ({title}: {title: string}) => {
+export const ScreenHeader = ({title, onBack}: {title: string; onBack?: () => void}) => {
   const router = useRouter();
+  const handleBack = onBack ?? (() => router.back());
+
   return (
     <View style={styles.container}>
-      <Pressable style={styles.back} onPress={() => router.back()}>
+      <Pressable style={styles.back} onPress={handleBack}>
         <Ionicons name="chevron-back" size={20} color={colors.text} />
       </Pressable>
       <Text style={styles.title}>{title}</Text>

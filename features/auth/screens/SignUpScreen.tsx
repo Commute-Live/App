@@ -119,7 +119,7 @@ export default function SignUpScreen() {
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         keyboardVerticalOffset={Platform.OS === 'ios' ? 12 : 0}>
         <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-          <ScreenHeader title="Sign Up" />
+          <ScreenHeader title="Sign Up" onBack={() => router.replace('/auth')} />
 
           <Image source={require('../../../app-logo.png')} style={styles.logo} resizeMode="contain" />
           <Text style={styles.title}>Create your account</Text>
