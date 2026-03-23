@@ -16,19 +16,6 @@
     "ios": {
       "infoPlist": {
         "NSBluetoothAlwaysUsageDescription": "CommuteLive uses Bluetooth to set up your transit display without switching Wi-Fi networks.",
-        "NSAppTransportSecurity": {
-          "NSAllowsArbitraryLoads": true,
-          "NSExceptionDomains": {
-            "localhost": {
-              "NSExceptionAllowsInsecureHTTPLoads": true,
-              "NSIncludesSubdomains": true
-            },
-            "129.161.86.73": {
-              "NSExceptionAllowsInsecureHTTPLoads": true,
-              "NSIncludesSubdomains": false
-            }
-          }
-        },
         "ITSAppUsesNonExemptEncryption": false
       },
       "bundleIdentifier": "com.commutelive.app",
