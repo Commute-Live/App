@@ -36,7 +36,7 @@ export default function AuthScreen() {
   return (
     <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
       <View style={styles.content}>
-        <Image source={require('../../../app-logo.png')} style={styles.logo} resizeMode="contain" />
+        <Image source={require('../../../assets/images/app-logo.png')} style={styles.logo} resizeMode="contain" />
         <Text style={styles.title}>CommuteLive</Text>
         <Text style={styles.subtitle}>Sign in to manage your transit display.</Text>
 
