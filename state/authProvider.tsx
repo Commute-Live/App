@@ -11,6 +11,8 @@ type AuthUser = {
   email: string;
 };
 
+type SocialProvider = 'apple' | 'google';
+
 type AuthContextValue = {
   status: AuthStatus;
   isAuthenticated: boolean;
@@ -18,9 +20,9 @@ type AuthContextValue = {
   deviceIds: string[];
   deviceId: string | null;
   hydrate: () => Promise<void>;
-  signIn: (
-    email: string,
-    password: string,
+  socialSignIn: (
+    provider: SocialProvider,
+    token: string,
   ) => Promise<{ok: true; user: AuthUser; deviceIds: string[]} | {ok: false; error: string}>;
   signOut: () => Promise<void>;
   clearAuth: () => void;
@@ -108,50 +110,37 @@ export function AuthProvider({children}: {children: React.ReactNode}) {
     clearAuth();
   }, [applyAuthenticatedProfile, authMeQuery, clearAuth]);
 
-  const signInMutation = useMutation({
-    mutationFn: async ({email, password}: {email: string; password: string}) => {
-      try {
-        const response = await apiFetch('/auth/login', {
-          method: 'POST',
-          headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({email: email.trim(), password}),
-        });
-        const data = await response.json().catch(() => null);
-        const profile = toUserProfile(data?.user);
-        if (!response.ok || !profile) {
-          return {
-            ok: false as const,
-            error: data?.error === 'INVALID_CREDENTIALS' ? 'Invalid email or password' : 'Login failed',
-          };
-        }
-        return {ok: true as const, profile};
-      } catch {
-        return {ok: false as const, error: 'Network error'};
-      }
-    },
-  });
-
   const signOutMutation = useMutation({
     mutationFn: async () => {
       await apiFetch('/auth/logout', {method: 'POST'});
     },
   });
 
-  const signIn = useCallback(
-    async (email: string, password: string) => {
-      const result = await signInMutation.mutateAsync({email, password});
-      if (!result.ok) {
-        return result;
+  const socialSignIn = useCallback(
+    async (provider: SocialProvider, token: string) => {
+      try {
+        const response = await apiFetch(`/auth/${provider}`, {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({token}),
+        });
+        const data = await response.json().catch(() => null);
+        const profile = toUserProfile(data?.user);
+        if (!response.ok || !profile) {
+          return {ok: false as const, error: data?.message ?? 'Sign-in failed'};
+        }
+        applyAuthenticatedProfile(profile);
+        queryClient.setQueryData(queryKeys.auth.me, profile);
+        return {
+          ok: true as const,
+          user: {id: profile.id, email: profile.email},
+          deviceIds: profile.deviceIds,
+        };
+      } catch {
+        return {ok: false as const, error: 'Network error'};
       }
-      applyAuthenticatedProfile(result.profile);
-      queryClient.setQueryData(queryKeys.auth.me, result.profile);
-      return {
-        ok: true as const,
-        user: {id: result.profile.id, email: result.profile.email},
-        deviceIds: result.profile.deviceIds,
-      };
     },
-    [applyAuthenticatedProfile, queryClient, signInMutation],
+    [applyAuthenticatedProfile, queryClient],
   );
 
   const signOut = useCallback(async () => {
@@ -200,12 +189,12 @@ export function AuthProvider({children}: {children: React.ReactNode}) {
       deviceIds,
       deviceId: appDeviceId,
       hydrate,
-      signIn,
+      socialSignIn,
       signOut,
       clearAuth,
       setDeviceId,
     }),
-    [appDeviceId, clearAuth, deviceIds, hydrate, setDeviceId, signIn, signOut, status, user],
+    [appDeviceId, clearAuth, deviceIds, hydrate, setDeviceId, socialSignIn, signOut, status, user],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
