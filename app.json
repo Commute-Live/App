@@ -16,6 +16,7 @@
     "ios": {
       "infoPlist": {
         "NSBluetoothAlwaysUsageDescription": "CommuteLive uses Bluetooth to set up your transit display without switching Wi-Fi networks.",
+        "NSFaceIDUsageDescription": "CommuteLive uses Face ID to confirm sign-in before you connect your display.",
         "NSAppTransportSecurity": {
           "NSAllowsArbitraryLoads": true,
           "NSExceptionDomains": {

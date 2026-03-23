@@ -3,14 +3,11 @@ import {Image, StyleSheet} from 'react-native';
 import {SafeAreaView} from 'react-native-safe-area-context';
 import {useRouter} from 'expo-router';
 import {colors} from '../../../theme';
-import AuthScreen from '../../auth/screens/AuthScreen';
 import {useAuth} from '../../../state/authProvider';
-
-const DEV_BYPASS_LOGIN = true;
 
 export default function MainEntryScreen() {
   const router = useRouter();
-  const {status, isAuthenticated} = useAuth();
+  const {status, isAuthenticated, deviceIds} = useAuth();
   const [showLogo, setShowLogo] = useState(true);
 
   useEffect(() => {
@@ -19,14 +16,20 @@ export default function MainEntryScreen() {
   }, []);
 
   useEffect(() => {
-    if (showLogo) return;
-    if (DEV_BYPASS_LOGIN) {
-      router.replace('/dashboard');
+    if (showLogo || status === 'loading') return;
+
+    if (!isAuthenticated) {
+      router.replace('/auth');
       return;
     }
-    if (showLogo || status === 'loading' || !isAuthenticated) return;
+
+    if (deviceIds.length === 0) {
+      router.replace({pathname: '/auth', params: {resume: 'device'}});
+      return;
+    }
+
     router.replace('/dashboard');
-  }, [isAuthenticated, router, showLogo, status]);
+  }, [deviceIds.length, isAuthenticated, router, showLogo, status]);
 
   if (showLogo || status === 'loading') {
     return (
@@ -40,8 +43,7 @@ export default function MainEntryScreen() {
     );
   }
 
-  if (DEV_BYPASS_LOGIN) return null;
-  return <AuthScreen />;
+  return null;
 }
 
 const styles = StyleSheet.create({

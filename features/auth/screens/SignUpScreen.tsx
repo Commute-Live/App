@@ -18,7 +18,6 @@ import {ScreenHeader} from '../../../components/ScreenHeader';
 import {apiFetch} from '../../../lib/api';
 import {useAuth} from '../../../state/authProvider';
 import {colors, radii, spacing} from '../../../theme';
-import {validateStrongPassword} from '../passwordValidation';
 
 const TIMEZONES = [
   {label: 'Eastern (EST)', value: 'America/New_York'},
@@ -66,12 +65,6 @@ export default function SignUpScreen() {
       return;
     }
 
-    const passwordErrors = validateStrongPassword(password);
-    if (passwordErrors.length) {
-      setErrorText(passwordErrors[0] ?? 'Choose a stronger password');
-      return;
-    }
-
     setIsSubmitting(true);
     setErrorText('');
 
@@ -86,10 +79,6 @@ export default function SignUpScreen() {
       if (!result.ok) {
         if (result.data?.error === 'email already registered') {
           setErrorText('Email already registered');
-          return;
-        }
-        if (result.data?.error === 'WEAK_PASSWORD' && Array.isArray(result.data?.details)) {
-          setErrorText(String(result.data.details[0] ?? 'Choose a stronger password'));
           return;
         }
         setErrorText('Sign up failed');
@@ -157,7 +146,7 @@ export default function SignUpScreen() {
             <TextInput
               value={password}
               onChangeText={setPassword}
-              placeholder="Create a strong password"
+              placeholder="Create a password"
               placeholderTextColor={colors.textMuted}
               secureTextEntry
               style={styles.input}

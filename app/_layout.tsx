@@ -1,4 +1,7 @@
+import 'react-native-reanimated';
+
 import React, {useEffect} from 'react';
+import {View} from 'react-native';
 import {Stack, useRouter} from 'expo-router';
 import {StatusBar} from 'expo-status-bar';
 import {SafeAreaProvider} from 'react-native-safe-area-context';
@@ -8,7 +11,7 @@ import {colors} from '../theme';
 import {setSessionInvalidHandler} from '../lib/api';
 import {queryClient} from '../lib/queryClient';
 import {AuthProvider, useAuth} from '../state/authProvider';
-import 'react-native-reanimated';
+import {BottomSheetModalProviderCompat, GestureHandlerRootViewCompat} from '../lib/nativeCompat';
 
 function AppNavigator() {
   const router = useRouter();
@@ -58,15 +61,19 @@ function AppNavigator() {
 
 export default function RootLayout() {
   return (
-    <QueryClientProvider client={queryClient}>
-      <SafeAreaProvider>
-        <AppStateProvider>
-          <AuthProvider>
-            <StatusBar style="light" />
-            <AppNavigator />
-          </AuthProvider>
-        </AppStateProvider>
-      </SafeAreaProvider>
-    </QueryClientProvider>
+    <GestureHandlerRootViewCompat style={{flex: 1}}>
+      <QueryClientProvider client={queryClient}>
+        <SafeAreaProvider>
+          <BottomSheetModalProviderCompat>
+            <AppStateProvider>
+              <AuthProvider>
+                <StatusBar style="auto" />
+                <AppNavigator />
+              </AuthProvider>
+            </AppStateProvider>
+          </BottomSheetModalProviderCompat>
+        </SafeAreaProvider>
+      </QueryClientProvider>
+    </GestureHandlerRootViewCompat>
   );
 }

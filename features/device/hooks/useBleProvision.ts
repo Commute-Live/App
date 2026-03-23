@@ -1,5 +1,5 @@
 import {useCallback, useEffect, useRef, useState} from 'react';
-import {BleManager, Device, BleError} from 'react-native-ble-plx';
+import {BleManager, Device, BleError, BleErrorCode} from 'react-native-ble-plx';
 import {Platform, PermissionsAndroid} from 'react-native';
 import {Buffer} from 'buffer';
 
@@ -170,15 +170,36 @@ export function useBleProvision() {
       const encoded = Buffer.from(payload, 'utf8').toString('base64');
 
       try {
-        await device.writeCharacteristicWithResponseForService(
-          BLE_SERVICE_UUID,
-          BLE_PROVISION_UUID,
-          encoded,
-        );
+        try {
+          // Prefer a fire-and-forget write so the ESP can drop BLE immediately
+          // after receiving credentials and switch to Wi-Fi mode.
+          await device.writeCharacteristicWithoutResponseForService(
+            BLE_SERVICE_UUID,
+            BLE_PROVISION_UUID,
+            encoded,
+          );
+        } catch (error: unknown) {
+          const stillConnected = await device.isConnected().catch(() => false);
+
+          if (stillConnected) {
+            await device.writeCharacteristicWithResponseForService(
+              BLE_SERVICE_UUID,
+              BLE_PROVISION_UUID,
+              encoded,
+            );
+          } else if (error instanceof BleError && error.errorCode !== BleErrorCode.CharacteristicWriteFailed) {
+            console.log('[BLE] Device disconnected during credential handoff, continuing with optimistic verification');
+          } else if (!stillConnected) {
+            console.log('[BLE] Device disconnected during credential handoff, continuing with optimistic verification');
+          } else {
+            throw error;
+          }
+        }
+
         setPhase('done');
         // device.name is the deviceId (e.g. "esp32-B44AC2F16E20")
         const deviceId = device.name ?? null;
-        console.log('[BLE] Credentials sent, deviceId =', deviceId);
+        console.log('[BLE] Credentials handed off, deviceId =', deviceId);
         return deviceId;
       } catch (e: unknown) {
         fail(`Failed to send credentials: ${e instanceof Error ? e.message : String(e)}`);

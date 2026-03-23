@@ -16,6 +16,10 @@ import {apiFetch} from '../../../lib/api';
 import {useAuth} from '../../../state/authProvider';
 import {useBleProvision} from '../hooks/useBleProvision';
 
+const WIFI_VERIFICATION_ATTEMPTS = 7;
+const WIFI_VERIFICATION_DELAY_MS = 1500;
+const wait = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
 export default function BleProvisionScreen() {
   const router = useRouter();
   const {setDeviceId, setDeviceStatus} = useAppState();
@@ -35,7 +39,6 @@ export default function BleProvisionScreen() {
     state.phase === 'scanning' ||
     state.phase === 'connecting' ||
     state.phase === 'provisioning' ||
-    state.phase === 'waiting_wifi' ||
     isLinking;
 
   const registerAndLink = async (espDeviceId: string) => {
@@ -104,10 +107,46 @@ export default function BleProvisionScreen() {
     }
   };
 
+  const verifyProvisionedWifi = async (espDeviceId: string) => {
+    let lastError = '';
+
+    for (let attempt = 0; attempt < WIFI_VERIFICATION_ATTEMPTS; attempt += 1) {
+      try {
+        const response = await apiFetch(`/refresh/device/${encodeURIComponent(espDeviceId)}`, {
+          method: 'POST',
+        });
+
+        if (response.ok) {
+          return {ok: true as const};
+        }
+
+        const data = await response.json().catch(() => null);
+        lastError =
+          typeof data?.error === 'string'
+            ? data.error
+            : `Verification failed (${response.status})`;
+      } catch {
+        lastError = 'Verification timeout';
+      }
+
+      await wait(WIFI_VERIFICATION_DELAY_MS);
+    }
+
+    return {
+      ok: false as const,
+      error: lastError || 'The display did not come online.',
+    };
+  };
+
   const handleSendCredentials = async () => {
     const deviceId = await sendCredentials(ssid.trim(), password, username.trim());
     console.log('[BLE] sendCredentials returned deviceId:', deviceId);
     if (deviceId) {
+      const verification = await verifyProvisionedWifi(deviceId);
+      if (!verification.ok) {
+        setLinkError(verification.error);
+        return;
+      }
       await registerAndLink(deviceId);
     } else {
       setLinkError('Could not read device ID from display. Please reconnect and try again.');
@@ -186,8 +225,7 @@ export default function BleProvisionScreen() {
 
         {/* Phase: connected — enter WiFi credentials */}
         {(state.phase === 'connected' ||
-          state.phase === 'provisioning' ||
-          state.phase === 'waiting_wifi') && (
+          state.phase === 'provisioning') && (
           <View style={styles.section}>
             <View style={styles.connectedBadge}>
               <View style={styles.dotActive} />
@@ -225,14 +263,6 @@ export default function BleProvisionScreen() {
               editable={!isBusy}
             />
 
-            {state.phase === 'waiting_wifi' && (
-              <View style={styles.progressCard}>
-                <StatusLine label="Credentials sent" active={true} />
-                <StatusLine label="Device connecting to Wi-Fi..." active={true} />
-                <ActivityIndicator color={colors.accent} style={{marginTop: spacing.sm}} />
-              </View>
-            )}
-
             {linkError.length > 0 && (
               <Text style={styles.errorInline}>{linkError}</Text>
             )}
@@ -249,7 +279,7 @@ export default function BleProvisionScreen() {
               style={[styles.primaryButton, (!canSend || isBusy) && styles.primaryButtonDisabled]}
               disabled={!canSend || isBusy}
               onPress={handleSendCredentials}>
-              {state.phase === 'provisioning' || state.phase === 'waiting_wifi' || isLinking ? (
+              {state.phase === 'provisioning' || isLinking ? (
                 <ActivityIndicator color={colors.background} />
               ) : (
                 <Text style={[styles.primaryText, (!canSend || isBusy) && styles.primaryTextDisabled]}>
