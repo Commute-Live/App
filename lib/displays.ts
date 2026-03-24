@@ -143,6 +143,7 @@ const toDisplayTimeLabel = (value: unknown): string | null => {
 
 const PREVIEW_TIME_COLOR_ONTIME = '#34D399';
 const PREVIEW_TIME_COLOR_DUE = '#EF4444';
+const DEFAULT_NEXT_STOPS = 3;
 
 const isDueTimeLabel = (value: string) => {
   const normalized = value.trim().toUpperCase();
@@ -154,6 +155,46 @@ const isDueTimeLabel = (value: string) => {
     normalized === '0M' ||
     normalized === '0'
   );
+};
+
+const resolvePreviewDirectionLabel = (value: unknown) => {
+  const normalized = normalizeDirectionToken(value);
+  if (normalized === 'N') return 'Uptown';
+  if (normalized === 'S') return 'Downtown';
+  return typeof value === 'string' && value.trim().length > 0 ? value.trim() : '--';
+};
+
+const resolvePreviewContent = (
+  content: unknown,
+  destinationLabel: string,
+  directionLabel: string,
+  customLabel: unknown,
+) => {
+  const normalized = typeof content === 'string' ? content.trim().toLowerCase() : '';
+  if (normalized === 'direction') return directionLabel;
+  if (normalized === 'custom') {
+    return typeof customLabel === 'string' && customLabel.trim().length > 0 ? customLabel.trim() : destinationLabel;
+  }
+  return destinationLabel;
+};
+
+const extractMinutesFromPreviewTime = (value: string | undefined) => {
+  if (!value) return 2;
+  const match = value.match(/(\d+)/);
+  if (!match) return 2;
+  const parsed = Number(match[1]);
+  return Number.isFinite(parsed) ? Math.max(1, parsed) : 2;
+};
+
+const buildPreviewEtaList = (firstMinutes: number, count: number) => {
+  const safeCount = Math.max(1, Math.min(5, Math.round(count || DEFAULT_NEXT_STOPS)));
+  const times: string[] = [];
+  let current = Math.max(1, Math.round(firstMinutes));
+  for (let idx = 0; idx < safeCount; idx += 1) {
+    times.push(`${current}m`);
+    current += idx % 2 === 0 ? 2 : 3;
+  }
+  return times.join(', ');
 };
 
 export const buildPreviewLineKey = (line: Pick<LineConfig, 'provider' | 'line' | 'stop' | 'direction'>) => {
@@ -354,6 +395,13 @@ export const toPreviewSlots = (
     const lineColors = city ? (CITY_LINE_COLORS[city] ?? {}) : {};
     const lineId = (line.line ?? '').toUpperCase();
     const {color, textColor: lineTextColor} = lineColors[lineId] ?? hashLineColor(lineId);
+    const directionLabel = resolvePreviewDirectionLabel(line.direction);
+    const destinationLabel = stopNames[`${line.provider}:${line.stop}`] || line.stop || 'Select stop';
+    const displayType = Number.isFinite(Number(line.displayType))
+      ? Math.max(1, Math.min(5, Math.trunc(Number(line.displayType))))
+      : Number.isFinite(Number(display.config.displayType))
+        ? Math.max(1, Math.min(5, Math.trunc(Number(display.config.displayType))))
+        : 1;
     const lineKey = buildPreviewLineKey(line);
     const liveTime =
       liveArrivals?.byLineKey[lineKey] ??
@@ -365,15 +413,29 @@ export const toPreviewSlots = (
           ? PREVIEW_TIME_COLOR_DUE
           : PREVIEW_TIME_COLOR_ONTIME
         : undefined;
+    const previewTitle =
+      line.topText ||
+      resolvePreviewContent(line.primaryContent, destinationLabel, directionLabel, line.label);
+    const previewSecondary =
+      line.bottomText ||
+      resolvePreviewContent(line.secondaryContent, destinationLabel, directionLabel, line.secondaryLabel);
+    const previewSubLine =
+      displayType === 3
+        ? previewSecondary
+        : displayType === 4 || displayType === 5
+          ? buildPreviewEtaList(extractMinutesFromPreviewTime(liveTime), line.nextStops ?? DEFAULT_NEXT_STOPS)
+          : undefined;
     return {
       id: `${display.displayId}-${index}`,
       color,
       textColor: line.textColor || lineTextColor,
       routeLabel: lineId.slice(0, 4) || '--',
+      badgeShape: city === 'new-york' && line.provider === 'mta-bus' ? 'pill' : line.provider === 'mta-lirr' || line.provider === 'mbta' ? 'rail' : 'circle',
       selected: false,
-      stopName: line.topText || line.label || stopNames[`${line.provider}:${line.stop}`] || line.stop || 'Select stop',
-      subLine: line.bottomText || line.secondaryLabel || undefined,
-      times: liveTime || (showDirectionFallback ? line.direction || '--' : '--'),
+      stopName: previewTitle,
+      subLine: previewSubLine,
+      subLineColor: displayType === 4 || displayType === 5 ? '#E5C15A' : undefined,
+      times: liveTime || (showDirectionFallback ? directionLabel : '--'),
       timesColor: liveTimeColor,
     };
   });

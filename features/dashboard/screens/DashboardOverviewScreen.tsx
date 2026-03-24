@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, Text, View } from 'react-native';
+import { ActivityIndicator, PanResponder, Pressable, ScrollView, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -281,6 +281,20 @@ export default function DashboardOverviewScreen() {
       if (preset) void activateDisplayOnDevice(preset);
    };
 
+   const heroSwipeResponder = useMemo(
+      () =>
+         PanResponder.create({
+            onMoveShouldSetPanResponder: (_event, gestureState) =>
+               Math.abs(gestureState.dx) > 12 && Math.abs(gestureState.dx) > Math.abs(gestureState.dy),
+            onPanResponderRelease: (_event, gestureState) => {
+               if (Math.abs(gestureState.dx) < 36) return;
+               moveCarousel(gestureState.dx < 0 ? 1 : -1);
+            },
+            onPanResponderTerminate: () => {},
+         }),
+      [carouselIndex, carouselPresets.length],
+   );
+
    return (
       <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
          <ScrollView contentContainerStyle={styles.scroll}>
@@ -425,22 +439,24 @@ export default function DashboardOverviewScreen() {
 
                {activePreset ? (
                   <>
-                     <DashboardPreviewSection
-                        slots={toPreviewSlots(activePreset, cityBrand.accent, stopNames, liveArrivalLookup, {
-                           showDirectionFallback: false,
-                        })}
-                        displayType={activePreset.config.displayType ?? Number(activePreset.config.lines?.[0]?.displayType) ?? 1}
-                        onSelectSlot={() =>
-                           router.push({
-                              pathname: '/preset-editor',
-                              params: {city, from: 'dashboard', mode: 'edit', displayId: activePreset.displayId},
-                           })
-                        }
-                        onReorderSlot={() => {}}
-                        onDragStateChange={() => {}}
-                        showHint={false}
-                        brightness={activePreset.config.brightness ?? 60}
-                     />
+                     <View style={styles.heroPreviewGesture} {...heroSwipeResponder.panHandlers}>
+                        <DashboardPreviewSection
+                           slots={toPreviewSlots(activePreset, cityBrand.accent, stopNames, liveArrivalLookup, {
+                              showDirectionFallback: false,
+                           })}
+                           displayType={activePreset.config.displayType ?? Number(activePreset.config.lines?.[0]?.displayType) ?? 1}
+                           onSelectSlot={() =>
+                              router.push({
+                                 pathname: '/preset-editor',
+                                 params: {city, from: 'dashboard', mode: 'edit', displayId: activePreset.displayId},
+                              })
+                           }
+                           onReorderSlot={() => {}}
+                           onDragStateChange={() => {}}
+                           showHint={false}
+                           brightness={activePreset.config.brightness ?? 60}
+                        />
+                     </View>
                      <View style={styles.heroFooter}>
                         <View style={styles.heroDots}>
                            {carouselPresets.map((preset, index) => (

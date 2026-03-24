@@ -145,6 +145,7 @@ export const styles = StyleSheet.create({
     marginTop: -2,
   },
   heroFooter: { gap: spacing.xs },
+  heroPreviewGesture: { width: '100%' },
   heroHint: { color: colors.textMuted, fontSize: 11 },
   heroDots: { flexDirection: 'row', gap: 6, alignSelf: 'center' },
   heroDot: {
