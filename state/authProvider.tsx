@@ -252,6 +252,7 @@ export function AuthProvider({children}: {children: React.ReactNode}) {
     if (authMeQuery.isError && status !== 'unauthenticated') {
       clearAuth();
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     applyAuthenticatedProfile,
     authMeQuery.data,
@@ -260,7 +261,6 @@ export function AuthProvider({children}: {children: React.ReactNode}) {
     authMeQuery.isSuccess,
     clearAuth,
     status,
-    user,
   ]);
 
   const value = useMemo(
