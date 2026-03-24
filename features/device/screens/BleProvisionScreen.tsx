@@ -8,6 +8,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import Animated, {FadeIn, FadeOut} from 'react-native-reanimated';
 import {SafeAreaView} from 'react-native-safe-area-context';
 import {useRouter} from 'expo-router';
 import {colors, spacing, radii} from '../../../theme';
@@ -157,7 +158,7 @@ export default function BleProvisionScreen() {
 
         {/* Phase: idle / error — show Scan button */}
         {(state.phase === 'idle' || state.phase === 'error') && (
-          <View style={styles.section}>
+          <Animated.View entering={FadeIn.duration(300)} exiting={FadeOut.duration(200)} style={styles.section}>
             {state.phase === 'error' && (
               <View style={styles.errorCard}>
                 <Text style={styles.errorText}>{state.errorMsg}</Text>
@@ -171,23 +172,23 @@ export default function BleProvisionScreen() {
                 <Text style={styles.secondaryText}>Start over</Text>
               </Pressable>
             )}
-          </View>
+          </Animated.View>
         )}
 
         {/* Phase: scanning */}
         {(state.phase === 'scanning' || state.phase === 'requesting_permission') && (
-          <View style={styles.section}>
+          <Animated.View entering={FadeIn.duration(300)} exiting={FadeOut.duration(200)} style={styles.section}>
             <View style={styles.scanCard}>
               <ActivityIndicator size="large" color={colors.accent} />
               <Text style={styles.scanText}>Scanning for CommuteLive displays nearby...</Text>
               <Text style={styles.scanHint}>Make sure the device is powered on.</Text>
             </View>
-          </View>
+          </Animated.View>
         )}
 
         {/* Phase: device_found */}
         {state.phase === 'device_found' && state.foundDevice && (
-          <View style={styles.section}>
+          <Animated.View entering={FadeIn.duration(300)} exiting={FadeOut.duration(200)} style={styles.section}>
             <View style={styles.deviceCard}>
               <Text style={styles.deviceCardLabel}>Found display</Text>
               <Text style={styles.deviceCardName}>{state.foundDevice.name}</Text>
@@ -195,24 +196,24 @@ export default function BleProvisionScreen() {
             <Pressable style={styles.primaryButton} onPress={connectToDevice}>
               <Text style={styles.primaryText}>Connect via Bluetooth</Text>
             </Pressable>
-          </View>
+          </Animated.View>
         )}
 
         {/* Phase: connecting */}
         {state.phase === 'connecting' && (
-          <View style={styles.section}>
+          <Animated.View entering={FadeIn.duration(300)} exiting={FadeOut.duration(200)} style={styles.section}>
             <View style={styles.scanCard}>
               <ActivityIndicator size="large" color={colors.accent} />
               <Text style={styles.scanText}>Connecting to {state.foundDevice?.name}...</Text>
             </View>
-          </View>
+          </Animated.View>
         )}
 
         {/* Phase: connected — enter WiFi credentials */}
         {(state.phase === 'connected' ||
           state.phase === 'provisioning' ||
           state.phase === 'waiting_wifi') && (
-          <View style={styles.section}>
+          <Animated.View entering={FadeIn.duration(350)} style={styles.section}>
             <View style={styles.connectedBadge}>
               <View style={styles.dotActive} />
               <Text style={styles.connectedText}>
@@ -295,14 +296,14 @@ export default function BleProvisionScreen() {
                 </Text>
               )}
             </Pressable>
-          </View>
+          </Animated.View>
         )}
 
         {/* Phase: done (should navigate away, but fallback) */}
         {state.phase === 'done' && (
-          <View style={styles.section}>
+          <Animated.View entering={FadeIn.duration(300)} style={styles.section}>
             <Text style={styles.successText}>Display is online! Redirecting...</Text>
-          </View>
+          </Animated.View>
         )}
 
         <Pressable style={styles.skipLink} onPress={() => router.push('/dashboard')}>
