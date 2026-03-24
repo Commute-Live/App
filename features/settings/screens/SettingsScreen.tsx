@@ -1,5 +1,5 @@
 import React, {useState} from 'react';
-import {Pressable, ScrollView, StyleSheet, Text, View} from 'react-native';
+import {Alert, Pressable, ScrollView, StyleSheet, Text, View} from 'react-native';
 import {SafeAreaView} from 'react-native-safe-area-context';
 import {Ionicons} from '@expo/vector-icons';
 import {useRouter} from 'expo-router';
@@ -17,14 +17,66 @@ const navItems: BottomNavItem[] = [
 
 export default function SettingsScreen() {
   const router = useRouter();
-  const {signOut, user} = useAuth();
+  const {deviceId, disconnectDevice, signOut, user} = useAuth();
   const {state: appState, setSelectedCity} = useAppState();
   const [openSection, setOpenSection] = useState<string | null>('Account');
   const [isSigningOut, setIsSigningOut] = useState(false);
+  const [isDisconnecting, setIsDisconnecting] = useState(false);
+  const [deviceNotice, setDeviceNotice] = useState<{kind: 'success' | 'error'; text: string} | null>(
+    null,
+  );
   const [timeFormat, setTimeFormat] = useState<'ampm' | '24h'>('ampm');
+  const currentDeviceId = deviceId ?? appState.deviceId;
 
   const toggleSection = (key: string) =>
     setOpenSection(prev => (prev === key ? null : key));
+
+  const runDisconnectDevice = async (targetDeviceId: string) => {
+    setIsDisconnecting(true);
+    setDeviceNotice(null);
+
+    try {
+      const result = await disconnectDevice(targetDeviceId);
+      if (!result.ok) {
+        setDeviceNotice({kind: 'error', text: result.error});
+        return;
+      }
+
+      if (result.deviceIds.length > 0) {
+        setDeviceNotice({
+          kind: 'success',
+          text: `Disconnected ${targetDeviceId}. Switched to device ${result.deviceIds[0]}.`,
+        });
+        return;
+      }
+
+      setDeviceNotice({
+        kind: 'success',
+        text: 'Device disconnected. Its saved display settings are still available if you link it again later.',
+      });
+    } finally {
+      setIsDisconnecting(false);
+    }
+  };
+
+  const confirmDisconnectDevice = () => {
+    if (!currentDeviceId || isDisconnecting) return;
+
+    Alert.alert(
+      'Disconnect device?',
+      `This removes device ${currentDeviceId} from your account but keeps its saved displays and settings intact.`,
+      [
+        {text: 'Cancel', style: 'cancel'},
+        {
+          text: 'Disconnect',
+          style: 'destructive',
+          onPress: () => {
+            void runDisconnectDevice(currentDeviceId);
+          },
+        },
+      ],
+    );
+  };
 
   return (
     <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
@@ -69,9 +121,36 @@ export default function SettingsScreen() {
             {openSection === 'Device' ? (
               <View style={styles.cardContent}>
                 <Text style={styles.itemLabel}>Device ID</Text>
-                <Text style={styles.itemValue}>{appState.deviceId ?? '-'}</Text>
+                <Text style={styles.itemValue}>{currentDeviceId ?? '-'}</Text>
                 <Text style={styles.itemLabel}>Status</Text>
-                <Text style={styles.itemValue}>{appState.deviceId ? 'Paired' : 'No device paired'}</Text>
+                <Text style={styles.itemValue}>{currentDeviceId ? 'Paired' : 'No device paired'}</Text>
+                {deviceNotice ? (
+                  <Text
+                    style={[
+                      styles.deviceNotice,
+                      deviceNotice.kind === 'error' ? styles.deviceNoticeError : styles.deviceNoticeSuccess,
+                    ]}>
+                    {deviceNotice.text}
+                  </Text>
+                ) : null}
+                {currentDeviceId ? (
+                  <>
+                    <Text style={styles.deviceHelpText}>
+                      Disconnecting removes this device from your account but does not erase its saved displays or settings.
+                    </Text>
+                    <Pressable
+                      style={[
+                        styles.disconnectButton,
+                        isDisconnecting && styles.disconnectButtonDisabled,
+                      ]}
+                      onPress={confirmDisconnectDevice}
+                      disabled={isDisconnecting}>
+                      <Text style={styles.disconnectButtonText}>
+                        {isDisconnecting ? 'Disconnecting...' : 'Disconnect device'}
+                      </Text>
+                    </Pressable>
+                  </>
+                ) : null}
               </View>
             ) : null}
           </Pressable>
@@ -314,6 +393,21 @@ const styles = StyleSheet.create({
     bottom: 0,
     width: 4,
   },
+  deviceHelpText: {color: colors.textMuted, fontSize: 12, lineHeight: 18, marginTop: spacing.xs},
+  deviceNotice: {fontSize: 12, lineHeight: 18, marginTop: spacing.xs},
+  deviceNoticeError: {color: '#FCA5A5'},
+  deviceNoticeSuccess: {color: colors.textMuted},
+  disconnectButton: {
+    marginTop: spacing.sm,
+    backgroundColor: '#2B1010',
+    borderColor: '#5B1C1C',
+    borderWidth: 1,
+    paddingVertical: spacing.sm,
+    borderRadius: radii.md,
+    alignItems: 'center',
+  },
+  disconnectButtonDisabled: {opacity: 0.7},
+  disconnectButtonText: {color: '#FCA5A5', fontWeight: '700', fontSize: 13},
   signOutButton: {
     marginTop: spacing.sm,
     backgroundColor: '#2B1010',

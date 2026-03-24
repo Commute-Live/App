@@ -105,12 +105,11 @@ export default function BleProvisionScreen() {
   };
 
   const handleSendCredentials = async () => {
+    setLinkError('');
     const deviceId = await sendCredentials(ssid.trim(), password, username.trim());
     console.log('[BLE] sendCredentials returned deviceId:', deviceId);
     if (deviceId) {
       await registerAndLink(deviceId);
-    } else {
-      setLinkError('Could not read device ID from display. Please reconnect and try again.');
     }
   };
 
@@ -232,6 +231,10 @@ export default function BleProvisionScreen() {
                 <ActivityIndicator color={colors.accent} style={{marginTop: spacing.sm}} />
               </View>
             )}
+
+            {state.errorMsg ? (
+              <Text style={styles.errorInline}>{state.errorMsg}</Text>
+            ) : null}
 
             {linkError.length > 0 && (
               <Text style={styles.errorInline}>{linkError}</Text>
