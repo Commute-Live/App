@@ -29,7 +29,7 @@ type RouteGroup = {key: string; title?: string; routes: RoutePickerItem[]};
 
 const DEFAULT_TEXT_COLOR = '#E9ECEF';
 const DEFAULT_NEXT_STOPS = 3;
-const MIN_NEXT_STOPS = 2;
+const MIN_NEXT_STOPS = 1;
 const MAX_NEXT_STOPS = 5;
 const TIME_OPTIONS = ['00:00', '05:00', '06:00', '07:00', '08:00', '09:00', '10:00', '17:00', '18:00', '20:00', '22:00', '23:00'];
 const MODE_ORDER: ModeId[] = ['train', 'bus', 'trolley', 'commuter-rail', 'ferry'];

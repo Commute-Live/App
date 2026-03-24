@@ -10,6 +10,7 @@ export type Display3DSlot = {
   selected: boolean;
   stopName: string;
   subLine?: string;
+  subLineColor?: string;
   times: string;
   timesColor?: string;
 };
@@ -107,11 +108,21 @@ export default function Display3DPreview({
                 </Text>
               </View>
               <View style={styles.slotBody}>
-                <Text style={[styles.slotTitle, compact && styles.slotTitleCompact]} numberOfLines={slot.subLine ? 2 : 1}>
-                  {slot.stopName}
-                </Text>
+                {slot.stopName ? (
+                  <Text style={[styles.slotTitle, compact && styles.slotTitleCompact]} numberOfLines={1}>
+                    {slot.stopName}
+                  </Text>
+                ) : (
+                  <View style={[styles.slotTitlePlaceholder, compact && styles.slotTitlePlaceholderCompact]} />
+                )}
                 {slot.subLine ? (
-                  <Text style={[styles.slotSubLine, compact && styles.slotSubLineCompact]} numberOfLines={1}>
+                  <Text
+                    style={[
+                      styles.slotSubLine,
+                      compact && styles.slotSubLineCompact,
+                      slot.subLineColor ? {color: slot.subLineColor} : null,
+                    ]}
+                    numberOfLines={1}>
                     {slot.subLine}
                   </Text>
                 ) : null}
@@ -235,6 +246,19 @@ const styles = StyleSheet.create({
   slotBody: {flex: 1, paddingLeft: 2},
   slotTitle: {color: '#E4EDF6', fontSize: 20, fontWeight: '800'},
   slotTitleCompact: {fontSize: 17},
+  slotTitlePlaceholder: {
+    height: 16,
+    width: '88%',
+    borderRadius: 8,
+    backgroundColor: '#5C6670',
+    opacity: 0.45,
+    marginVertical: 3,
+  },
+  slotTitlePlaceholderCompact: {
+    height: 14,
+    width: '84%',
+    marginVertical: 2,
+  },
   slotSubLine: {color: '#8B9EAD', fontSize: 12, marginTop: 1},
   slotSubLineCompact: {fontSize: 11},
   slotTimes: {color: '#D7E3EF', fontSize: 18, fontWeight: '700', minWidth: 60, textAlign: 'right'},
