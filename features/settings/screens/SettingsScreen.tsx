@@ -1,5 +1,5 @@
 import React, {useState} from 'react';
-import {Pressable, ScrollView, StyleSheet, Text, View} from 'react-native';
+import {Alert, Pressable, ScrollView, StyleSheet, Text, View} from 'react-native';
 import {SafeAreaView} from 'react-native-safe-area-context';
 import {Ionicons} from '@expo/vector-icons';
 import {useRouter} from 'expo-router';
@@ -17,10 +17,35 @@ const navItems: BottomNavItem[] = [
 
 export default function SettingsScreen() {
   const router = useRouter();
-  const {signOut, user} = useAuth();
+  const {signOut, deleteAccount, user, currentProvider} = useAuth();
   const {state: appState, setSelectedCity} = useAppState();
   const [openSection, setOpenSection] = useState<string | null>('Account');
   const [isSigningOut, setIsSigningOut] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  const handleDisconnect = () => {
+    const providerName = currentProvider === 'apple' ? 'Apple' : 'Google';
+    Alert.alert(
+      'Disconnect Account',
+      `This will permanently delete your account and remove all association with ${providerName}. This cannot be undone.`,
+      [
+        {text: 'Cancel', style: 'cancel'},
+        {
+          text: 'Delete Account',
+          style: 'destructive',
+          onPress: async () => {
+            setIsDeleting(true);
+            try {
+              await deleteAccount();
+            } finally {
+              setIsDeleting(false);
+              router.replace('/auth');
+            }
+          },
+        },
+      ],
+    );
+  };
   const [timeFormat, setTimeFormat] = useState<'ampm' | '24h'>('ampm');
 
   const toggleSection = (key: string) =>
@@ -50,6 +75,30 @@ export default function SettingsScreen() {
               <View style={styles.cardContent}>
                 <Text style={styles.itemLabel}>Email</Text>
                 <Text style={styles.itemValue}>{user?.email ?? '-'}</Text>
+                <Text style={styles.itemLabel}>Signed in with</Text>
+                <Text style={styles.itemValue}>
+                  {currentProvider === 'apple' ? 'Apple' : currentProvider === 'google' ? 'Google' : '-'}
+                </Text>
+                <Pressable
+                  style={styles.signOutButton}
+                  onPress={async () => {
+                    if (isSigningOut || isDeleting) return;
+                    setIsSigningOut(true);
+                    try {
+                      await signOut();
+                    } finally {
+                      setIsSigningOut(false);
+                      router.replace('/auth');
+                    }
+                  }}>
+                  <Text style={styles.signOutText}>{isSigningOut ? 'Signing out...' : 'Sign out'}</Text>
+                </Pressable>
+                <Pressable
+                  style={styles.disconnectButton}
+                  onPress={handleDisconnect}
+                  disabled={isDeleting || isSigningOut}>
+                  <Text style={styles.disconnectText}>{isDeleting ? 'Deleting account...' : 'Disconnect & Delete Account'}</Text>
+                </Pressable>
               </View>
             ) : null}
           </Pressable>
@@ -208,39 +257,6 @@ export default function SettingsScreen() {
             ) : null}
           </Pressable>
 
-          <Pressable style={styles.card} onPress={() => toggleSection('Sign out')}>
-            <View style={styles.cardHeader}>
-              <View>
-                <Text style={styles.cardTitle}>Sign out</Text>
-                <Text style={styles.cardSubtitle}>End your session on this device</Text>
-              </View>
-              <Ionicons
-                name={openSection === 'Sign out' ? 'chevron-up' : 'chevron-down'}
-                size={18}
-                color={colors.textMuted}
-              />
-            </View>
-            {openSection === 'Sign out' ? (
-              <View style={styles.cardContent}>
-                <Text style={styles.itemLabel}>You’re signed in as</Text>
-                <Text style={styles.itemValue}>{user?.email ?? '-'}</Text>
-                <Pressable
-                  style={styles.signOutButton}
-                  onPress={async () => {
-                    if (isSigningOut) return;
-                    setIsSigningOut(true);
-                    try {
-                      await signOut();
-                    } finally {
-                      setIsSigningOut(false);
-                      router.replace('/auth');
-                    }
-                  }}>
-                  <Text style={styles.signOutText}>{isSigningOut ? 'Signing out...' : 'Sign out'}</Text>
-                </Pressable>
-              </View>
-            ) : null}
-          </Pressable>
         </ScrollView>
 
         <BottomNav items={navItems} />
@@ -324,4 +340,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   signOutText: {color: '#FCA5A5', fontWeight: '700', fontSize: 13},
+  disconnectButton: {
+    marginTop: spacing.xs,
+    paddingVertical: spacing.sm,
+    borderRadius: radii.md,
+    alignItems: 'center',
+  },
+  disconnectText: {color: colors.textMuted, fontWeight: '600', fontSize: 12},
 });

@@ -2,6 +2,7 @@ import React, {useState} from 'react';
 import {Image, Platform, Pressable, StyleSheet, Text, View} from 'react-native';
 import {SafeAreaView} from 'react-native-safe-area-context';
 import * as AppleAuthentication from 'expo-apple-authentication';
+import {GoogleLogo} from '../../../components/GoogleLogo';
 import {colors, spacing, radii} from '../../../theme';
 import {ExternalLink} from '../../../components/ExternalLink';
 import {useAppleAuth} from '../hooks/useAppleAuth';
@@ -54,6 +55,7 @@ export default function AuthScreen() {
           style={[styles.googleButton, isLoading && styles.buttonDisabled]}
           onPress={handleGoogle}
           disabled={isLoading}>
+          <View style={styles.googleIcon}><GoogleLogo size={18} /></View>
           <Text style={styles.googleText}>Continue with Google</Text>
         </Pressable>
 
@@ -88,8 +90,11 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.md,
     borderRadius: radii.md,
     alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'center',
     backgroundColor: colors.card,
   },
+  googleIcon: {marginRight: 8},
   googleText: {color: colors.text, fontWeight: '700', fontSize: 15},
   buttonDisabled: {opacity: 0.5},
   errorText: {color: '#FCA5A5', fontSize: 12, fontWeight: '700', textAlign: 'center'},

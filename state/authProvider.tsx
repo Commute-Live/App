@@ -1,5 +1,6 @@
 import React, {createContext, useCallback, useContext, useEffect, useMemo, useState} from 'react';
 import {useMutation, useQuery, useQueryClient} from '@tanstack/react-query';
+import {GoogleSignin} from '@react-native-google-signin/google-signin';
 import {apiFetch} from '../lib/api';
 import {queryKeys} from '../lib/queryKeys';
 import {useAppState} from './appState';
@@ -19,12 +20,14 @@ type AuthContextValue = {
   user: AuthUser | null;
   deviceIds: string[];
   deviceId: string | null;
+  currentProvider: SocialProvider | null;
   hydrate: () => Promise<void>;
   socialSignIn: (
     provider: SocialProvider,
     token: string,
   ) => Promise<{ok: true; user: AuthUser; deviceIds: string[]} | {ok: false; error: string}>;
   signOut: () => Promise<void>;
+  deleteAccount: () => Promise<void>;
   clearAuth: () => void;
   setDeviceId: (deviceId: string | null) => void;
 };
@@ -68,6 +71,7 @@ export function AuthProvider({children}: {children: React.ReactNode}) {
   const [status, setStatus] = useState<AuthStatus>('loading');
   const [user, setUser] = useState<AuthUser | null>(null);
   const [deviceIds, setDeviceIds] = useState<string[]>([]);
+  const [currentProvider, setCurrentProvider] = useState<SocialProvider | null>(null);
 
   const applyAuthenticatedProfile = useCallback(
     (profile: UserProfilePayload) => {
@@ -90,6 +94,7 @@ export function AuthProvider({children}: {children: React.ReactNode}) {
     setUser(null);
     setDeviceIds([]);
     setStatus('unauthenticated');
+    setCurrentProvider(null);
     clearAppAuth();
   }, [clearAppAuth]);
 
@@ -130,6 +135,7 @@ export function AuthProvider({children}: {children: React.ReactNode}) {
           return {ok: false as const, error: data?.message ?? 'Sign-in failed'};
         }
         applyAuthenticatedProfile(profile);
+        setCurrentProvider(provider);
         queryClient.setQueryData(queryKeys.auth.me, profile);
         return {
           ok: true as const,
@@ -147,10 +153,25 @@ export function AuthProvider({children}: {children: React.ReactNode}) {
     try {
       await signOutMutation.mutateAsync();
     } finally {
+      if (currentProvider === 'google') {
+        await GoogleSignin.signOut().catch(() => {});
+      }
       queryClient.removeQueries({queryKey: queryKeys.auth.me});
       clearAuth();
     }
-  }, [clearAuth, queryClient, signOutMutation]);
+  }, [clearAuth, currentProvider, queryClient, signOutMutation]);
+
+  const deleteAccount = useCallback(async () => {
+    try {
+      await apiFetch('/user/account', {method: 'DELETE'});
+    } finally {
+      if (currentProvider === 'google') {
+        await GoogleSignin.signOut().catch(() => {});
+      }
+      queryClient.removeQueries({queryKey: queryKeys.auth.me});
+      clearAuth();
+    }
+  }, [clearAuth, currentProvider, queryClient]);
 
   const setDeviceId = useCallback(
     (nextDeviceId: string | null) => {
@@ -188,13 +209,15 @@ export function AuthProvider({children}: {children: React.ReactNode}) {
       user,
       deviceIds,
       deviceId: appDeviceId,
+      currentProvider,
       hydrate,
       socialSignIn,
       signOut,
+      deleteAccount,
       clearAuth,
       setDeviceId,
     }),
-    [appDeviceId, clearAuth, deviceIds, hydrate, setDeviceId, socialSignIn, signOut, status, user],
+    [appDeviceId, clearAuth, currentProvider, deleteAccount, deviceIds, hydrate, setDeviceId, socialSignIn, signOut, status, user],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
