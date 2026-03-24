@@ -28,6 +28,7 @@ export default function BleProvisionScreen() {
   const [username, setUsername] = useState('');
   const [linkError, setLinkError] = useState('');
   const [isLinking, setIsLinking] = useState(false);
+  const [isWaitingOnline, setIsWaitingOnline] = useState(false);
 
   const canSend = ssid.trim().length > 0 && password.trim().length > 0;
   const isBusy =
@@ -36,7 +37,23 @@ export default function BleProvisionScreen() {
     state.phase === 'connecting' ||
     state.phase === 'provisioning' ||
     state.phase === 'waiting_wifi' ||
-    isLinking;
+    isLinking ||
+    isWaitingOnline;
+
+  const pollUntilOnline = async (espDeviceId: string): Promise<boolean> => {
+    const INTERVAL_MS = 2000;
+    const TIMEOUT_MS = 30000;
+    const start = Date.now();
+    while (Date.now() - start < TIMEOUT_MS) {
+      const res = await apiFetch(`/device/${encodeURIComponent(espDeviceId)}/online`).catch(() => null);
+      if (res?.ok) {
+        const data = await res.json().catch(() => null);
+        if (data?.online === true) return true;
+      }
+      await new Promise(r => setTimeout(r, INTERVAL_MS));
+    }
+    return false;
+  };
 
   const registerAndLink = async (espDeviceId: string) => {
     console.log('[BLE] registerAndLink called with', espDeviceId);
@@ -92,7 +109,14 @@ export default function BleProvisionScreen() {
         return;
       }
 
-      console.log('[BLE] registration complete, hydrating auth');
+      console.log('[BLE] registration complete, polling for online status');
+      setIsLinking(false);
+      setIsWaitingOnline(true);
+      const online = await pollUntilOnline(espDeviceId);
+      setIsWaitingOnline(false);
+      if (!online) {
+        setLinkError('Device registered but took too long to come online — try reloading the app.');
+      }
       setDeviceStatus('pairedOnline');
       await hydrate();
       router.replace('/dashboard');
@@ -101,6 +125,7 @@ export default function BleProvisionScreen() {
       setLinkError(`Network error: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
       setIsLinking(false);
+      setIsWaitingOnline(false);
     }
   };
 
@@ -244,6 +269,16 @@ export default function BleProvisionScreen() {
               <View style={styles.progressCard}>
                 <StatusLine label="Wi-Fi connected" active={true} />
                 <StatusLine label="Registering device..." active={true} />
+                <ActivityIndicator color={colors.accent} style={{marginTop: spacing.sm}} />
+              </View>
+            )}
+
+            {isWaitingOnline && (
+              <View style={styles.progressCard}>
+                <StatusLine label="Credentials sent" active={true} />
+                <StatusLine label="Wi-Fi connected" active={true} />
+                <StatusLine label="Device registered" active={true} />
+                <StatusLine label="Waiting for device to come online..." active={false} />
                 <ActivityIndicator color={colors.accent} style={{marginTop: spacing.sm}} />
               </View>
             )}
