@@ -429,7 +429,13 @@ export default function DashboardOverviewScreen() {
                         slots={toPreviewSlots(activePreset, cityBrand.accent, stopNames, liveArrivalLookup, {
                            showDirectionFallback: false,
                         })}
-                        onSelectSlot={() => {}}
+                        displayType={activePreset.config.displayType ?? Number(activePreset.config.lines?.[0]?.displayType) ?? 1}
+                        onSelectSlot={() =>
+                           router.push({
+                              pathname: '/preset-editor',
+                              params: {city, from: 'dashboard', mode: 'edit', displayId: activePreset.displayId},
+                           })
+                        }
                         onReorderSlot={() => {}}
                         onDragStateChange={() => {}}
                         showHint={false}

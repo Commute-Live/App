@@ -193,7 +193,13 @@ export default function PresetsScreen() {
 
               <DashboardPreviewSection
                 slots={toPreviewSlots(display, brand.accent, stopNames)}
-                onSelectSlot={() => {}}
+                displayType={display.config.displayType ?? Number(display.config.lines?.[0]?.displayType) ?? 1}
+                onSelectSlot={() =>
+                  router.push({
+                    pathname: '/preset-editor',
+                    params: {city: selectedCity, from: 'presets', mode: 'edit', displayId: display.displayId},
+                  })
+                }
                 onReorderSlot={() => {}}
                 onDragStateChange={() => {}}
                 showHint={false}
