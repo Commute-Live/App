@@ -7,6 +7,7 @@ export type Display3DSlot = {
   color: string;
   textColor: string;
   routeLabel: string;
+  badgeShape?: 'circle' | 'pill' | 'rail';
   selected: boolean;
   stopName: string;
   subLine?: string;
@@ -102,8 +103,24 @@ export default function Display3DPreview({
               onTouchMove={(event: GestureResponderEvent) => handleTouchMove(slot.id, event.nativeEvent.pageY)}
               onPressOut={endDrag}
               delayLongPress={260}>
-              <View style={[styles.routeBadge, compact && styles.routeBadgeCompact, {backgroundColor: slot.color}]}>
-                <Text style={[styles.routeBadgeText, compact && styles.routeBadgeTextCompact, {color: slot.textColor}]}>
+              <View
+                style={[
+                  styles.routeBadge,
+                  compact && styles.routeBadgeCompact,
+                  slot.badgeShape === 'pill' && styles.routeBadgePill,
+                  compact && slot.badgeShape === 'pill' && styles.routeBadgePillCompact,
+                  slot.badgeShape === 'rail' && styles.routeBadgeRail,
+                  compact && slot.badgeShape === 'rail' && styles.routeBadgeRailCompact,
+                  {backgroundColor: slot.color},
+                ]}>
+                <Text
+                  style={[
+                    styles.routeBadgeText,
+                    compact && styles.routeBadgeTextCompact,
+                    slot.badgeShape === 'rail' && styles.routeBadgeTextRail,
+                    compact && slot.badgeShape === 'rail' && styles.routeBadgeTextRailCompact,
+                    {color: slot.textColor},
+                  ]}>
                   {slot.routeLabel}
                 </Text>
               </View>
@@ -241,8 +258,14 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   routeBadgeCompact: {width: 40, height: 40, borderRadius: 20},
+  routeBadgePill: {width: 58, height: 36, borderRadius: 10, paddingHorizontal: 6},
+  routeBadgePillCompact: {width: 52, height: 32, borderRadius: 10},
+  routeBadgeRail: {width: 58, height: 48, borderRadius: 12, paddingHorizontal: 5},
+  routeBadgeRailCompact: {width: 50, height: 40, borderRadius: 10, paddingHorizontal: 4},
   routeBadgeText: {fontSize: 20, fontWeight: '900'},
   routeBadgeTextCompact: {fontSize: 16},
+  routeBadgeTextRail: {fontSize: 12, lineHeight: 14, textAlign: 'center', includeFontPadding: false},
+  routeBadgeTextRailCompact: {fontSize: 10, lineHeight: 11},
   slotBody: {flex: 1, paddingLeft: 2},
   slotTitle: {color: '#E4EDF6', fontSize: 20, fontWeight: '800'},
   slotTitleCompact: {fontSize: 17},

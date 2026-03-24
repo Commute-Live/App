@@ -82,6 +82,9 @@ const MIN_NEXT_STOPS = 1;
 const MAX_NEXT_STOPS = 5;
 const DEFAULT_LAYOUT_SLOTS = 1;
 const DEFAULT_DISPLAY_PRESET = 1;
+const DEFAULT_BRIGHTNESS = 60;
+const MIN_BRIGHTNESS = 10;
+const MAX_BRIGHTNESS = 100;
 const TIME_OPTIONS = ['00:00', '05:00', '06:00', '07:00', '08:00', '09:00', '10:00', '17:00', '18:00', '20:00', '22:00', '23:00'];
 const DAY_OPTIONS = [
   {id: 'mon', label: 'Mon'},
@@ -106,6 +109,33 @@ const DISPLAY_PRESET_OPTIONS = [
 ] as const;
 const PRESET_CAROUSEL_ITEM_WIDTH = 292;
 const Haptics = {selectionAsync: async () => {}, notificationAsync: async (_: any) => {}};
+
+const formatSaveErrorMessage = (message: string) => {
+  const normalized = message.trim();
+  if (!normalized) return 'Unable to save this display right now. Please try again.';
+
+  const lowered = normalized.toLowerCase();
+  if (lowered.includes('network') || lowered.includes('fetch') || lowered.includes('failed to fetch')) {
+    return 'We could not reach the server. Check your connection and try again.';
+  }
+  if (lowered.includes('timeout')) {
+    return 'Saving took too long. Please try again.';
+  }
+  if (lowered.includes('401') || lowered.includes('403') || lowered.includes('unauthorized')) {
+    return 'You do not have permission to save this display right now.';
+  }
+  if (lowered.includes('404')) {
+    return 'The selected device or display could not be found.';
+  }
+  if (lowered.includes('409')) {
+    return 'This display changed elsewhere. Refresh and try saving again.';
+  }
+  if (lowered.includes('500') || lowered.includes('502') || lowered.includes('503')) {
+    return 'The server had trouble saving your display. Please try again.';
+  }
+
+  return normalized;
+};
 
 const getPresetIdForOffset = (offsetX: number) => {
   const nextIndex = Math.round(offsetX / PRESET_CAROUSEL_ITEM_WIDTH);
@@ -169,11 +199,12 @@ export default function DisplayEditorScreen() {
   const [editingDisplayId, setEditingDisplayId] = useState<string | null>(
     typeof params.displayId === 'string' ? params.displayId : null,
   );
-  const [displayMetadata, setDisplayMetadata] = useState({paused: false, priority: 0, sortOrder: 0, scrolling: false});
+  const [displayMetadata, setDisplayMetadata] = useState({paused: false, priority: 0, sortOrder: 0, scrolling: false, brightness: DEFAULT_BRIGHTNESS});
   const [saving, setSaving] = useState(false);
   const [saveDone, setSaveDone] = useState(false);
   const [previewDragging, setPreviewDragging] = useState(false);
   const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
+  const [showLayoutSelector, setShowLayoutSelector] = useState(false);
   const [stationsByMode, setStationsByMode] = useState<StationsByMode>({});
   const [stationsLoadingByMode, setStationsLoadingByMode] = useState<Partial<Record<ModeId, boolean>>>({});
   const [stationsByLine, setStationsByLine] = useState<Partial<Record<string, Station[]>>>({});
@@ -231,6 +262,7 @@ export default function DisplayEditorScreen() {
   useEffect(() => {
     const cityChanged = previousCityRef.current !== city;
     previousCityRef.current = city;
+    if (!cityChanged) return;
     setStationsByMode({});
     setStationsLoadingByMode({});
     setStationsByLine({});
@@ -246,7 +278,7 @@ export default function DisplayEditorScreen() {
     stationsRequestedRef.current.clear();
     routesRequestedRef.current.clear();
     stationsByLineRef.current.clear();
-    setLines(prev => ensureLineCount(cityChanged ? [] : prev, city, layoutSlots, {}, {}));
+    setLines(() => ensureLineCount([], city, layoutSlots, {}, {}));
   }, [city, layoutSlots]);
 
   useEffect(() => {
@@ -440,6 +472,9 @@ export default function DisplayEditorScreen() {
           priority: Number.isInteger(sourceDisplay.priority) ? sourceDisplay.priority : 0,
           sortOrder: Number.isInteger(sourceDisplay.sortOrder) ? sourceDisplay.sortOrder : 0,
           scrolling: sourceDisplay.config?.scrolling === true,
+          brightness: Number.isFinite(Number(sourceDisplay.config?.brightness))
+            ? Math.max(MIN_BRIGHTNESS, Math.min(MAX_BRIGHTNESS, Math.trunc(Number(sourceDisplay.config?.brightness))))
+            : DEFAULT_BRIGHTNESS,
         });
 
         const hasCustomSchedule =
@@ -547,6 +582,9 @@ export default function DisplayEditorScreen() {
             presetName: nextPresetName,
             customDisplayScheduleEnabled: nextCustomScheduleEnabled,
             scrolling: sourceDisplay.config?.scrolling === true,
+            brightness: Number.isFinite(Number(sourceDisplay.config?.brightness))
+              ? Math.max(MIN_BRIGHTNESS, Math.min(MAX_BRIGHTNESS, Math.trunc(Number(sourceDisplay.config?.brightness))))
+              : DEFAULT_BRIGHTNESS,
           };
         }
       } catch {
@@ -664,6 +702,7 @@ export default function DisplayEditorScreen() {
     presetName,
     customDisplayScheduleEnabled,
     scrolling: displayMetadata.scrolling,
+    brightness: displayMetadata.brightness,
   });
   const isDirty = useMemo(() => {
     const snap = snapshotRef.current;
@@ -674,12 +713,13 @@ export default function DisplayEditorScreen() {
       snap.presetName !== presetName ||
       snap.customDisplayScheduleEnabled !== customDisplayScheduleEnabled ||
       snap.scrolling !== displayMetadata.scrolling ||
+      snap.brightness !== displayMetadata.brightness ||
       snap.displaySchedule.start !== displaySchedule.start ||
       snap.displaySchedule.end !== displaySchedule.end ||
       JSON.stringify(snap.displayDays) !== JSON.stringify(displayDays) ||
       JSON.stringify(snap.lines) !== JSON.stringify(lines)
     );
-  }, [city, customDisplayScheduleEnabled, displayDays, displayMetadata.scrolling, displayPresetsByLine, displaySchedule.end, displaySchedule.start, layoutSlots, lines, presetName]);
+  }, [city, customDisplayScheduleEnabled, displayDays, displayMetadata.brightness, displayMetadata.scrolling, displayPresetsByLine, displaySchedule.end, displaySchedule.start, layoutSlots, lines, presetName]);
 
   const draftPayload = useMemo(() => {
     const payloadLines = lines
@@ -708,14 +748,14 @@ export default function DisplayEditorScreen() {
       scheduleEnd: customDisplayScheduleEnabled ? displaySchedule.end : null,
       scheduleDays: customDisplayScheduleEnabled ? displayDays : [],
       config: {
-        brightness: 60,
+        brightness: displayMetadata.brightness,
         displayType: displayPresetsByLine['line-1'] ?? DEFAULT_DISPLAY_PRESET,
         scrolling: displayMetadata.scrolling,
-        arrivalsToDisplay: Math.max(1, Math.min(3, lines.length)),
+        arrivalsToDisplay: Math.max(1, Math.min(3, payloadLines.length)),
         lines: payloadLines,
       },
     };
-  }, [city, customDisplayScheduleEnabled, displayDays, displayMetadata.paused, displayMetadata.priority, displayMetadata.scrolling, displayMetadata.sortOrder, displayPresetsByLine, displaySchedule.end, displaySchedule.start, lines, presetName]);
+  }, [city, customDisplayScheduleEnabled, displayDays, displayMetadata.brightness, displayMetadata.paused, displayMetadata.priority, displayMetadata.scrolling, displayMetadata.sortOrder, displayPresetsByLine, displaySchedule.end, displaySchedule.start, lines, presetName]);
 
   const displayValidationError = useMemo(() => validateDisplayDraft(draftPayload), [draftPayload]);
   const canAutoConfirmCurrentPreset =
@@ -747,9 +787,13 @@ export default function DisplayEditorScreen() {
     [displayPresetsByLine, draftPayload, saveDisplayPresetsByLine],
   );
   const saveValidationError = useMemo(() => validateDisplayDraft(saveDraftPayload), [saveDraftPayload]);
+  const completedLines = useMemo(
+    () => lines.filter(line => line.stationId.trim().length > 0 && line.routeId.trim().length > 0),
+    [lines],
+  );
   const allLinesReadyToSave = useMemo(
-    () => lines.every(line => line.id in saveDisplayPresetsByLine),
-    [lines, saveDisplayPresetsByLine],
+    () => completedLines.length === layoutSlots && completedLines.every(line => line.id in saveDisplayPresetsByLine),
+    [completedLines, layoutSlots, saveDisplayPresetsByLine],
   );
   const canSaveToDevice = !!selectedDevice.id && hasLinkedDevice && allLinesReadyToSave && !saveValidationError;
 
@@ -822,7 +866,7 @@ export default function DisplayEditorScreen() {
         }
       } catch (err) {
         const msg = err instanceof Error ? err.message : 'Save failed';
-        setLiveStatusText(msg);
+        setLiveStatusText(formatSaveErrorMessage(msg));
         setSaving(false);
         return;
       }
@@ -837,6 +881,7 @@ export default function DisplayEditorScreen() {
         presetName,
         customDisplayScheduleEnabled,
         scrolling: displayMetadata.scrolling,
+        brightness: displayMetadata.brightness,
       };
       setPreset(presetName.trim() || 'Display 1');
       setSelectedStations(
@@ -865,13 +910,21 @@ export default function DisplayEditorScreen() {
       void Haptics.notificationAsync?.('success');
       setTimeout(() => setSaveDone(false), 1200);
     } catch {
-      setLiveStatusText('Network error — config not saved');
+      setLiveStatusText('We could not save this display right now. Please try again.');
     } finally {
       setSaving(false);
     }
   };
 
   const handleBackPress = () => {
+    if (saveDone) {
+      if ((router as any).canGoBack?.()) {
+        router.back();
+        return;
+      }
+      router.replace(fallbackRoute);
+      return;
+    }
     if (isDirty) {
       Alert.alert(
         'Unsaved changes?',
@@ -1108,11 +1161,15 @@ export default function DisplayEditorScreen() {
                 : undefined;
         const previewSubLineColor = displayPreset === 4 || displayPreset === 5 ? '#E5C15A' : undefined;
 
+        const isBusBadge = city === 'new-york' && safeMode === 'bus';
+        const isCommuterRailBadge = safeMode === 'commuter-rail';
+
         return {
           id: line.id,
           color: route?.color ?? '#3A3A3A',
           textColor: line.textColor || route?.textColor || '#FFFFFF',
           routeLabel: route?.label ?? '?',
+          badgeShape: isBusBadge ? 'pill' : isCommuterRailBadge ? 'rail' : 'circle',
           selected: line.id === selectedLineId,
           stopName: previewTitle,
           subLine: previewSubLine,
@@ -1245,7 +1302,7 @@ export default function DisplayEditorScreen() {
               layoutSlots={layoutSlots}
               presetName={presetName}
               onPresetNameChange={setPresetName}
-              onLayoutOpen={() => applyLayout(layoutSlots === 1 ? 2 : 1)}
+              onLayoutOpen={() => setShowLayoutSelector(true)}
               onBackPress={handleBackPress}
             />
           </Animated.View>
@@ -1368,16 +1425,28 @@ export default function DisplayEditorScreen() {
                       line={selectedLine}
                       displayPreset={selectedDisplayPreset}
                       presetConfirmed={selectedLinePresetConfirmed}
-                      layoutSlots={layoutSlots}
                       selectedRoute={selectedRouteForEditor}
                       selectedStation={selectedStationForEditor}
+                      onChangeLine={next => updateLine(selectedLine.id, next)}
                       onClearLine={() => clearLineSelection(selectedLine.id)}
                       onClearStop={() => clearStopSelection(selectedLine.id)}
                       onClearDisplayType={() => clearDisplayPreset(selectedLine.id)}
-                      onAddStop={expandToTwoStops}
-                      onRemoveStop={() => removeStopFromLayout(selectedLine.id)}
                     />
                   )}
+                  {(layoutSlots === 1 || layoutSlots === 2) && selectedLine ? (
+                    <View style={styles.stepFooterActionRow}>
+                      {layoutSlots === 1 && selectedLine.id === 'line-1' ? (
+                        <Pressable style={styles.reviewActionButton} onPress={expandToTwoStops}>
+                          <Text style={styles.reviewActionButtonText}>Add Display</Text>
+                        </Pressable>
+                      ) : null}
+                      {layoutSlots === 2 ? (
+                        <Pressable style={styles.reviewRemoveButton} onPress={() => removeStopFromLayout(selectedLine.id)}>
+                          <Text style={styles.reviewRemoveButtonText}>Remove This Display</Text>
+                        </Pressable>
+                      ) : null}
+                    </View>
+                  ) : null}
                 </Animated.View>
               ) : (
                 <Text style={styles.emptyHint}>Select a slot in the preview to start editing.</Text>
@@ -1387,6 +1456,52 @@ export default function DisplayEditorScreen() {
             <View style={styles.additionalSettingsSection}>
               <Text style={styles.additionalSettingsTitle}>Additional Settings</Text>
               <Text style={styles.additionalSettingsHint}>Optional display controls.</Text>
+
+              <View style={styles.additionalSettingsCard}>
+                <View style={styles.additionalSettingsHeader}>
+                  <View style={styles.additionalSettingsCopy}>
+                    <Text style={styles.sectionLabel}>Display Brightness</Text>
+                    <Text style={styles.sectionHint}>Adjust the screen brightness on the device.</Text>
+                  </View>
+                </View>
+                <View style={styles.stepperRow}>
+                  <Pressable
+                    style={[styles.stepperButton, displayMetadata.brightness <= MIN_BRIGHTNESS && styles.stepperButtonDisabled]}
+                    disabled={displayMetadata.brightness <= MIN_BRIGHTNESS}
+                    onPress={() =>
+                      setDisplayMetadata(prev => ({
+                        ...prev,
+                        brightness: Math.max(MIN_BRIGHTNESS, prev.brightness - 10),
+                      }))
+                    }>
+                    <Text
+                      style={[
+                        styles.stepperButtonText,
+                        displayMetadata.brightness <= MIN_BRIGHTNESS && styles.stepperButtonTextDisabled,
+                      ]}>
+                      -
+                    </Text>
+                  </Pressable>
+                  <Text style={styles.stepperValue}>{displayMetadata.brightness}%</Text>
+                  <Pressable
+                    style={[styles.stepperButton, displayMetadata.brightness >= MAX_BRIGHTNESS && styles.stepperButtonDisabled]}
+                    disabled={displayMetadata.brightness >= MAX_BRIGHTNESS}
+                    onPress={() =>
+                      setDisplayMetadata(prev => ({
+                        ...prev,
+                        brightness: Math.min(MAX_BRIGHTNESS, prev.brightness + 10),
+                      }))
+                    }>
+                    <Text
+                      style={[
+                        styles.stepperButtonText,
+                        displayMetadata.brightness >= MAX_BRIGHTNESS && styles.stepperButtonTextDisabled,
+                      ]}>
+                      +
+                    </Text>
+                  </Pressable>
+                </View>
+              </View>
 
               <View style={styles.additionalSettingsCard}>
                 <View style={styles.additionalSettingsHeader}>
@@ -1464,6 +1579,7 @@ export default function DisplayEditorScreen() {
         loading={saving}
         success={saveDone}
         disabled={!canSaveToDevice}
+        message={liveStatusText}
         onPress={handleSave}
       />
       <ConfirmDiscardModal
@@ -1476,6 +1592,19 @@ export default function DisplayEditorScreen() {
             return;
           }
           router.replace(fallbackRoute);
+        }}
+      />
+      <LayoutSelectorModal
+        visible={showLayoutSelector}
+        layoutSlots={layoutSlots}
+        onClose={() => setShowLayoutSelector(false)}
+        onSelect={slots => {
+          setShowLayoutSelector(false);
+          if (layoutSlots === 2 && slots === 1 && selectedLineId === 'line-2') {
+            removeStopFromLayout('line-2');
+            return;
+          }
+          applyLayout(slots);
         }}
       />
     </SafeAreaView>
@@ -1532,7 +1661,7 @@ function TopBar({
 
         <View style={styles.topBarSideRight}>
           <Pressable style={styles.layoutPillTopRight} onPress={onLayoutOpen}>
-            <Text style={styles.layoutPillTopRightText}>{layoutSlots === 1 ? '1 Stop' : '2 Stops'}</Text>
+            <Text style={styles.layoutPillTopRightText}>{layoutSlots === 1 ? '1 Display' : '2 Displays'}</Text>
             <Text style={styles.layoutPillChevron}>v</Text>
           </Pressable>
         </View>
@@ -1556,6 +1685,45 @@ function TopBar({
         </View>
       </FadeSection>
     </View>
+  );
+}
+
+function LayoutSelectorModal({
+  visible,
+  layoutSlots,
+  onClose,
+  onSelect,
+}: {
+  visible: boolean;
+  layoutSlots: number;
+  onClose: () => void;
+  onSelect: (slots: number) => void;
+}) {
+  return (
+    <Modal transparent visible={visible} animationType="fade" onRequestClose={onClose}>
+      <View style={styles.modalOverlay}>
+        <Pressable style={styles.modalBackdrop} onPress={onClose} />
+        <View style={styles.modalSheet}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>Number of Displays</Text>
+            <Pressable style={styles.modalCloseButton} onPress={onClose}>
+              <Text style={styles.modalCloseButtonText}>X</Text>
+            </Pressable>
+          </View>
+          {[1, 2].map(option => {
+            const active = option === layoutSlots;
+            return (
+              <Pressable
+                key={option}
+                style={[styles.modalOption, active && styles.modalOptionActive]}
+                onPress={() => onSelect(option)}>
+                <Text style={[styles.modalOptionText, active && styles.modalOptionTextActive]}>{option}</Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      </View>
+    </Modal>
   );
 }
 
@@ -1720,12 +1888,14 @@ function SaveBar({
   loading,
   success,
   disabled,
+  message,
   onPress,
 }: {
   dirty: boolean;
   loading: boolean;
   success: boolean;
   disabled: boolean;
+  message: string;
   onPress: () => void;
 }) {
   const visibilityAnim = useRef(new Animated.Value(dirty || loading || success ? 1 : 0.92)).current;
@@ -1772,6 +1942,7 @@ function SaveBar({
           <Text style={styles.saveButtonText}>{loading ? 'Saving...' : success ? 'Synced' : 'Save to Device'}</Text>
         </Pressable>
       </Animated.View>
+      {message ? <Text style={styles.saveHint}>{message}</Text> : null}
     </Animated.View>
   );
 }
@@ -1846,11 +2017,6 @@ function DisplayPresetPickerStep({
   const secondaryStopLabel = selectedStation?.area?.trim() || selectedStation?.name?.trim() || routeLabel || 'Route';
   const etaText = arrival ? `${Math.max(0, Math.round(arrival.minutes))}m` : '2m';
   const etaListText = buildNextArrivalTimes(arrival?.minutes ?? 2, line.nextStops).join(', ');
-  const activePresetId = selectedPreset ?? visiblePresetId;
-  const activePresetBehavior = getPresetBehavior(activePresetId);
-  const defaultTopText = resolveDisplayContent(activePresetBehavior.primaryContent, stopLabel, directionLabel, '');
-  const defaultBottomText = resolveDisplayContent(activePresetBehavior.secondaryContent, stopLabel, directionLabel, '');
-
   useEffect(() => {
     const index = Math.max(0, DISPLAY_PRESET_OPTIONS.findIndex(option => option.id === selectedPreset));
     const presetId = DISPLAY_PRESET_OPTIONS[index]?.id ?? DISPLAY_PRESET_OPTIONS[0].id;
@@ -1916,39 +2082,7 @@ function DisplayPresetPickerStep({
         })}
       </View>
       <View style={styles.customTextEditor}>
-        <View style={styles.sectionBlock}>
-          <Text style={styles.sectionLabel}>Top Text</Text>
-          <TextInput
-            value={line.label}
-            onChangeText={text =>
-              onChangeLine({
-                label: text,
-                primaryContent: text.trim().length > 0 ? 'custom' : activePresetBehavior.primaryContent,
-              })
-            }
-            placeholder={defaultTopText}
-            placeholderTextColor={colors.textMuted}
-            style={styles.stepSearchInput}
-          />
-        </View>
-        {activePresetBehavior.supportsBottomCustom ? (
-          <View style={styles.sectionBlock}>
-            <Text style={styles.sectionLabel}>Bottom Text</Text>
-            <TextInput
-              value={line.secondaryLabel}
-              onChangeText={text =>
-                onChangeLine({
-                  secondaryLabel: text,
-                  secondaryContent: text.trim().length > 0 ? 'custom' : activePresetBehavior.secondaryContent,
-                })
-              }
-              placeholder={defaultBottomText}
-              placeholderTextColor={colors.textMuted}
-              style={styles.stepSearchInput}
-            />
-          </View>
-        ) : null}
-        {activePresetBehavior.displayFormat === 'times-line' ? (
+        {getPresetBehavior(selectedPreset ?? visiblePresetId).displayFormat === 'times-line' ? (
           <View style={styles.sectionBlock}>
             <Text style={styles.sectionLabel}>Additional Times</Text>
             <View style={styles.segmented}>
@@ -2778,33 +2912,78 @@ function ReviewDoneStep({
   line,
   displayPreset,
   presetConfirmed,
-  layoutSlots,
   selectedRoute,
   selectedStation,
+  onChangeLine,
   onClearLine,
   onClearStop,
   onClearDisplayType,
-  onAddStop,
-  onRemoveStop,
 }: {
   line: LinePick;
   displayPreset: number;
   presetConfirmed: boolean;
-  layoutSlots: number;
   selectedRoute: Route | undefined;
   selectedStation: Station | undefined;
+  onChangeLine: (next: Partial<LinePick>) => void;
   onClearLine: () => void;
   onClearStop: () => void;
   onClearDisplayType: () => void;
-  onAddStop: () => void;
-  onRemoveStop: () => void;
 }) {
   const presetOption = DISPLAY_PRESET_OPTIONS.find(option => option.id === displayPreset);
   const directionLabel = line.direction === 'downtown' ? 'Downtown / South' : 'Uptown / North';
+  const activePresetBehavior = getPresetBehavior(displayPreset);
+  const topPlaceholder = resolveDisplayContent(
+    activePresetBehavior.primaryContent,
+    selectedStation?.name?.trim() || 'Selected stop',
+    line.direction === 'downtown' ? 'Downtown' : 'Uptown',
+    '',
+  );
+  const bottomPlaceholder = resolveDisplayContent(
+    activePresetBehavior.secondaryContent,
+    selectedStation?.area?.trim() || selectedStation?.name?.trim() || selectedRoute?.label || 'Route',
+    line.direction === 'downtown' ? 'Downtown' : 'Uptown',
+    '',
+  );
 
   return (
     <View style={styles.doneStepContainer}>
       <Text style={styles.reviewEyebrow}>Final Check</Text>
+      <View style={styles.reviewControlsCard}>
+        <View style={styles.reviewField}>
+          <Text style={styles.reviewFieldLabel}>Top Text</Text>
+          <TextInput
+            value={line.label}
+            onChangeText={text =>
+              onChangeLine({
+                label: text,
+                primaryContent: text.trim().length > 0 ? 'custom' : activePresetBehavior.primaryContent,
+              })
+            }
+            placeholder={topPlaceholder}
+            placeholderTextColor={colors.textMuted}
+            style={styles.reviewFieldInput}
+            returnKeyType="done"
+          />
+        </View>
+        {activePresetBehavior.supportsBottomCustom ? (
+          <View style={styles.reviewField}>
+            <Text style={styles.reviewFieldLabel}>Bottom Text</Text>
+            <TextInput
+              value={line.secondaryLabel}
+              onChangeText={text =>
+                onChangeLine({
+                  secondaryLabel: text,
+                  secondaryContent: text.trim().length > 0 ? 'custom' : activePresetBehavior.secondaryContent,
+                })
+              }
+              placeholder={bottomPlaceholder}
+              placeholderTextColor={colors.textMuted}
+              style={styles.reviewFieldInput}
+              returnKeyType="done"
+            />
+          </View>
+        ) : null}
+      </View>
       <View style={styles.doneReviewList}>
         <ReviewRow label="Line" value={selectedRoute?.label ? `${selectedRoute.label} line` : 'Not selected'} onClear={onClearLine} />
         <ReviewRow label="Stop" value={selectedStation?.name ?? 'Not selected'} onClear={onClearStop} />
@@ -2815,16 +2994,6 @@ function ReviewDoneStep({
           onClear={onClearDisplayType}
         />
       </View>
-      {layoutSlots === 1 && line.id === 'line-1' ? (
-        <Pressable style={styles.reviewActionButton} onPress={onAddStop}>
-          <Text style={styles.reviewActionButtonText}>Add Stop</Text>
-        </Pressable>
-      ) : null}
-      {layoutSlots === 2 ? (
-        <Pressable style={styles.reviewRemoveButton} onPress={onRemoveStop}>
-          <Text style={styles.reviewRemoveButtonText}>Remove This Stop</Text>
-        </Pressable>
-      ) : null}
     </View>
   );
 }

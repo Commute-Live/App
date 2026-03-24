@@ -201,24 +201,51 @@ function toTransitUiMode(mode: ModeId): TransitUiMode {
   return mode;
 }
 
+function sortStationsForPicker(stations: Station[]) {
+  return [...stations].sort((left, right) => {
+    const leftStreetNumber = extractLeadingStreetNumber(left.name);
+    const rightStreetNumber = extractLeadingStreetNumber(right.name);
+    if (leftStreetNumber !== null || rightStreetNumber !== null) {
+      if (leftStreetNumber === null) return 1;
+      if (rightStreetNumber === null) return -1;
+      if (leftStreetNumber !== rightStreetNumber) return leftStreetNumber - rightStreetNumber;
+    }
+
+    const nameCompare = left.name.localeCompare(right.name, undefined, {numeric: true, sensitivity: 'base'});
+    if (nameCompare !== 0) return nameCompare;
+
+    const areaCompare = left.area.localeCompare(right.area, undefined, {numeric: true, sensitivity: 'base'});
+    if (areaCompare !== 0) return areaCompare;
+
+    return left.id.localeCompare(right.id, undefined, {numeric: true, sensitivity: 'base'});
+  });
+}
+
+function extractLeadingStreetNumber(name: string): number | null {
+  const match = name.match(/\b(\d{1,3})(?:ST|ND|RD|TH)?\b/i);
+  if (!match) return null;
+  const value = Number(match[1]);
+  return Number.isFinite(value) ? value : null;
+}
+
 export async function loadStopsForLine(city: CityId, mode: ModeId, lineId: string): Promise<Station[]> {
   const response = await getTransitStopsForLine(city, toTransitUiMode(mode), lineId);
-  return response.stations.map(station => ({
+  return sortStationsForPicker(response.stations.map(station => ({
     id: station.id,
     name: station.name,
     area: station.area ?? buildAreaFromName(station.name),
     lines: station.lines,
-  }));
+  })));
 }
 
 export async function loadStationsForCityMode(city: CityId, mode: ModeId): Promise<Station[]> {
   const response = await getTransitStations(city, toTransitUiMode(mode));
-  return response.stations.map(station => ({
+  return sortStationsForPicker(response.stations.map(station => ({
     id: station.id,
     name: station.name,
     area: station.area ?? buildAreaFromName(station.name),
     lines: station.lines,
-  }));
+  })));
 }
 
 function resolveMappedRouteAppearance(city: CityId, lineId: string, label?: string | null) {
@@ -458,26 +485,27 @@ export function buildRouteGroups(city: CityId, mode: ModeId, routes: RoutePicker
 }
 
 function buildNycTrainRouteGroups(routes: RoutePickerItem[]): RouteGroup[] {
-  const groups = [
-    {key: '123', labels: new Set(['1', '2', '3'])},
-    {key: 'ace', labels: new Set(['A', 'C', 'E'])},
-    {key: '456', labels: new Set(['4', '5', '6', '6X'])},
-    {key: 'nqrw', labels: new Set(['N', 'Q', 'R', 'W'])},
-    {key: 'bdfm', labels: new Set(['B', 'D', 'F', 'M'])},
-    {key: '7', labels: new Set(['7', '7X'])},
-    {key: 'jz', labels: new Set(['J', 'Z'])},
-    {key: 'ls', labels: new Set(['L', 'S', 'FS', 'GS'])},
-    {key: 'other', labels: new Set(['G', 'SI'])},
+  const rows = [
+    {key: 'row-1', labels: ['1', '2', '3']},
+    {key: 'row-2', labels: ['4', '5', '6', '6X', '7', '7X']},
+    {key: 'row-3', labels: ['A', 'C', 'E']},
+    {key: 'row-4', labels: ['N', 'Q', 'R', 'W']},
+    {key: 'row-5', labels: ['B', 'D', 'F', 'M']},
+    {key: 'row-6', labels: ['L', 'G', 'J', 'Z', 'S', 'FS', 'GS', 'SI']},
   ];
 
-  return groups
-    .map(group => {
-      const groupRoutes = routes.filter(route => group.labels.has(normalizeRoutePickerLabel(route)));
+  return rows
+    .map(row => {
+      const order = new Map(row.labels.map((label, index) => [label, index]));
+      const rowRoutes = routes.filter(route => order.has(normalizeRoutePickerLabel(route)));
       return {
-        key: group.key,
-        routes: group.key === 'other'
-          ? [...groupRoutes].sort((left, right) => (sortRoutesForPicker(left.routes.concat(right.routes)).length ? naturalRouteLabelCompare(left.label, right.label) : 0))
-          : groupRoutes,
+        key: row.key,
+        routes: [...rowRoutes].sort((left, right) => {
+          const leftOrder = order.get(normalizeRoutePickerLabel(left)) ?? 999;
+          const rightOrder = order.get(normalizeRoutePickerLabel(right)) ?? 999;
+          if (leftOrder !== rightOrder) return leftOrder - rightOrder;
+          return naturalRouteLabelCompare(left.label, right.label);
+        }),
       };
     })
     .filter(group => group.routes.length > 0);
@@ -849,3 +877,4 @@ export function buildNextArrivalTimes(firstMinutes: number, count: number): stri
   }
   return times;
 }
+
