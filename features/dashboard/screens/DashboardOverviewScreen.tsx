@@ -251,19 +251,6 @@ export default function DashboardOverviewScreen() {
    });
    const activating = activateDisplayMutation.isPending;
 
-   // Show loading screen while auth hydration is in progress
-   if (status === 'loading') {
-      return (
-         <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
-            <View style={styles.loadingContainer}>
-               <ActivityIndicator size="large" color={colors.accent} />
-               <Text style={styles.loadingText}>Loading…</Text>
-            </View>
-            <BottomNav items={NAV_ITEMS} />
-         </SafeAreaView>
-      );
-   }
-
    const activateDisplayOnDevice = async (display: DeviceDisplay) => {
       if (!selectedDevice.id || activating) return;
       try {
@@ -294,6 +281,19 @@ export default function DashboardOverviewScreen() {
          }),
       [carouselIndex, carouselPresets.length],
    );
+
+   // Show loading screen while auth hydration is in progress
+   if (status === 'loading') {
+      return (
+         <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
+            <View style={styles.loadingContainer}>
+               <ActivityIndicator size="large" color={colors.accent} />
+               <Text style={styles.loadingText}>Loading…</Text>
+            </View>
+            <BottomNav items={NAV_ITEMS} />
+         </SafeAreaView>
+      );
+   }
 
    return (
       <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>

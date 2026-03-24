@@ -240,7 +240,9 @@ export function AuthProvider({children}: {children: React.ReactNode}) {
 
   useEffect(() => {
     if (authMeQuery.isPending) {
-      setStatus('loading');
+      if (!user && status !== 'unauthenticated') {
+        setStatus('loading');
+      }
       return;
     }
     if (authMeQuery.isSuccess) {
@@ -258,6 +260,7 @@ export function AuthProvider({children}: {children: React.ReactNode}) {
     authMeQuery.isSuccess,
     clearAuth,
     status,
+    user,
   ]);
 
   const value = useMemo(

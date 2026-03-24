@@ -41,9 +41,8 @@ export default function SettingsScreen() {
             setIsDeleting(true);
             try {
               await deleteAccount();
-            } finally {
+            } catch {
               setIsDeleting(false);
-              router.replace('/auth');
             }
           },
         },
@@ -138,9 +137,8 @@ export default function SettingsScreen() {
                     setIsSigningOut(true);
                     try {
                       await signOut();
-                    } finally {
+                    } catch {
                       setIsSigningOut(false);
-                      router.replace('/auth');
                     }
                   }}>
                   <Text style={styles.signOutText}>{isSigningOut ? 'Signing out...' : 'Sign out'}</Text>

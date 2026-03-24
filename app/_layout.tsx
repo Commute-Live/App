@@ -18,17 +18,23 @@ GoogleSignin.configure({
 
 function AppNavigator() {
   const router = useRouter();
-  const {clearAuth} = useAuth();
+  const {clearAuth, status} = useAuth();
 
   useEffect(() => {
     setSessionInvalidHandler(() => {
       clearAuth();
-      router.replace('/auth');
     });
     return () => {
       setSessionInvalidHandler(null);
     };
-  }, [clearAuth, router]);
+  }, [clearAuth]);
+
+  useEffect(() => {
+    if (status === 'unauthenticated') {
+      const t = setTimeout(() => router.replace('/'), 50);
+      return () => clearTimeout(t);
+    }
+  }, [status, router]);
 
   return (
     <Stack
