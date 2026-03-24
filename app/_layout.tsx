@@ -3,12 +3,18 @@ import {Stack, useRouter} from 'expo-router';
 import {StatusBar} from 'expo-status-bar';
 import {SafeAreaProvider} from 'react-native-safe-area-context';
 import {QueryClientProvider} from '@tanstack/react-query';
+import {GoogleSignin} from '@react-native-google-signin/google-signin';
 import {AppStateProvider} from '../state/appState';
 import {colors} from '../theme';
 import {setSessionInvalidHandler} from '../lib/api';
 import {queryClient} from '../lib/queryClient';
 import {AuthProvider, useAuth} from '../state/authProvider';
 import 'react-native-reanimated';
+
+GoogleSignin.configure({
+  webClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
+  iosClientId: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
+});
 
 function AppNavigator() {
   const router = useRouter();
@@ -34,10 +40,6 @@ function AppNavigator() {
       }}>
       <Stack.Screen name="index" />
       <Stack.Screen name="auth" />
-      <Stack.Screen name="login" />
-      <Stack.Screen name="sign-up" />
-      <Stack.Screen name="forgot-password" />
-      <Stack.Screen name="reset-password" />
       <Stack.Screen name="register-device" />
       <Stack.Screen name="ble-provision" />
       <Stack.Screen name="dashboard" options={{animation: 'none'}} />

@@ -17,14 +17,39 @@ const navItems: BottomNavItem[] = [
 
 export default function SettingsScreen() {
   const router = useRouter();
-  const {deviceId, disconnectDevice, signOut, user} = useAuth();
+  const {deviceId, disconnectDevice, signOut, deleteAccount, user, currentProvider} = useAuth();
   const {state: appState, setSelectedCity} = useAppState();
   const [openSection, setOpenSection] = useState<string | null>('Account');
   const [isSigningOut, setIsSigningOut] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [isDisconnecting, setIsDisconnecting] = useState(false);
   const [deviceNotice, setDeviceNotice] = useState<{kind: 'success' | 'error'; text: string} | null>(
     null,
   );
+
+  const handleDeleteAccount = () => {
+    const providerName = currentProvider === 'apple' ? 'Apple' : 'Google';
+    Alert.alert(
+      'Disconnect Account',
+      `This will permanently delete your account and remove all association with ${providerName}. This cannot be undone.`,
+      [
+        {text: 'Cancel', style: 'cancel'},
+        {
+          text: 'Delete Account',
+          style: 'destructive',
+          onPress: async () => {
+            setIsDeleting(true);
+            try {
+              await deleteAccount();
+            } finally {
+              setIsDeleting(false);
+              router.replace('/auth');
+            }
+          },
+        },
+      ],
+    );
+  };
   const [timeFormat, setTimeFormat] = useState<'ampm' | '24h'>('ampm');
   const currentDeviceId = deviceId ?? appState.deviceId;
 
@@ -102,6 +127,30 @@ export default function SettingsScreen() {
               <View style={styles.cardContent}>
                 <Text style={styles.itemLabel}>Email</Text>
                 <Text style={styles.itemValue}>{user?.email ?? '-'}</Text>
+                <Text style={styles.itemLabel}>Signed in with</Text>
+                <Text style={styles.itemValue}>
+                  {currentProvider === 'apple' ? 'Apple' : currentProvider === 'google' ? 'Google' : '-'}
+                </Text>
+                <Pressable
+                  style={styles.signOutButton}
+                  onPress={async () => {
+                    if (isSigningOut || isDeleting) return;
+                    setIsSigningOut(true);
+                    try {
+                      await signOut();
+                    } finally {
+                      setIsSigningOut(false);
+                      router.replace('/auth');
+                    }
+                  }}>
+                  <Text style={styles.signOutText}>{isSigningOut ? 'Signing out...' : 'Sign out'}</Text>
+                </Pressable>
+                <Pressable
+                  style={styles.deleteAccountButton}
+                  onPress={handleDeleteAccount}
+                  disabled={isDeleting || isSigningOut}>
+                  <Text style={styles.deleteAccountText}>{isDeleting ? 'Deleting account...' : 'Disconnect & Delete Account'}</Text>
+                </Pressable>
               </View>
             ) : null}
           </Pressable>
@@ -140,12 +189,12 @@ export default function SettingsScreen() {
                     </Text>
                     <Pressable
                       style={[
-                        styles.disconnectButton,
-                        isDisconnecting && styles.disconnectButtonDisabled,
+                        styles.disconnectDeviceButton,
+                        isDisconnecting && styles.disconnectDeviceButtonDisabled,
                       ]}
                       onPress={confirmDisconnectDevice}
                       disabled={isDisconnecting}>
-                      <Text style={styles.disconnectButtonText}>
+                      <Text style={styles.disconnectDeviceButtonText}>
                         {isDisconnecting ? 'Disconnecting...' : 'Disconnect device'}
                       </Text>
                     </Pressable>
@@ -287,39 +336,6 @@ export default function SettingsScreen() {
             ) : null}
           </Pressable>
 
-          <Pressable style={styles.card} onPress={() => toggleSection('Sign out')}>
-            <View style={styles.cardHeader}>
-              <View>
-                <Text style={styles.cardTitle}>Sign out</Text>
-                <Text style={styles.cardSubtitle}>End your session on this device</Text>
-              </View>
-              <Ionicons
-                name={openSection === 'Sign out' ? 'chevron-up' : 'chevron-down'}
-                size={18}
-                color={colors.textMuted}
-              />
-            </View>
-            {openSection === 'Sign out' ? (
-              <View style={styles.cardContent}>
-                <Text style={styles.itemLabel}>You’re signed in as</Text>
-                <Text style={styles.itemValue}>{user?.email ?? '-'}</Text>
-                <Pressable
-                  style={styles.signOutButton}
-                  onPress={async () => {
-                    if (isSigningOut) return;
-                    setIsSigningOut(true);
-                    try {
-                      await signOut();
-                    } finally {
-                      setIsSigningOut(false);
-                      router.replace('/auth');
-                    }
-                  }}>
-                  <Text style={styles.signOutText}>{isSigningOut ? 'Signing out...' : 'Sign out'}</Text>
-                </Pressable>
-              </View>
-            ) : null}
-          </Pressable>
         </ScrollView>
 
         <BottomNav items={navItems} />
@@ -397,7 +413,7 @@ const styles = StyleSheet.create({
   deviceNotice: {fontSize: 12, lineHeight: 18, marginTop: spacing.xs},
   deviceNoticeError: {color: '#FCA5A5'},
   deviceNoticeSuccess: {color: colors.textMuted},
-  disconnectButton: {
+  disconnectDeviceButton: {
     marginTop: spacing.sm,
     backgroundColor: '#2B1010',
     borderColor: '#5B1C1C',
@@ -406,8 +422,8 @@ const styles = StyleSheet.create({
     borderRadius: radii.md,
     alignItems: 'center',
   },
-  disconnectButtonDisabled: {opacity: 0.7},
-  disconnectButtonText: {color: '#FCA5A5', fontWeight: '700', fontSize: 13},
+  disconnectDeviceButtonDisabled: {opacity: 0.7},
+  disconnectDeviceButtonText: {color: '#FCA5A5', fontWeight: '700', fontSize: 13},
   signOutButton: {
     marginTop: spacing.sm,
     backgroundColor: '#2B1010',
@@ -418,4 +434,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   signOutText: {color: '#FCA5A5', fontWeight: '700', fontSize: 13},
+  deleteAccountButton: {
+    marginTop: spacing.xs,
+    paddingVertical: spacing.sm,
+    borderRadius: radii.md,
+    alignItems: 'center',
+  },
+  deleteAccountText: {color: colors.textMuted, fontWeight: '600', fontSize: 12},
 });

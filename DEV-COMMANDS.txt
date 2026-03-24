@@ -1,0 +1,30 @@
+== MAC DEV 1 & 2 ==
+
+One-time setup:
+  eas build --profile staging --platform ios
+
+Daily:
+  npx expo start
+
+
+== WINDOWS DEV (iPhone) ==
+
+One-time setup (Mac dev runs this, shares install link with Windows dev):
+  eas build --profile staging --platform ios
+
+Daily:
+  git pull
+  npx expo start
+  Scan QR code with iPhone
+
+
+== TESTFLIGHT & APP STORE ==
+
+  eas build --profile production --platform ios
+  eas submit --platform ios
+
+
+== GOOGLE PLAY ==
+
+  eas build --profile production --platform android
+  eas submit --platform android

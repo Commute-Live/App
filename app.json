@@ -1,11 +1,11 @@
 {
   "expo": {
-    "name": "commute-live-fresh",
-    "slug": "commute-live-fresh",
+    "name": "CommuteLive",
+    "slug": "commutelive",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "commutelivefresh",
+    "scheme": "commutelive",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "splash": {
@@ -16,22 +16,10 @@
     "ios": {
       "infoPlist": {
         "NSBluetoothAlwaysUsageDescription": "CommuteLive uses Bluetooth to set up your transit display without switching Wi-Fi networks.",
-        "NSAppTransportSecurity": {
-          "NSAllowsArbitraryLoads": true,
-          "NSExceptionDomains": {
-            "localhost": {
-              "NSExceptionAllowsInsecureHTTPLoads": true,
-              "NSIncludesSubdomains": true
-            },
-            "129.161.86.73": {
-              "NSExceptionAllowsInsecureHTTPLoads": true,
-              "NSIncludesSubdomains": false
-            }
-          }
-        },
         "ITSAppUsesNonExemptEncryption": false
       },
-      "bundleIdentifier": "com.anonymous.commutelivefresh"
+      "bundleIdentifier": "com.commutelive.app",
+      "usesAppleSignIn": true
     },
     "android": {
       "adaptiveIcon": {
@@ -40,7 +28,7 @@
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
-      "package": "com.anonymous.commutelivefresh",
+      "package": "com.commutelive.app",
       "permissions": [
         "android.permission.BLUETOOTH",
         "android.permission.BLUETOOTH_ADMIN",
@@ -66,6 +54,12 @@
           ],
           "bluetoothAlwaysPermission": "Allow CommuteLive to connect to your transit display via Bluetooth."
         }
+      ],
+      [
+        "@react-native-google-signin/google-signin",
+        {
+          "iosUrlScheme": "com.googleusercontent.apps.790984102356-sq1leqa8e4c71pb51nmf2gsrl8up0n13"
+        }
       ]
     ],
     "experiments": {
@@ -74,8 +68,9 @@
     "extra": {
       "router": {},
       "eas": {
-        "projectId": "8c802d50-b60e-46a8-b2d2-85e9c5785028"
+        "projectId": "df74e721-97eb-4684-98c3-a4778c010eec"
       }
-    }
+    },
+    "owner": "23nikulp"
   }
 }
