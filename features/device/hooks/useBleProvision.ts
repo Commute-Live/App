@@ -6,6 +6,7 @@ import {Buffer} from 'buffer';
 // CommuteLive custom GATT UUIDs — must match firmware ble_provisioner.cpp
 export const BLE_SERVICE_UUID   = 'a1b2c3d4-0000-4a5b-8c7d-9e0f1a2b3c4d';
 export const BLE_PROVISION_UUID = 'a1b2c3d4-0001-4a5b-8c7d-9e0f1a2b3c4d';
+export const BLE_STATUS_UUID    = 'a1b2c3d4-0002-4a5b-8c7d-9e0f1a2b3c4d';
 
 // The firmware advertises as "esp32-XXXX" (same as its MQTT deviceId).
 // Also accept "CommuteLive-" for backwards compatibility with older firmware.
@@ -19,6 +20,7 @@ export type BleProvisionPhase =
   | 'connecting'
   | 'connected'
   | 'provisioning'
+  | 'waiting_wifi'
   | 'done'
   | 'error';
 
@@ -28,6 +30,34 @@ export interface BleProvisionState {
   deviceId: string | null;   // esp32-XXXX — set from BLE device name during scan
   errorMsg: string | null;
 }
+
+type BleStatusPayload = {
+  status: string | null;
+  deviceId: string | null;
+};
+
+type PendingWifiResult = {
+  resolve: (deviceId: string | null) => void;
+  timeout: ReturnType<typeof setTimeout>;
+};
+
+const WIFI_RESULT_TIMEOUT_MS = 45_000;
+
+const parseBleStatusPayload = (value: string | null | undefined): BleStatusPayload => {
+  if (!value) {
+    return {status: null, deviceId: null};
+  }
+
+  try {
+    const data = JSON.parse(value) as {status?: unknown; deviceId?: unknown};
+    return {
+      status: typeof data.status === 'string' ? data.status : null,
+      deviceId: typeof data.deviceId === 'string' ? data.deviceId : null,
+    };
+  } catch {
+    return {status: null, deviceId: null};
+  }
+};
 
 // Singleton BleManager — created once per app session, never recreated.
 let managerInstance: BleManager | null = null;
@@ -70,6 +100,8 @@ export function useBleProvision() {
 
   const deviceRef      = useRef<Device | null>(null);
   const scanTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const statusSubscriptionRef = useRef<{remove: () => void} | null>(null);
+  const pendingWifiResultRef = useRef<PendingWifiResult | null>(null);
 
   const setPhase = useCallback((phase: BleProvisionPhase, extra?: Partial<BleProvisionState>) => {
     setState(prev => ({...prev, phase, ...extra}));
@@ -84,6 +116,13 @@ export function useBleProvision() {
       clearTimeout(scanTimeoutRef.current);
       scanTimeoutRef.current = null;
     }
+    if (pendingWifiResultRef.current) {
+      clearTimeout(pendingWifiResultRef.current.timeout);
+      pendingWifiResultRef.current.resolve(null);
+      pendingWifiResultRef.current = null;
+    }
+    statusSubscriptionRef.current?.remove();
+    statusSubscriptionRef.current = null;
     const mgr = getManager();
     mgr?.stopDeviceScan();
     if (deviceRef.current) {
@@ -99,7 +138,8 @@ export function useBleProvision() {
   // Step 1: scan for the CommuteLive device.
   // Firmware advertises as "esp32-XXXX" — device.name IS the deviceId.
   const startScan = useCallback(async () => {
-    setPhase('requesting_permission');
+    cleanup();
+    setPhase('requesting_permission', {errorMsg: null, foundDevice: null, deviceId: null});
 
     const mgr = getManager();
     if (!mgr) {
@@ -113,7 +153,7 @@ export function useBleProvision() {
       return;
     }
 
-    setPhase('scanning');
+    setPhase('scanning', {errorMsg: null});
 
     scanTimeoutRef.current = setTimeout(() => {
       mgr.stopDeviceScan();
@@ -135,7 +175,7 @@ export function useBleProvision() {
         console.log('[BLE] Found device, deviceId =', device.name);
       }
     });
-  }, [setPhase, fail]);
+  }, [cleanup, setPhase, fail]);
 
   // Step 2: connect to the found device.
   const connectToDevice = useCallback(async () => {
@@ -144,12 +184,65 @@ export function useBleProvision() {
       fail('No device to connect to.');
       return;
     }
-    setPhase('connecting');
+    setPhase('connecting', {errorMsg: null});
     try {
       const connected = await device.connect();
       await connected.discoverAllServicesAndCharacteristics();
+      statusSubscriptionRef.current?.remove();
+      statusSubscriptionRef.current = connected.monitorCharacteristicForService(
+        BLE_SERVICE_UUID,
+        BLE_STATUS_UUID,
+        (error, characteristic) => {
+          if (error) {
+            console.log('[BLE] status monitor error:', error.message);
+            return;
+          }
+
+          const rawValue = characteristic?.value
+            ? Buffer.from(characteristic.value, 'base64').toString('utf8')
+            : null;
+          const payload = parseBleStatusPayload(rawValue);
+          const nextDeviceId = payload.deviceId ?? connected.name ?? null;
+
+          if (rawValue) {
+            console.log('[BLE] status update:', rawValue);
+          }
+
+          if (payload.status === 'ready') {
+            setState(prev => ({...prev, deviceId: nextDeviceId ?? prev.deviceId}));
+            return;
+          }
+
+          if (payload.status === 'connecting') {
+            setPhase('waiting_wifi', {deviceId: nextDeviceId, errorMsg: null});
+            return;
+          }
+
+          if (payload.status === 'connected') {
+            setPhase('connected', {deviceId: nextDeviceId, errorMsg: null});
+            if (pendingWifiResultRef.current) {
+              clearTimeout(pendingWifiResultRef.current.timeout);
+              pendingWifiResultRef.current.resolve(nextDeviceId);
+              pendingWifiResultRef.current = null;
+            }
+            return;
+          }
+
+          if (payload.status === 'failed') {
+            setPhase('connected', {
+              deviceId: nextDeviceId,
+              errorMsg: 'Display could not connect to Wi-Fi. Check the SSID, username, and password, then try again.',
+            });
+            if (pendingWifiResultRef.current) {
+              clearTimeout(pendingWifiResultRef.current.timeout);
+              pendingWifiResultRef.current.resolve(null);
+              pendingWifiResultRef.current = null;
+            }
+          }
+        },
+      );
       deviceRef.current = connected;
-      setPhase('connected');
+      setPhase('connected', {errorMsg: null});
     } catch (e: unknown) {
       fail(`Connection failed: ${e instanceof Error ? e.message : String(e)}`);
     }
@@ -164,23 +257,45 @@ export function useBleProvision() {
         fail('Device not connected.');
         return null;
       }
-      setPhase('provisioning');
+      setPhase('provisioning', {errorMsg: null});
 
       const payload = JSON.stringify({ssid, password, username});
       const encoded = Buffer.from(payload, 'utf8').toString('base64');
 
       try {
+        if (pendingWifiResultRef.current) {
+          clearTimeout(pendingWifiResultRef.current.timeout);
+          pendingWifiResultRef.current.resolve(null);
+          pendingWifiResultRef.current = null;
+        }
+
+        const wifiResult = new Promise<string | null>((resolve) => {
+          const timeout = setTimeout(() => {
+            pendingWifiResultRef.current = null;
+            setPhase('connected', {
+              errorMsg: 'Timed out waiting for the display to join Wi-Fi. Check the credentials and try again.',
+            });
+            resolve(null);
+          }, WIFI_RESULT_TIMEOUT_MS);
+
+          pendingWifiResultRef.current = {resolve, timeout};
+        });
+
         await device.writeCharacteristicWithResponseForService(
           BLE_SERVICE_UUID,
           BLE_PROVISION_UUID,
           encoded,
         );
-        setPhase('done');
-        // device.name is the deviceId (e.g. "esp32-B44AC2F16E20")
-        const deviceId = device.name ?? null;
-        console.log('[BLE] Credentials sent, deviceId =', deviceId);
+        setPhase('waiting_wifi', {errorMsg: null});
+        const deviceId = await wifiResult;
+        console.log('[BLE] Credentials result deviceId =', deviceId);
         return deviceId;
       } catch (e: unknown) {
+        if (pendingWifiResultRef.current) {
+          clearTimeout(pendingWifiResultRef.current.timeout);
+          pendingWifiResultRef.current.resolve(null);
+          pendingWifiResultRef.current = null;
+        }
         fail(`Failed to send credentials: ${e instanceof Error ? e.message : String(e)}`);
         return null;
       }

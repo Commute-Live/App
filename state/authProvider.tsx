@@ -22,6 +22,9 @@ type AuthContextValue = {
     email: string,
     password: string,
   ) => Promise<{ok: true; user: AuthUser; deviceIds: string[]} | {ok: false; error: string}>;
+  disconnectDevice: (
+    deviceId: string,
+  ) => Promise<{ok: true; user: AuthUser; deviceIds: string[]} | {ok: false; error: string}>;
   signOut: () => Promise<void>;
   clearAuth: () => void;
   setDeviceId: (deviceId: string | null) => void;
@@ -137,6 +140,33 @@ export function AuthProvider({children}: {children: React.ReactNode}) {
     },
   });
 
+  const disconnectDeviceMutation = useMutation({
+    mutationFn: async (disconnectDeviceId: string) => {
+      try {
+        const response = await apiFetch(`/user/device/${encodeURIComponent(disconnectDeviceId)}`, {
+          method: 'DELETE',
+        });
+        const data = await response.json().catch(() => null);
+        const profile = toUserProfile(data?.user);
+        if (!response.ok || !profile) {
+          if (data?.error === 'DEVICE_NOT_LINKED') {
+            return {
+              ok: false as const,
+              error: 'This device is not linked to your account.',
+            };
+          }
+          return {
+            ok: false as const,
+            error: 'Failed to disconnect device.',
+          };
+        }
+        return {ok: true as const, profile};
+      } catch {
+        return {ok: false as const, error: 'Network error'};
+      }
+    },
+  });
+
   const signIn = useCallback(
     async (email: string, password: string) => {
       const result = await signInMutation.mutateAsync({email, password});
@@ -162,6 +192,34 @@ export function AuthProvider({children}: {children: React.ReactNode}) {
       clearAuth();
     }
   }, [clearAuth, queryClient, signOutMutation]);
+
+  const disconnectDevice = useCallback(
+    async (disconnectDeviceId: string) => {
+      const result = await disconnectDeviceMutation.mutateAsync(disconnectDeviceId);
+      if (!result.ok) {
+        return result;
+      }
+
+      await Promise.all([
+        queryClient.cancelQueries({queryKey: queryKeys.displays(disconnectDeviceId)}),
+        queryClient.cancelQueries({queryKey: queryKeys.deviceConfig(disconnectDeviceId)}),
+        queryClient.cancelQueries({queryKey: queryKeys.lastCommand(disconnectDeviceId)}),
+      ]);
+
+      queryClient.removeQueries({queryKey: queryKeys.displays(disconnectDeviceId)});
+      queryClient.removeQueries({queryKey: queryKeys.deviceConfig(disconnectDeviceId)});
+      queryClient.removeQueries({queryKey: queryKeys.lastCommand(disconnectDeviceId)});
+      queryClient.setQueryData(queryKeys.auth.me, result.profile);
+      applyAuthenticatedProfile(result.profile);
+
+      return {
+        ok: true as const,
+        user: {id: result.profile.id, email: result.profile.email},
+        deviceIds: result.profile.deviceIds,
+      };
+    },
+    [applyAuthenticatedProfile, disconnectDeviceMutation, queryClient],
+  );
 
   const setDeviceId = useCallback(
     (nextDeviceId: string | null) => {
@@ -201,11 +259,23 @@ export function AuthProvider({children}: {children: React.ReactNode}) {
       deviceId: appDeviceId,
       hydrate,
       signIn,
+      disconnectDevice,
       signOut,
       clearAuth,
       setDeviceId,
     }),
-    [appDeviceId, clearAuth, deviceIds, hydrate, setDeviceId, signIn, signOut, status, user],
+    [
+      appDeviceId,
+      clearAuth,
+      deviceIds,
+      disconnectDevice,
+      hydrate,
+      setDeviceId,
+      signIn,
+      signOut,
+      status,
+      user,
+    ],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
