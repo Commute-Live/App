@@ -1,6 +1,9 @@
 import React, {useEffect, useRef, useState} from 'react';
 import {
   ActivityIndicator,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -19,7 +22,6 @@ import {useBleProvision, WifiNetwork} from '../hooks/useBleProvision';
 
 type ProvisionStep = 'idle' | 'online';
 
-// Signal strength bars component
 const SignalBars = ({rssi}: {rssi: number}) => {
   const bars = rssi > -50 ? 3 : rssi > -70 ? 2 : 1;
   return (
@@ -39,16 +41,13 @@ const SignalBars = ({rssi}: {rssi: number}) => {
   );
 };
 
-// WiFi network row
 const NetworkRow = ({
   network,
-  selected,
   onPress,
   isFirst,
   isLast,
 }: {
   network: WifiNetwork;
-  selected: boolean;
   onPress: () => void;
   isFirst: boolean;
   isLast: boolean;
@@ -56,7 +55,6 @@ const NetworkRow = ({
   <Pressable
     style={[
       styles.networkRow,
-      selected && styles.networkRowSelected,
       isFirst && styles.networkRowFirst,
       isLast && styles.networkRowLast,
       !isLast && styles.networkRowBorder,
@@ -67,16 +65,173 @@ const NetworkRow = ({
       {network.ssid}
     </Text>
     <View style={{flexDirection: 'row', alignItems: 'center', gap: 6}}>
-      {network.encryption > 0 && <Text style={styles.lockIcon}>&#x1F512;</Text>}
+      {network.encryption > 0 && (
+        <Text style={styles.lockIcon}>&#x1F512;</Text>
+      )}
       {network.encryption === 4 && (
         <View style={styles.enterpriseBadge}>
           <Text style={styles.enterpriseText}>ENT</Text>
         </View>
       )}
+      <Text style={styles.chevron}>›</Text>
     </View>
   </Pressable>
 );
 
+// ── Full-screen password modal ───────────────────────────────────────────────
+interface PasswordModalProps {
+  visible: boolean;
+  network: WifiNetwork | null;
+  isManual: boolean;
+  isBusy: boolean;
+  errorMsg: string;
+  onClose: () => void;
+  onConnect: (ssid: string, password: string, username: string) => void;
+}
+
+function PasswordModal({
+  visible,
+  network,
+  isManual,
+  isBusy,
+  errorMsg,
+  onClose,
+  onConnect,
+}: PasswordModalProps) {
+  const [ssid, setSsid] = useState('');
+  const [password, setPassword] = useState('');
+  const [username, setUsername] = useState('');
+
+  const isOpen = !isManual && network?.encryption === 0;
+  const isEnterprise = !isManual && network?.encryption === 4;
+  const title = isManual ? 'Other Network' : (network?.ssid ?? '');
+  const canConnect = isManual
+    ? ssid.trim().length > 0 && (isOpen || password.trim().length > 0)
+    : isOpen || password.trim().length > 0;
+
+  useEffect(() => {
+    if (visible) {
+      setSsid(isManual ? '' : (network?.ssid ?? ''));
+      setPassword('');
+      setUsername('');
+    }
+  }, [visible, network, isManual]);
+
+  const handleConnect = () => {
+    const finalSsid = isManual ? ssid.trim() : (network?.ssid ?? '');
+    onConnect(finalSsid, password, username.trim());
+  };
+
+  return (
+    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet">
+      <SafeAreaView style={modal.container} edges={['top', 'left', 'right', 'bottom']}>
+        <KeyboardAvoidingView
+          style={{flex: 1}}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+          {/* Navigation bar */}
+          <View style={modal.navBar}>
+            <Pressable style={modal.navBtn} onPress={onClose} hitSlop={12}>
+              <Text style={modal.navCancel}>✕</Text>
+            </Pressable>
+            <Text style={modal.navTitle} numberOfLines={1}>
+              {title}
+            </Text>
+            <Pressable
+              style={[modal.navBtn, modal.navBtnRight]}
+              onPress={handleConnect}
+              disabled={!canConnect || isBusy}
+              hitSlop={12}>
+              {isBusy ? (
+                <ActivityIndicator size="small" color={colors.accent} />
+              ) : (
+                <Text style={[modal.navConnect, (!canConnect || isBusy) && modal.navConnectDim]}>
+                  Connect
+                </Text>
+              )}
+            </Pressable>
+          </View>
+
+          <ScrollView
+            contentContainerStyle={modal.body}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}>
+            {/* Fields grouped card */}
+            <View style={modal.fieldGroup}>
+              {isManual && (
+                <>
+                  <View style={modal.fieldRow}>
+                    <Text style={modal.fieldLabel}>Network name</Text>
+                    <TextInput
+                      style={modal.fieldInput}
+                      value={ssid}
+                      onChangeText={setSsid}
+                      placeholder="SSID"
+                      placeholderTextColor={colors.textMuted}
+                      autoCapitalize="none"
+                      autoCorrect={false}
+                      editable={!isBusy}
+                      autoFocus
+                    />
+                  </View>
+                  <View style={modal.fieldDivider} />
+                </>
+              )}
+
+              {(isEnterprise || isManual) && (
+                <>
+                  <View style={modal.fieldRow}>
+                    <Text style={modal.fieldLabel}>Username</Text>
+                    <TextInput
+                      style={modal.fieldInput}
+                      value={username}
+                      onChangeText={setUsername}
+                      placeholder="Optional"
+                      placeholderTextColor={colors.textMuted}
+                      autoCapitalize="none"
+                      autoCorrect={false}
+                      editable={!isBusy}
+                    />
+                  </View>
+                  <View style={modal.fieldDivider} />
+                </>
+              )}
+
+              {!isOpen && (
+                <View style={modal.fieldRow}>
+                  <Text style={modal.fieldLabel}>Password</Text>
+                  <TextInput
+                    style={modal.fieldInput}
+                    value={password}
+                    onChangeText={setPassword}
+                    placeholder="Required"
+                    placeholderTextColor={colors.textMuted}
+                    secureTextEntry
+                    editable={!isBusy}
+                    autoFocus={!isManual}
+                    returnKeyType="go"
+                    onSubmitEditing={canConnect && !isBusy ? handleConnect : undefined}
+                  />
+                </View>
+              )}
+
+              {isOpen && !isManual && (
+                <View style={modal.openRow}>
+                  <Text style={modal.openText}>This network is open — no password required.</Text>
+                </View>
+              )}
+            </View>
+
+            {errorMsg.length > 0 && (
+              <Text style={modal.errorText}>{errorMsg}</Text>
+            )}
+          </ScrollView>
+        </KeyboardAvoidingView>
+      </SafeAreaView>
+    </Modal>
+  );
+}
+
+// ── Main screen ──────────────────────────────────────────────────────────────
 export default function BleProvisionScreen() {
   const router = useRouter();
   const {setDeviceId, setDeviceStatus} = useAppState();
@@ -85,22 +240,15 @@ export default function BleProvisionScreen() {
   const {state, startScan, connectToDevice, sendCredentials, requestWifiScan, reset} =
     useBleProvision();
 
-  const [selectedNetwork, setSelectedNetwork] = useState<WifiNetwork | null>(null);
-  const [ssid, setSsid] = useState('');
-  const [password, setPassword] = useState('');
-  const [username, setUsername] = useState('');
-  const [showManualEntry, setShowManualEntry] = useState(false);
+  const [modalVisible, setModalVisible] = useState(false);
+  const [modalNetwork, setModalNetwork] = useState<WifiNetwork | null>(null);
+  const [isManualEntry, setIsManualEntry] = useState(false);
   const [linkError, setLinkError] = useState('');
   const [provisionStep, setProvisionStep] = useState<ProvisionStep>('idle');
   const pairingTokenRef = useRef<string | null>(null);
   const hasRequestedScanRef = useRef(false);
 
   const isProvisioning = provisionStep !== 'idle';
-  const isOpen = selectedNetwork?.encryption === 0;
-  const isEnterprise = selectedNetwork?.encryption === 4;
-  const canSend = showManualEntry
-    ? ssid.trim().length > 0 && password.trim().length > 0
-    : selectedNetwork != null && (isOpen || password.trim().length > 0);
   const isBusy =
     state.phase === 'requesting_permission' ||
     state.phase === 'scanning' ||
@@ -109,7 +257,10 @@ export default function BleProvisionScreen() {
     state.phase === 'waiting_wifi' ||
     isProvisioning;
 
-  // Auto-trigger WiFi scan when BLE connects
+  const modalError =
+    state.errorMsg ??
+    (linkError.length > 0 ? linkError : '');
+
   useEffect(() => {
     if (state.phase === 'connected' && !hasRequestedScanRef.current) {
       hasRequestedScanRef.current = true;
@@ -117,16 +268,22 @@ export default function BleProvisionScreen() {
     }
   }, [state.phase, requestWifiScan]);
 
+  // Re-open modal on wifi failure so user can retry
+  useEffect(() => {
+    if (state.phase === 'connected' && state.errorMsg && !modalVisible) {
+      setModalVisible(true);
+    }
+  }, [state.phase, state.errorMsg, modalVisible]);
+
   const fetchPairingToken = async () => {
     try {
       const res = await apiFetch('/device/pairing-token', {method: 'POST'});
       const data = await res.json().catch(() => null);
       if (res.ok && typeof data?.token === 'string') {
         pairingTokenRef.current = data.token;
-        console.log('[BLE] pairing token fetched');
       }
     } catch {
-      console.log('[BLE] failed to fetch pairing token');
+      // non-fatal
     }
   };
 
@@ -147,25 +304,21 @@ export default function BleProvisionScreen() {
     return false;
   };
 
-  const handleSelectNetwork = (network: WifiNetwork) => {
-    setSelectedNetwork(network);
-    setSsid(network.ssid);
-    setPassword('');
-    setUsername('');
-    setShowManualEntry(false);
+  const openNetworkModal = (network: WifiNetwork) => {
+    setModalNetwork(network);
+    setIsManualEntry(false);
     setLinkError('');
+    setModalVisible(true);
   };
 
-  const handleManualEntry = () => {
-    setSelectedNetwork(null);
-    setSsid('');
-    setPassword('');
-    setUsername('');
-    setShowManualEntry(true);
+  const openManualModal = () => {
+    setModalNetwork(null);
+    setIsManualEntry(true);
     setLinkError('');
+    setModalVisible(true);
   };
 
-  const handleSendCredentials = async () => {
+  const handleConnect = async (ssid: string, password: string, username: string) => {
     setLinkError('');
     const token = pairingTokenRef.current ?? '';
     if (!token) {
@@ -173,20 +326,18 @@ export default function BleProvisionScreen() {
       return;
     }
 
-    const finalSsid = showManualEntry ? ssid.trim() : selectedNetwork?.ssid ?? ssid.trim();
-    const espDeviceId = await sendCredentials(finalSsid, password, username.trim(), token, API_BASE);
-    console.log('[BLE] sendCredentials returned deviceId:', espDeviceId);
+    const espDeviceId = await sendCredentials(ssid, password, username, token, API_BASE);
     if (!espDeviceId) return;
 
+    // Keep modal open showing progress, close once done
     setDeviceId(espDeviceId);
     setProvisionStep('online');
-
     const online = await pollUntilOnline(espDeviceId);
     if (!online) {
       setLinkError('Device registered but took too long to come online — try reloading the app.');
     }
-
     setProvisionStep('idle');
+    setModalVisible(false);
     setDeviceStatus('pairedOnline');
     await hydrate();
     router.replace('/dashboard');
@@ -210,10 +361,7 @@ export default function BleProvisionScreen() {
 
         {/* Phase: idle / error */}
         {(state.phase === 'idle' || state.phase === 'error') && (
-          <Animated.View
-            entering={FadeIn.duration(300)}
-            exiting={FadeOut.duration(200)}
-            style={styles.section}>
+          <Animated.View entering={FadeIn.duration(300)} exiting={FadeOut.duration(200)} style={styles.section}>
             {state.phase === 'error' && (
               <View style={styles.errorCard}>
                 <Text style={styles.errorText}>{state.errorMsg}</Text>
@@ -232,10 +380,7 @@ export default function BleProvisionScreen() {
 
         {/* Phase: scanning */}
         {(state.phase === 'scanning' || state.phase === 'requesting_permission') && (
-          <Animated.View
-            entering={FadeIn.duration(300)}
-            exiting={FadeOut.duration(200)}
-            style={styles.section}>
+          <Animated.View entering={FadeIn.duration(300)} exiting={FadeOut.duration(200)} style={styles.section}>
             <View style={styles.scanCard}>
               <ActivityIndicator size="large" color={colors.accent} />
               <Text style={styles.scanText}>Scanning for CommuteLive displays nearby...</Text>
@@ -246,10 +391,7 @@ export default function BleProvisionScreen() {
 
         {/* Phase: device_found */}
         {state.phase === 'device_found' && state.foundDevice && (
-          <Animated.View
-            entering={FadeIn.duration(300)}
-            exiting={FadeOut.duration(200)}
-            style={styles.section}>
+          <Animated.View entering={FadeIn.duration(300)} exiting={FadeOut.duration(200)} style={styles.section}>
             <View style={styles.deviceCard}>
               <Text style={styles.deviceCardLabel}>Found display</Text>
               <Text style={styles.deviceCardName}>{state.foundDevice.name}</Text>
@@ -267,10 +409,7 @@ export default function BleProvisionScreen() {
 
         {/* Phase: connecting */}
         {state.phase === 'connecting' && (
-          <Animated.View
-            entering={FadeIn.duration(300)}
-            exiting={FadeOut.duration(200)}
-            style={styles.section}>
+          <Animated.View entering={FadeIn.duration(300)} exiting={FadeOut.duration(200)} style={styles.section}>
             <View style={styles.scanCard}>
               <ActivityIndicator size="large" color={colors.accent} />
               <Text style={styles.scanText}>Connecting to {state.foundDevice?.name}...</Text>
@@ -292,7 +431,6 @@ export default function BleProvisionScreen() {
 
             <Text style={styles.sectionTitle}>Choose a Wi-Fi network</Text>
 
-            {/* WiFi scan loading */}
             {state.isScanning && (
               <View style={styles.wifiScanCard}>
                 <ActivityIndicator color={colors.accent} />
@@ -300,119 +438,51 @@ export default function BleProvisionScreen() {
               </View>
             )}
 
-            {/* WiFi network list */}
             {!state.isScanning && state.wifiNetworks.length > 0 && (
               <View style={styles.networkList}>
                 {state.wifiNetworks.map((network, index) => (
                   <NetworkRow
                     key={`${network.ssid}-${index}`}
                     network={network}
-                    selected={!showManualEntry && selectedNetwork?.ssid === network.ssid}
-                    onPress={() => handleSelectNetwork(network)}
+                    onPress={() => openNetworkModal(network)}
                     isFirst={index === 0}
-                    isLast={index === state.wifiNetworks.length - 1 && !showManualEntry}
+                    isLast={index === state.wifiNetworks.length - 1}
                   />
                 ))}
                 <Pressable
-                  style={[
-                    styles.networkRow,
-                    styles.networkRowLast,
-                    showManualEntry && styles.networkRowSelected,
-                  ]}
-                  onPress={handleManualEntry}>
+                  style={[styles.networkRow, styles.networkRowLast, styles.networkRowOtherTop]}
+                  onPress={openManualModal}>
                   <Text style={styles.manualEntryText}>Other network...</Text>
+                  <Text style={styles.chevron}>›</Text>
                 </Pressable>
               </View>
             )}
 
-            {/* No networks found */}
             {!state.isScanning && state.wifiNetworks.length === 0 && (
               <View style={styles.wifiScanCard}>
                 <Text style={styles.wifiScanText}>No Wi-Fi networks found</Text>
+                <Pressable onPress={requestWifiScan}>
+                  <Text style={styles.rescanText}>Tap to rescan</Text>
+                </Pressable>
               </View>
             )}
 
-            {/* Rescan button */}
-            {!state.isScanning && !isBusy && (
-              <Pressable style={styles.rescanButton} onPress={requestWifiScan}>
+            {!state.isScanning && !isBusy && state.wifiNetworks.length > 0 && (
+              <Pressable style={styles.rescanRow} onPress={requestWifiScan}>
                 <Text style={styles.rescanText}>Rescan</Text>
               </Pressable>
             )}
 
-            {/* Manual SSID entry */}
-            {showManualEntry && (
-              <Animated.View entering={FadeIn.duration(200)}>
-                <Text style={[styles.sectionTitle, {marginTop: spacing.md}]}>Network details</Text>
-                <TextInput
-                  style={styles.input}
-                  value={ssid}
-                  onChangeText={setSsid}
-                  placeholder="Wi-Fi SSID"
-                  placeholderTextColor={colors.textMuted}
-                  autoCapitalize="none"
-                  editable={!isBusy}
-                />
-              </Animated.View>
-            )}
-
-            {/* Password / username fields — shown when a network is selected or manual entry */}
-            {(selectedNetwork || showManualEntry) && (
-              <Animated.View entering={FadeIn.duration(200)}>
-                {(isEnterprise || showManualEntry) && (
-                  <TextInput
-                    style={styles.input}
-                    value={username}
-                    onChangeText={setUsername}
-                    placeholder="Username (optional, for WPA2 Enterprise)"
-                    placeholderTextColor={colors.textMuted}
-                    autoCapitalize="none"
-                    editable={!isBusy}
-                  />
-                )}
-                {!isOpen && (
-                  <TextInput
-                    style={styles.input}
-                    value={password}
-                    onChangeText={setPassword}
-                    placeholder="Password"
-                    placeholderTextColor={colors.textMuted}
-                    secureTextEntry
-                    editable={!isBusy}
-                    autoFocus={selectedNetwork != null && !showManualEntry}
-                  />
-                )}
-              </Animated.View>
-            )}
-
-            {/* Progress card */}
+            {/* Progress shown while waiting for WiFi/online */}
             {(state.phase === 'waiting_wifi' || provisionStep !== 'idle') && (
               <View style={styles.progressCard}>
-                <StatusLine label="Credentials sent" active={true} />
-                <StatusLine label="Wi-Fi connected" active={true} />
-                <StatusLine label="Device registered" active={true} />
+                <StatusLine label="Credentials sent" active />
+                <StatusLine label="Wi-Fi connected" active={state.phase !== 'waiting_wifi'} />
+                <StatusLine label="Device registered" active={provisionStep === 'online'} />
                 <StatusLine label="Coming online..." active={false} />
                 <ActivityIndicator color={colors.accent} style={{marginTop: spacing.sm}} />
               </View>
             )}
-
-            {state.errorMsg ? <Text style={styles.errorInline}>{state.errorMsg}</Text> : null}
-            {linkError.length > 0 && <Text style={styles.errorInline}>{linkError}</Text>}
-
-            <Pressable
-              style={[styles.primaryButton, (!canSend || isBusy) && styles.primaryButtonDisabled]}
-              disabled={!canSend || isBusy}
-              onPress={handleSendCredentials}>
-              {state.phase === 'provisioning' ||
-              state.phase === 'waiting_wifi' ||
-              isProvisioning ? (
-                <ActivityIndicator color={colors.background} />
-              ) : (
-                <Text
-                  style={[styles.primaryText, (!canSend || isBusy) && styles.primaryTextDisabled]}>
-                  Connect display to Wi-Fi
-                </Text>
-              )}
-            </Pressable>
           </Animated.View>
         )}
 
@@ -427,10 +497,21 @@ export default function BleProvisionScreen() {
           <Text style={styles.skipText}>Skip for now</Text>
         </Pressable>
       </ScrollView>
+
+      <PasswordModal
+        visible={modalVisible}
+        network={modalNetwork}
+        isManual={isManualEntry}
+        isBusy={isBusy}
+        errorMsg={modalError}
+        onClose={() => setModalVisible(false)}
+        onConnect={handleConnect}
+      />
     </SafeAreaView>
   );
 }
 
+// ── Styles ───────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
   container: {flex: 1, backgroundColor: colors.background},
   content: {padding: spacing.lg, paddingBottom: spacing.xl},
@@ -459,7 +540,6 @@ const styles = StyleSheet.create({
     marginBottom: spacing.sm,
   },
   errorText: {color: colors.warning, fontSize: 13},
-  errorInline: {color: colors.warning, fontSize: 12, marginTop: spacing.xs},
   scanCard: {
     backgroundColor: colors.card,
     borderColor: colors.border,
@@ -488,7 +568,6 @@ const styles = StyleSheet.create({
     marginBottom: spacing.md,
   },
   connectedText: {color: colors.success, fontWeight: '700', fontSize: 13},
-  // WiFi scan
   wifiScanCard: {
     backgroundColor: colors.card,
     borderColor: colors.border,
@@ -499,7 +578,6 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   wifiScanText: {color: colors.textMuted, fontSize: 13},
-  // Network list
   networkList: {
     borderRadius: radii.lg,
     overflow: 'hidden',
@@ -526,11 +604,13 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.border,
   },
-  networkRowSelected: {
-    backgroundColor: colors.accentMuted,
+  networkRowOtherTop: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.border,
   },
   networkName: {flex: 1, color: colors.text, fontSize: 15, fontWeight: '500'},
   lockIcon: {fontSize: 12},
+  chevron: {color: colors.textMuted, fontSize: 18, fontWeight: '300'},
   enterpriseBadge: {
     backgroundColor: colors.surface,
     borderRadius: 4,
@@ -538,30 +618,16 @@ const styles = StyleSheet.create({
     paddingVertical: 1,
   },
   enterpriseText: {color: colors.textMuted, fontSize: 9, fontWeight: '800'},
-  manualEntryText: {color: colors.accent, fontSize: 14, fontWeight: '600'},
-  rescanButton: {
-    alignSelf: 'center',
-    marginTop: spacing.sm,
-    paddingVertical: spacing.xs,
-    paddingHorizontal: spacing.md,
-  },
+  manualEntryText: {flex: 1, color: colors.accent, fontSize: 14, fontWeight: '600'},
+  rescanRow: {alignSelf: 'center', marginTop: spacing.sm, paddingVertical: spacing.xs},
   rescanText: {color: colors.accent, fontSize: 13, fontWeight: '600'},
-  input: {
-    borderRadius: radii.md,
-    backgroundColor: colors.card,
-    borderWidth: 1,
-    borderColor: colors.border,
-    padding: spacing.md,
-    color: colors.text,
-    marginBottom: spacing.sm,
-  },
   progressCard: {
     backgroundColor: colors.surface,
     borderColor: colors.border,
     borderWidth: 1,
     borderRadius: radii.md,
     padding: spacing.md,
-    marginBottom: spacing.sm,
+    marginTop: spacing.md,
   },
   statusRow: {flexDirection: 'row', alignItems: 'center', gap: spacing.xs, marginBottom: 6},
   statusLabel: {color: colors.text, fontSize: 13},
@@ -575,9 +641,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginTop: spacing.sm,
   },
-  primaryButtonDisabled: {backgroundColor: colors.border},
   primaryText: {color: colors.background, fontWeight: '800', fontSize: 14},
-  primaryTextDisabled: {color: colors.textMuted},
   secondaryButton: {
     borderColor: colors.border,
     borderWidth: 1,
@@ -590,4 +654,94 @@ const styles = StyleSheet.create({
   successText: {color: colors.success, fontWeight: '700', textAlign: 'center', fontSize: 15},
   skipLink: {alignItems: 'center', marginTop: spacing.xl},
   skipText: {color: colors.textMuted, fontWeight: '700', fontSize: 13},
+});
+
+const modal = StyleSheet.create({
+  container: {flex: 1, backgroundColor: colors.background},
+  navBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.border,
+  },
+  navBtn: {
+    minWidth: 60,
+    alignItems: 'flex-start',
+    paddingVertical: spacing.xs,
+  },
+  navBtnRight: {
+    alignItems: 'flex-end',
+  },
+  navCancel: {
+    color: colors.textMuted,
+    fontSize: 18,
+    fontWeight: '400',
+  },
+  navTitle: {
+    flex: 1,
+    textAlign: 'center',
+    color: colors.text,
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  navConnect: {
+    color: colors.accent,
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  navConnectDim: {
+    color: colors.textMuted,
+  },
+  body: {
+    padding: spacing.lg,
+    paddingTop: spacing.xl,
+  },
+  fieldGroup: {
+    backgroundColor: colors.card,
+    borderRadius: radii.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    overflow: 'hidden',
+  },
+  fieldRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: spacing.md,
+    paddingVertical: 2,
+    minHeight: 48,
+  },
+  fieldLabel: {
+    color: colors.text,
+    fontSize: 15,
+    fontWeight: '500',
+    width: 100,
+  },
+  fieldInput: {
+    flex: 1,
+    color: colors.text,
+    fontSize: 15,
+    paddingVertical: spacing.sm,
+    paddingLeft: spacing.sm,
+  },
+  fieldDivider: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: colors.border,
+    marginLeft: spacing.md,
+  },
+  openRow: {
+    padding: spacing.md,
+  },
+  openText: {
+    color: colors.textMuted,
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  errorText: {
+    color: colors.warning,
+    fontSize: 13,
+    marginTop: spacing.md,
+    textAlign: 'center',
+  },
 });
