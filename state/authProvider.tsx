@@ -88,7 +88,20 @@ export function AuthProvider({children}: {children: React.ReactNode}) {
           ? appDeviceId
           : profile.deviceIds[0] ?? null;
       setAppDeviceId(nextDeviceId);
-      setDeviceStatus(profile.deviceIds.length > 0 ? 'pairedOnline' : 'notPaired');
+      if (profile.deviceIds.length === 0) {
+        setDeviceStatus('notPaired');
+      } else {
+        // Start as pairedOffline; async check upgrades to pairedOnline if confirmed.
+        setDeviceStatus('pairedOffline');
+        if (nextDeviceId) {
+          apiFetch(`/device/${encodeURIComponent(nextDeviceId)}/online`)
+            .then(r => (r.ok ? r.json() : null))
+            .catch(() => null)
+            .then((data: {online?: boolean} | null) => {
+              setDeviceStatus(data?.online === true ? 'pairedOnline' : 'pairedOffline');
+            });
+        }
+      }
     },
     [appDeviceId, setAppDeviceId, setDeviceStatus, setUserId],
   );

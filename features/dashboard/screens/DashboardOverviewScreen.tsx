@@ -49,7 +49,7 @@ const NAV_ITEMS: BottomNavItem[] = [
 export default function DashboardOverviewScreen() {
    const queryClient = useQueryClient();
    const router = useRouter();
-   const { state: appState } = useAppState();
+   const { state: appState, setDeviceStatus } = useAppState();
    const { status, user, deviceId, deviceIds, setDeviceId } = useAuth();
    const selectedDevice = useSelectedDevice();
    const hasLinkedDevice = deviceIds.length > 0;
@@ -158,6 +158,22 @@ export default function DashboardOverviewScreen() {
             ? 'connected'
             : 'disconnected';
    const espDeviceId = espDeviceInfoQuery.data ?? null;
+
+   // Poll device online status every 30s while focused
+   useQuery({
+      queryKey: queryKeys.deviceOnline(selectedDevice.id || 'none'),
+      queryFn: async () => {
+         const res = await apiFetch(`/device/${encodeURIComponent(selectedDevice.id)}/online`).catch(() => null);
+         const data = res?.ok ? await res.json().catch(() => null) : null;
+         const online: boolean = data?.online === true;
+         setDeviceStatus(online ? 'pairedOnline' : 'pairedOffline');
+         return online;
+      },
+      enabled: isScreenFocused && hasLinkedDevice && !!selectedDevice.id && status === 'authenticated',
+      refetchInterval: 30_000,
+      retry: false,
+      refetchOnWindowFocus: true,
+   });
 
    const lastCommandQuery = useQuery({
       queryKey: queryKeys.lastCommand(selectedDevice.id || 'none'),

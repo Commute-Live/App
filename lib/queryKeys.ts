@@ -8,6 +8,7 @@ export const queryKeys = {
   display: (deviceId: string, displayId: string) => ['device', deviceId, 'displays', displayId] as const,
   deviceConfig: (deviceId: string) => ['device', deviceId, 'config'] as const,
   lastCommand: (deviceId: string) => ['device', deviceId, 'last-command'] as const,
+  deviceOnline: (deviceId: string) => ['device', deviceId, 'online'] as const,
   transitStations: (city: CityId, mode: string) => ['transit', city, mode, 'stations'] as const,
   transitLinesForStation: (city: CityId, mode: string, stationId: string) =>
     ['transit', city, mode, 'stations', stationId, 'lines'] as const,
