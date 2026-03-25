@@ -4,9 +4,10 @@ import {Platform, PermissionsAndroid} from 'react-native';
 import {Buffer} from 'buffer';
 
 // CommuteLive custom GATT UUIDs — must match firmware ble_provisioner.cpp
-export const BLE_SERVICE_UUID   = 'a1b2c3d4-0000-4a5b-8c7d-9e0f1a2b3c4d';
-export const BLE_PROVISION_UUID = 'a1b2c3d4-0001-4a5b-8c7d-9e0f1a2b3c4d';
-export const BLE_STATUS_UUID    = 'a1b2c3d4-0002-4a5b-8c7d-9e0f1a2b3c4d';
+export const BLE_SERVICE_UUID    = 'a1b2c3d4-0000-4a5b-8c7d-9e0f1a2b3c4d';
+export const BLE_PROVISION_UUID  = 'a1b2c3d4-0001-4a5b-8c7d-9e0f1a2b3c4d';
+export const BLE_STATUS_UUID     = 'a1b2c3d4-0002-4a5b-8c7d-9e0f1a2b3c4d';
+export const BLE_WIFI_SCAN_UUID  = 'a1b2c3d4-0003-4a5b-8c7d-9e0f1a2b3c4d';
 
 // The firmware advertises as "esp32-XXXX" (same as its MQTT deviceId).
 // Also accept "CommuteLive-" for backwards compatibility with older firmware.
@@ -24,11 +25,19 @@ export type BleProvisionPhase =
   | 'done'
   | 'error';
 
+export interface WifiNetwork {
+  ssid: string;
+  rssi: number;
+  encryption: 0 | 1 | 2 | 3 | 4; // 0=open, 1=WEP, 2=WPA, 3=WPA2, 4=Enterprise
+}
+
 export interface BleProvisionState {
   phase: BleProvisionPhase;
   foundDevice: Device | null;
   deviceId: string | null;   // esp32-XXXX — set from BLE device name during scan
   errorMsg: string | null;
+  wifiNetworks: WifiNetwork[];
+  isScanning: boolean;
 }
 
 type BleStatusPayload = {
@@ -96,12 +105,16 @@ export function useBleProvision() {
     foundDevice: null,
     deviceId: null,
     errorMsg: null,
+    wifiNetworks: [],
+    isScanning: false,
   });
 
   const deviceRef      = useRef<Device | null>(null);
   const scanTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const statusSubscriptionRef = useRef<{remove: () => void} | null>(null);
+  const wifiScanSubscriptionRef = useRef<{remove: () => void} | null>(null);
   const pendingWifiResultRef = useRef<PendingWifiResult | null>(null);
+  const scanChunksRef = useRef<Array<{s: string; r: number; e: number}>>([]);
 
   const setPhase = useCallback((phase: BleProvisionPhase, extra?: Partial<BleProvisionState>) => {
     setState(prev => ({...prev, phase, ...extra}));
@@ -123,6 +136,8 @@ export function useBleProvision() {
     }
     statusSubscriptionRef.current?.remove();
     statusSubscriptionRef.current = null;
+    wifiScanSubscriptionRef.current?.remove();
+    wifiScanSubscriptionRef.current = null;
     const mgr = getManager();
     mgr?.stopDeviceScan();
     if (deviceRef.current) {
@@ -303,11 +318,90 @@ export function useBleProvision() {
     [setPhase, fail],
   );
 
+  // Request WiFi network scan from ESP over BLE.
+  const requestWifiScan = useCallback(async () => {
+    const device = deviceRef.current;
+    if (!device) return;
+
+    setState(prev => ({...prev, isScanning: true, wifiNetworks: []}));
+    scanChunksRef.current = [];
+
+    // Subscribe to WIFI_SCAN notifications for results
+    wifiScanSubscriptionRef.current?.remove();
+    let totalChunks = -1;
+    let receivedChunks = 0;
+
+    const scanTimeout = setTimeout(() => {
+      wifiScanSubscriptionRef.current?.remove();
+      wifiScanSubscriptionRef.current = null;
+      finalizeScanResults();
+    }, 10_000);
+
+    const finalizeScanResults = () => {
+      clearTimeout(scanTimeout);
+      // Deduplicate by SSID, keeping strongest signal
+      const bySSID = new Map<string, {s: string; r: number; e: number}>();
+      for (const net of scanChunksRef.current) {
+        const existing = bySSID.get(net.s);
+        if (!existing || net.r > existing.r) {
+          bySSID.set(net.s, net);
+        }
+      }
+      const networks: WifiNetwork[] = Array.from(bySSID.values())
+        .sort((a, b) => b.r - a.r)
+        .map(n => ({ssid: n.s, rssi: n.r, encryption: n.e as WifiNetwork['encryption']}));
+      setState(prev => ({...prev, wifiNetworks: networks, isScanning: false}));
+      console.log('[BLE] WiFi scan complete, networks:', networks.length);
+    };
+
+    wifiScanSubscriptionRef.current = device.monitorCharacteristicForService(
+      BLE_SERVICE_UUID,
+      BLE_WIFI_SCAN_UUID,
+      (error, characteristic) => {
+        if (error) {
+          console.log('[BLE] scan monitor error:', error.message);
+          return;
+        }
+        const raw = characteristic?.value
+          ? Buffer.from(characteristic.value, 'base64').toString('utf8')
+          : null;
+        if (!raw) return;
+        try {
+          const chunk = JSON.parse(raw) as {c: number; t: number; n: Array<{s: string; r: number; e: number}>};
+          if (totalChunks < 0) totalChunks = chunk.t;
+          scanChunksRef.current.push(...chunk.n);
+          receivedChunks++;
+          if (receivedChunks >= totalChunks) {
+            wifiScanSubscriptionRef.current?.remove();
+            wifiScanSubscriptionRef.current = null;
+            finalizeScanResults();
+          }
+        } catch {
+          console.log('[BLE] scan chunk parse error:', raw);
+        }
+      },
+    );
+
+    // Write scan action to PROVISION characteristic
+    const payload = JSON.stringify({action: 'scan'});
+    const encoded = Buffer.from(payload, 'utf8').toString('base64');
+    try {
+      await device.writeCharacteristicWithResponseForService(
+        BLE_SERVICE_UUID,
+        BLE_PROVISION_UUID,
+        encoded,
+      );
+    } catch (e: unknown) {
+      console.log('[BLE] scan request write failed:', e instanceof Error ? e.message : String(e));
+      setState(prev => ({...prev, isScanning: false}));
+    }
+  }, []);
+
   const reset = useCallback(() => {
     cleanup();
     deviceRef.current = null;
-    setState({phase: 'idle', foundDevice: null, deviceId: null, errorMsg: null});
+    setState({phase: 'idle', foundDevice: null, deviceId: null, errorMsg: null, wifiNetworks: [], isScanning: false});
   }, [cleanup]);
 
-  return {state, startScan, connectToDevice, sendCredentials, reset};
+  return {state, startScan, connectToDevice, sendCredentials, requestWifiScan, reset};
 }
