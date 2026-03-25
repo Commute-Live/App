@@ -1,4 +1,4 @@
-import React, {useState} from 'react';
+import React, {useRef, useState} from 'react';
 import {
   ActivityIndicator,
   Pressable,
@@ -8,18 +8,21 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import Animated, {FadeIn, FadeOut} from 'react-native-reanimated';
 import {SafeAreaView} from 'react-native-safe-area-context';
 import {useRouter} from 'expo-router';
 import {colors, spacing, radii} from '../../../theme';
 import {useAppState} from '../../../state/appState';
-import {apiFetch} from '../../../lib/api';
+import {apiFetch, API_BASE} from '../../../lib/api';
 import {useAuth} from '../../../state/authProvider';
 import {useBleProvision} from '../hooks/useBleProvision';
+
+type ProvisionStep = 'idle' | 'online';
 
 export default function BleProvisionScreen() {
   const router = useRouter();
   const {setDeviceId, setDeviceStatus} = useAppState();
-  const {deviceIds, hydrate} = useAuth();
+  const {hydrate} = useAuth();
 
   const {state, startScan, connectToDevice, sendCredentials, reset} = useBleProvision();
 
@@ -27,7 +30,10 @@ export default function BleProvisionScreen() {
   const [password, setPassword] = useState('');
   const [username, setUsername] = useState('');
   const [linkError, setLinkError] = useState('');
-  const [isLinking, setIsLinking] = useState(false);
+  const [provisionStep, setProvisionStep] = useState<ProvisionStep>('idle');
+  const pairingTokenRef = useRef<string | null>(null);
+
+  const isProvisioning = provisionStep !== 'idle';
 
   const canSend = ssid.trim().length > 0 && password.trim().length > 0;
   const isBusy =
@@ -36,81 +42,62 @@ export default function BleProvisionScreen() {
     state.phase === 'connecting' ||
     state.phase === 'provisioning' ||
     state.phase === 'waiting_wifi' ||
-    isLinking;
+    isProvisioning;
 
-  const registerAndLink = async (espDeviceId: string) => {
-    console.log('[BLE] registerAndLink called with', espDeviceId);
-    setIsLinking(true);
-    setLinkError('');
-    setDeviceId(espDeviceId);
-
-    if (deviceIds.includes(espDeviceId)) {
-      console.log('[BLE] device already in deviceIds, skipping registration');
-      setDeviceStatus('pairedOnline');
-      await hydrate();
-      setIsLinking(false);
-      router.replace('/dashboard');
-      return;
-    }
-
+  // Called when BLE connects — fetch token now so it's ready when user taps send
+  const fetchPairingToken = async () => {
     try {
-      console.log('[BLE] calling /device/register');
-      const regRes = await apiFetch('/device/register', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({id: espDeviceId}),
-      });
-      console.log('[BLE] /device/register status:', regRes.status);
-      if (!regRes.ok && regRes.status !== 409) {
-        const data = await regRes.json().catch(() => null);
-        console.log('[BLE] register failed:', data);
-        setLinkError(
-          typeof data?.error === 'string'
-            ? `Register failed: ${data.error}`
-            : `Register failed (${regRes.status})`,
-        );
-        setIsLinking(false);
-        return;
+      const res = await apiFetch('/device/pairing-token', {method: 'POST'});
+      const data = await res.json().catch(() => null);
+      if (res.ok && typeof data?.token === 'string') {
+        pairingTokenRef.current = data.token;
+        console.log('[BLE] pairing token fetched');
       }
-
-      console.log('[BLE] calling /user/device/link');
-      const linkRes = await apiFetch('/user/device/link', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({deviceId: espDeviceId}),
-      });
-      console.log('[BLE] /user/device/link status:', linkRes.status);
-      if (!linkRes.ok && linkRes.status !== 409) {
-        const data = await linkRes.json().catch(() => null);
-        console.log('[BLE] link failed:', data);
-        setLinkError(
-          typeof data?.error === 'string'
-            ? `Link failed: ${data.error}`
-            : `Link failed (${linkRes.status})`,
-        );
-        setIsLinking(false);
-        return;
-      }
-
-      console.log('[BLE] registration complete, hydrating auth');
-      setDeviceStatus('pairedOnline');
-      await hydrate();
-      router.replace('/dashboard');
-    } catch (e: unknown) {
-      console.log('[BLE] registerAndLink error:', e);
-      setLinkError(`Network error: ${e instanceof Error ? e.message : String(e)}`);
-    } finally {
-      setIsLinking(false);
+    } catch {
+      console.log('[BLE] failed to fetch pairing token');
     }
+  };
+
+  const pollUntilOnline = async (espDeviceId: string): Promise<boolean> => {
+    const INTERVAL_MS = 2000;
+    const TIMEOUT_MS = 20000;
+    const start = Date.now();
+    while (Date.now() - start < TIMEOUT_MS) {
+      const res = await apiFetch(`/device/${encodeURIComponent(espDeviceId)}/online`).catch(() => null);
+      if (res?.ok) {
+        const data = await res.json().catch(() => null);
+        if (data?.online === true) return true;
+      }
+      await new Promise(r => setTimeout(r, INTERVAL_MS));
+    }
+    return false;
   };
 
   const handleSendCredentials = async () => {
     setLinkError('');
-    const deviceId = await sendCredentials(ssid.trim(), password, username.trim());
-    console.log('[BLE] sendCredentials returned deviceId:', deviceId);
-    if (deviceId) {
-      await registerAndLink(deviceId);
+    const token = pairingTokenRef.current ?? '';
+    if (!token) {
+      setLinkError('Could not get pairing token — check your internet connection and try again.');
+      return;
     }
+
+    const espDeviceId = await sendCredentials(ssid.trim(), password, username.trim(), token, API_BASE);
+    console.log('[BLE] sendCredentials returned deviceId:', espDeviceId);
+    if (!espDeviceId) return;
+
+    setDeviceId(espDeviceId);
+    setProvisionStep('online');
+
+    // ESP already confirmed registration via BLE "connected" — just wait for MQTT presence
+    const online = await pollUntilOnline(espDeviceId);
+    if (!online) {
+      setLinkError('Device registered but took too long to come online — try reloading the app.');
+    }
+
+    setProvisionStep('idle');
+    setDeviceStatus('pairedOnline');
+    await hydrate();
+    router.replace('/dashboard');
   };
 
   // Render helper: status chip
@@ -132,7 +119,7 @@ export default function BleProvisionScreen() {
 
         {/* Phase: idle / error — show Scan button */}
         {(state.phase === 'idle' || state.phase === 'error') && (
-          <View style={styles.section}>
+          <Animated.View entering={FadeIn.duration(300)} exiting={FadeOut.duration(200)} style={styles.section}>
             {state.phase === 'error' && (
               <View style={styles.errorCard}>
                 <Text style={styles.errorText}>{state.errorMsg}</Text>
@@ -146,48 +133,51 @@ export default function BleProvisionScreen() {
                 <Text style={styles.secondaryText}>Start over</Text>
               </Pressable>
             )}
-          </View>
+          </Animated.View>
         )}
 
         {/* Phase: scanning */}
         {(state.phase === 'scanning' || state.phase === 'requesting_permission') && (
-          <View style={styles.section}>
+          <Animated.View entering={FadeIn.duration(300)} exiting={FadeOut.duration(200)} style={styles.section}>
             <View style={styles.scanCard}>
               <ActivityIndicator size="large" color={colors.accent} />
               <Text style={styles.scanText}>Scanning for CommuteLive displays nearby...</Text>
               <Text style={styles.scanHint}>Make sure the device is powered on.</Text>
             </View>
-          </View>
+          </Animated.View>
         )}
 
         {/* Phase: device_found */}
         {state.phase === 'device_found' && state.foundDevice && (
-          <View style={styles.section}>
+          <Animated.View entering={FadeIn.duration(300)} exiting={FadeOut.duration(200)} style={styles.section}>
             <View style={styles.deviceCard}>
               <Text style={styles.deviceCardLabel}>Found display</Text>
               <Text style={styles.deviceCardName}>{state.foundDevice.name}</Text>
             </View>
-            <Pressable style={styles.primaryButton} onPress={connectToDevice}>
+            <Pressable style={styles.primaryButton} onPress={async () => {
+              await connectToDevice();
+              fetchPairingToken();
+            }}>
               <Text style={styles.primaryText}>Connect via Bluetooth</Text>
             </Pressable>
-          </View>
+          </Animated.View>
         )}
 
         {/* Phase: connecting */}
         {state.phase === 'connecting' && (
-          <View style={styles.section}>
+          <Animated.View entering={FadeIn.duration(300)} exiting={FadeOut.duration(200)} style={styles.section}>
             <View style={styles.scanCard}>
               <ActivityIndicator size="large" color={colors.accent} />
               <Text style={styles.scanText}>Connecting to {state.foundDevice?.name}...</Text>
             </View>
-          </View>
+          </Animated.View>
         )}
 
         {/* Phase: connected — enter WiFi credentials */}
         {(state.phase === 'connected' ||
           state.phase === 'provisioning' ||
           state.phase === 'waiting_wifi') && (
-          <View style={styles.section}>
+          <Animated.View entering={FadeIn.duration(350)} style={styles.section}>
             <View style={styles.connectedBadge}>
               <View style={styles.dotActive} />
               <Text style={styles.connectedText}>
@@ -224,10 +214,12 @@ export default function BleProvisionScreen() {
               editable={!isBusy}
             />
 
-            {state.phase === 'waiting_wifi' && (
+            {(state.phase === 'waiting_wifi' || provisionStep !== 'idle') && (
               <View style={styles.progressCard}>
                 <StatusLine label="Credentials sent" active={true} />
-                <StatusLine label="Device connecting to Wi-Fi..." active={true} />
+                <StatusLine label="Wi-Fi connected" active={true} />
+                <StatusLine label="Device registered" active={true} />
+                <StatusLine label="Coming online..." active={false} />
                 <ActivityIndicator color={colors.accent} style={{marginTop: spacing.sm}} />
               </View>
             )}
@@ -240,19 +232,11 @@ export default function BleProvisionScreen() {
               <Text style={styles.errorInline}>{linkError}</Text>
             )}
 
-            {isLinking && (
-              <View style={styles.progressCard}>
-                <StatusLine label="Wi-Fi connected" active={true} />
-                <StatusLine label="Registering device..." active={true} />
-                <ActivityIndicator color={colors.accent} style={{marginTop: spacing.sm}} />
-              </View>
-            )}
-
             <Pressable
               style={[styles.primaryButton, (!canSend || isBusy) && styles.primaryButtonDisabled]}
               disabled={!canSend || isBusy}
               onPress={handleSendCredentials}>
-              {state.phase === 'provisioning' || state.phase === 'waiting_wifi' || isLinking ? (
+              {state.phase === 'provisioning' || state.phase === 'waiting_wifi' || isProvisioning ? (
                 <ActivityIndicator color={colors.background} />
               ) : (
                 <Text style={[styles.primaryText, (!canSend || isBusy) && styles.primaryTextDisabled]}>
@@ -260,14 +244,14 @@ export default function BleProvisionScreen() {
                 </Text>
               )}
             </Pressable>
-          </View>
+          </Animated.View>
         )}
 
         {/* Phase: done (should navigate away, but fallback) */}
         {state.phase === 'done' && (
-          <View style={styles.section}>
+          <Animated.View entering={FadeIn.duration(300)} style={styles.section}>
             <Text style={styles.successText}>Display is online! Redirecting...</Text>
-          </View>
+          </Animated.View>
         )}
 
         <Pressable style={styles.skipLink} onPress={() => router.push('/dashboard')}>

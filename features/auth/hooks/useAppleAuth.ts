@@ -27,7 +27,7 @@ export function useAppleAuth() {
 
       const result = await socialSignIn('apple', credential.identityToken);
       if (result.ok) {
-        router.replace('/dashboard');
+        router.replace(result.deviceIds.length === 0 ? '/ble-provision' : '/dashboard');
       }
       return result;
     } catch (error: any) {

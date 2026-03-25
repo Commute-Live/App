@@ -19,7 +19,7 @@ export function useGoogleAuth() {
 
       const result = await socialSignIn('google', idToken);
       if (result.ok) {
-        router.replace('/dashboard');
+        router.replace(result.deviceIds.length === 0 ? '/ble-provision' : '/dashboard');
       }
       return result;
     } catch (error: any) {
