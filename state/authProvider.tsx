@@ -1,6 +1,6 @@
 import React, {createContext, useCallback, useContext, useEffect, useMemo, useState} from 'react';
 import {useMutation, useQuery, useQueryClient} from '@tanstack/react-query';
-import {GoogleSignin} from '@react-native-google-signin/google-signin';
+import {GoogleSignin} from '../lib/googleSignIn';
 import {apiFetch} from '../lib/api';
 import {queryKeys} from '../lib/queryKeys';
 import {useAppState} from './appState';

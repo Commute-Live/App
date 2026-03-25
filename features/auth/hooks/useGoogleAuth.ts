@@ -1,5 +1,5 @@
 import {useCallback} from 'react';
-import {GoogleSignin, statusCodes} from '@react-native-google-signin/google-signin';
+import {GoogleSignin, statusCodes} from '../../../lib/googleSignIn';
 import {useRouter} from 'expo-router';
 import {useAuth} from '../../../state/authProvider';
 
