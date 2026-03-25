@@ -1,4 +1,4 @@
-import React, {useState} from 'react';
+import React, {useRef, useState} from 'react';
 import {
   ActivityIndicator,
   Pressable,
@@ -13,14 +13,16 @@ import {SafeAreaView} from 'react-native-safe-area-context';
 import {useRouter} from 'expo-router';
 import {colors, spacing, radii} from '../../../theme';
 import {useAppState} from '../../../state/appState';
-import {apiFetch} from '../../../lib/api';
+import {apiFetch, API_BASE} from '../../../lib/api';
 import {useAuth} from '../../../state/authProvider';
 import {useBleProvision} from '../hooks/useBleProvision';
+
+type ProvisionStep = 'idle' | 'in_db' | 'online';
 
 export default function BleProvisionScreen() {
   const router = useRouter();
   const {setDeviceId, setDeviceStatus} = useAppState();
-  const {deviceIds, hydrate} = useAuth();
+  const {hydrate} = useAuth();
 
   const {state, startScan, connectToDevice, sendCredentials, reset} = useBleProvision();
 
@@ -28,8 +30,10 @@ export default function BleProvisionScreen() {
   const [password, setPassword] = useState('');
   const [username, setUsername] = useState('');
   const [linkError, setLinkError] = useState('');
-  const [isLinking, setIsLinking] = useState(false);
-  const [isWaitingOnline, setIsWaitingOnline] = useState(false);
+  const [provisionStep, setProvisionStep] = useState<ProvisionStep>('idle');
+  const pairingTokenRef = useRef<string | null>(null);
+
+  const isProvisioning = provisionStep !== 'idle';
 
   const canSend = ssid.trim().length > 0 && password.trim().length > 0;
   const isBusy =
@@ -38,12 +42,37 @@ export default function BleProvisionScreen() {
     state.phase === 'connecting' ||
     state.phase === 'provisioning' ||
     state.phase === 'waiting_wifi' ||
-    isLinking ||
-    isWaitingOnline;
+    isProvisioning;
+
+  // Called when BLE connects — fetch token now so it's ready when user taps send
+  const fetchPairingToken = async () => {
+    try {
+      const res = await apiFetch('/device/pairing-token', {method: 'POST'});
+      const data = await res.json().catch(() => null);
+      if (res.ok && typeof data?.token === 'string') {
+        pairingTokenRef.current = data.token;
+        console.log('[BLE] pairing token fetched');
+      }
+    } catch {
+      console.log('[BLE] failed to fetch pairing token');
+    }
+  };
+
+  const pollUntilInDb = async (espDeviceId: string): Promise<boolean> => {
+    const INTERVAL_MS = 2000;
+    const TIMEOUT_MS = 20000;
+    const start = Date.now();
+    while (Date.now() - start < TIMEOUT_MS) {
+      const res = await apiFetch(`/device/${encodeURIComponent(espDeviceId)}`).catch(() => null);
+      if (res?.ok) return true;
+      await new Promise(r => setTimeout(r, INTERVAL_MS));
+    }
+    return false;
+  };
 
   const pollUntilOnline = async (espDeviceId: string): Promise<boolean> => {
     const INTERVAL_MS = 2000;
-    const TIMEOUT_MS = 30000;
+    const TIMEOUT_MS = 20000;
     const start = Date.now();
     while (Date.now() - start < TIMEOUT_MS) {
       const res = await apiFetch(`/device/${encodeURIComponent(espDeviceId)}/online`).catch(() => null);
@@ -56,87 +85,40 @@ export default function BleProvisionScreen() {
     return false;
   };
 
-  const registerAndLink = async (espDeviceId: string) => {
-    console.log('[BLE] registerAndLink called with', espDeviceId);
-    setIsLinking(true);
+  const handleSendCredentials = async () => {
     setLinkError('');
-    setDeviceId(espDeviceId);
-
-    if (deviceIds.includes(espDeviceId)) {
-      console.log('[BLE] device already in deviceIds, skipping registration');
-      setDeviceStatus('pairedOnline');
-      await hydrate();
-      setIsLinking(false);
-      router.replace('/dashboard');
+    const token = pairingTokenRef.current ?? '';
+    if (!token) {
+      setLinkError('Could not get pairing token — check your internet connection and try again.');
       return;
     }
 
-    try {
-      console.log('[BLE] calling /device/register');
-      const regRes = await apiFetch('/device/register', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({id: espDeviceId}),
-      });
-      console.log('[BLE] /device/register status:', regRes.status);
-      if (!regRes.ok && regRes.status !== 409) {
-        const data = await regRes.json().catch(() => null);
-        console.log('[BLE] register failed:', data);
-        setLinkError(
-          typeof data?.error === 'string'
-            ? `Register failed: ${data.error}`
-            : `Register failed (${regRes.status})`,
-        );
-        setIsLinking(false);
-        return;
-      }
+    const espDeviceId = await sendCredentials(ssid.trim(), password, username.trim(), token, API_BASE);
+    console.log('[BLE] sendCredentials returned deviceId:', espDeviceId);
+    if (!espDeviceId) return;
 
-      console.log('[BLE] calling /user/device/link');
-      const linkRes = await apiFetch('/user/device/link', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({deviceId: espDeviceId}),
-      });
-      console.log('[BLE] /user/device/link status:', linkRes.status);
-      if (!linkRes.ok && linkRes.status !== 409) {
-        const data = await linkRes.json().catch(() => null);
-        console.log('[BLE] link failed:', data);
-        setLinkError(
-          typeof data?.error === 'string'
-            ? `Link failed: ${data.error}`
-            : `Link failed (${linkRes.status})`,
-        );
-        setIsLinking(false);
-        return;
-      }
+    setDeviceId(espDeviceId);
+    setProvisionStep('in_db');
 
-      console.log('[BLE] registration complete, polling for online status');
-      setIsLinking(false);
-      setIsWaitingOnline(true);
-      const online = await pollUntilOnline(espDeviceId);
-      setIsWaitingOnline(false);
-      if (!online) {
-        setLinkError('Device registered but took too long to come online — try reloading the app.');
-      }
-      setDeviceStatus('pairedOnline');
-      await hydrate();
-      router.replace('/dashboard');
-    } catch (e: unknown) {
-      console.log('[BLE] registerAndLink error:', e);
-      setLinkError(`Network error: ${e instanceof Error ? e.message : String(e)}`);
-    } finally {
-      setIsLinking(false);
-      setIsWaitingOnline(false);
+    // Step 1: wait for ESP to call /device/provision (device appears in DB)
+    const inDb = await pollUntilInDb(espDeviceId);
+    if (!inDb) {
+      setProvisionStep('idle');
+      setLinkError('Device did not register — WiFi password may be wrong. Try again.');
+      return;
     }
-  };
 
-  const handleSendCredentials = async () => {
-    setLinkError('');
-    const deviceId = await sendCredentials(ssid.trim(), password, username.trim());
-    console.log('[BLE] sendCredentials returned deviceId:', deviceId);
-    if (deviceId) {
-      await registerAndLink(deviceId);
+    // Step 2: wait for MQTT presence (device fully online)
+    setProvisionStep('online');
+    const online = await pollUntilOnline(espDeviceId);
+    if (!online) {
+      setLinkError('Device registered but took too long to come online — try reloading the app.');
     }
+
+    setProvisionStep('idle');
+    setDeviceStatus('pairedOnline');
+    await hydrate();
+    router.replace('/dashboard');
   };
 
   // Render helper: status chip
@@ -193,7 +175,10 @@ export default function BleProvisionScreen() {
               <Text style={styles.deviceCardLabel}>Found display</Text>
               <Text style={styles.deviceCardName}>{state.foundDevice.name}</Text>
             </View>
-            <Pressable style={styles.primaryButton} onPress={connectToDevice}>
+            <Pressable style={styles.primaryButton} onPress={async () => {
+              await connectToDevice();
+              fetchPairingToken();
+            }}>
               <Text style={styles.primaryText}>Connect via Bluetooth</Text>
             </Pressable>
           </Animated.View>
@@ -250,10 +235,21 @@ export default function BleProvisionScreen() {
               editable={!isBusy}
             />
 
-            {state.phase === 'waiting_wifi' && (
+            {(state.phase === 'waiting_wifi' || provisionStep !== 'idle') && (
               <View style={styles.progressCard}>
                 <StatusLine label="Credentials sent" active={true} />
-                <StatusLine label="Device connecting to Wi-Fi..." active={true} />
+                <StatusLine
+                  label={provisionStep === 'idle' ? 'Connecting to Wi-Fi...' : 'Wi-Fi connected'}
+                  active={provisionStep !== 'idle'}
+                />
+                <StatusLine
+                  label={provisionStep === 'online' ? 'Device registered' : 'Registering device...'}
+                  active={provisionStep === 'online'}
+                />
+                <StatusLine
+                  label="Waiting to come online..."
+                  active={false}
+                />
                 <ActivityIndicator color={colors.accent} style={{marginTop: spacing.sm}} />
               </View>
             )}
@@ -266,29 +262,11 @@ export default function BleProvisionScreen() {
               <Text style={styles.errorInline}>{linkError}</Text>
             )}
 
-            {isLinking && (
-              <View style={styles.progressCard}>
-                <StatusLine label="Wi-Fi connected" active={true} />
-                <StatusLine label="Registering device..." active={true} />
-                <ActivityIndicator color={colors.accent} style={{marginTop: spacing.sm}} />
-              </View>
-            )}
-
-            {isWaitingOnline && (
-              <View style={styles.progressCard}>
-                <StatusLine label="Credentials sent" active={true} />
-                <StatusLine label="Wi-Fi connected" active={true} />
-                <StatusLine label="Device registered" active={true} />
-                <StatusLine label="Waiting for device to come online..." active={false} />
-                <ActivityIndicator color={colors.accent} style={{marginTop: spacing.sm}} />
-              </View>
-            )}
-
             <Pressable
               style={[styles.primaryButton, (!canSend || isBusy) && styles.primaryButtonDisabled]}
               disabled={!canSend || isBusy}
               onPress={handleSendCredentials}>
-              {state.phase === 'provisioning' || state.phase === 'waiting_wifi' || isLinking ? (
+              {state.phase === 'provisioning' || state.phase === 'waiting_wifi' || isProvisioning ? (
                 <ActivityIndicator color={colors.background} />
               ) : (
                 <Text style={[styles.primaryText, (!canSend || isBusy) && styles.primaryTextDisabled]}>

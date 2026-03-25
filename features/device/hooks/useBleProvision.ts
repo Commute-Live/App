@@ -248,10 +248,10 @@ export function useBleProvision() {
     }
   }, [setPhase, fail]);
 
-  // Step 3: write WiFi credentials.
+  // Step 3: write WiFi credentials + pairing token.
   // Returns the deviceId (from device name set during scan) — no characteristic read needed.
   const sendCredentials = useCallback(
-    async (ssid: string, password: string, username: string): Promise<string | null> => {
+    async (ssid: string, password: string, username: string, token: string, serverUrl: string): Promise<string | null> => {
       const device = deviceRef.current;
       if (!device) {
         fail('Device not connected.');
@@ -259,7 +259,7 @@ export function useBleProvision() {
       }
       setPhase('provisioning', {errorMsg: null});
 
-      const payload = JSON.stringify({ssid, password, username});
+      const payload = JSON.stringify({ssid, password, username, token, server_url: serverUrl});
       const encoded = Buffer.from(payload, 'utf8').toString('base64');
 
       try {
