@@ -55,7 +55,7 @@ export default function SettingsScreen() {
   const toggleSection = (key: string) =>
     setOpenSection(prev => (prev === key ? null : key));
 
-  const runDisconnectDevice = async (targetDeviceId: string) => {
+  const runUnpairDevice = async (targetDeviceId: string) => {
     setIsDisconnecting(true);
     setDeviceNotice(null);
 
@@ -66,36 +66,33 @@ export default function SettingsScreen() {
         return;
       }
 
-      if (result.deviceIds.length > 0) {
-        setDeviceNotice({
-          kind: 'success',
-          text: `Disconnected ${targetDeviceId}. Switched to device ${result.deviceIds[0]}.`,
-        });
+      if (result.deviceIds.length === 0) {
+        router.replace('/ble-provision');
         return;
       }
 
       setDeviceNotice({
         kind: 'success',
-        text: 'Device disconnected. Its saved display settings are still available if you link it again later.',
+        text: `Unpaired. Switched to device ${result.deviceIds[0]}.`,
       });
     } finally {
       setIsDisconnecting(false);
     }
   };
 
-  const confirmDisconnectDevice = () => {
+  const confirmUnpairDevice = () => {
     if (!currentDeviceId || isDisconnecting) return;
 
     Alert.alert(
-      'Disconnect device?',
-      `This removes device ${currentDeviceId} from your account but keeps its saved displays and settings intact.`,
+      'Unpair display?',
+      'This will reset your display\'s Wi-Fi and put it back into setup mode. You can re-pair it at any time.',
       [
         {text: 'Cancel', style: 'cancel'},
         {
-          text: 'Disconnect',
+          text: 'Unpair',
           style: 'destructive',
           onPress: () => {
-            void runDisconnectDevice(currentDeviceId);
+            void runUnpairDevice(currentDeviceId);
           },
         },
       ],
@@ -183,17 +180,17 @@ export default function SettingsScreen() {
                 {currentDeviceId ? (
                   <>
                     <Text style={styles.deviceHelpText}>
-                      Disconnecting removes this device from your account but does not erase its saved displays or settings.
+                      Unpairing will reset your display's Wi-Fi and put it back into setup mode. You can re-pair it at any time.
                     </Text>
                     <Pressable
                       style={[
                         styles.disconnectDeviceButton,
                         isDisconnecting && styles.disconnectDeviceButtonDisabled,
                       ]}
-                      onPress={confirmDisconnectDevice}
+                      onPress={confirmUnpairDevice}
                       disabled={isDisconnecting}>
                       <Text style={styles.disconnectDeviceButtonText}>
-                        {isDisconnecting ? 'Disconnecting...' : 'Disconnect device'}
+                        {isDisconnecting ? 'Unpairing...' : 'Unpair display'}
                       </Text>
                     </Pressable>
                   </>

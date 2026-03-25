@@ -17,7 +17,7 @@ import {apiFetch, API_BASE} from '../../../lib/api';
 import {useAuth} from '../../../state/authProvider';
 import {useBleProvision} from '../hooks/useBleProvision';
 
-type ProvisionStep = 'idle' | 'in_db' | 'online';
+type ProvisionStep = 'idle' | 'online';
 
 export default function BleProvisionScreen() {
   const router = useRouter();
@@ -58,18 +58,6 @@ export default function BleProvisionScreen() {
     }
   };
 
-  const pollUntilInDb = async (espDeviceId: string): Promise<boolean> => {
-    const INTERVAL_MS = 2000;
-    const TIMEOUT_MS = 20000;
-    const start = Date.now();
-    while (Date.now() - start < TIMEOUT_MS) {
-      const res = await apiFetch(`/device/${encodeURIComponent(espDeviceId)}`).catch(() => null);
-      if (res?.ok) return true;
-      await new Promise(r => setTimeout(r, INTERVAL_MS));
-    }
-    return false;
-  };
-
   const pollUntilOnline = async (espDeviceId: string): Promise<boolean> => {
     const INTERVAL_MS = 2000;
     const TIMEOUT_MS = 20000;
@@ -98,18 +86,9 @@ export default function BleProvisionScreen() {
     if (!espDeviceId) return;
 
     setDeviceId(espDeviceId);
-    setProvisionStep('in_db');
-
-    // Step 1: wait for ESP to call /device/provision (device appears in DB)
-    const inDb = await pollUntilInDb(espDeviceId);
-    if (!inDb) {
-      setProvisionStep('idle');
-      setLinkError('Device did not register — WiFi password may be wrong. Try again.');
-      return;
-    }
-
-    // Step 2: wait for MQTT presence (device fully online)
     setProvisionStep('online');
+
+    // ESP already confirmed registration via BLE "connected" — just wait for MQTT presence
     const online = await pollUntilOnline(espDeviceId);
     if (!online) {
       setLinkError('Device registered but took too long to come online — try reloading the app.');
@@ -238,18 +217,9 @@ export default function BleProvisionScreen() {
             {(state.phase === 'waiting_wifi' || provisionStep !== 'idle') && (
               <View style={styles.progressCard}>
                 <StatusLine label="Credentials sent" active={true} />
-                <StatusLine
-                  label={provisionStep === 'idle' ? 'Connecting to Wi-Fi...' : 'Wi-Fi connected'}
-                  active={provisionStep !== 'idle'}
-                />
-                <StatusLine
-                  label={provisionStep === 'online' ? 'Device registered' : 'Registering device...'}
-                  active={provisionStep === 'online'}
-                />
-                <StatusLine
-                  label="Waiting to come online..."
-                  active={false}
-                />
+                <StatusLine label="Wi-Fi connected" active={true} />
+                <StatusLine label="Device registered" active={true} />
+                <StatusLine label="Coming online..." active={false} />
                 <ActivityIndicator color={colors.accent} style={{marginTop: spacing.sm}} />
               </View>
             )}
