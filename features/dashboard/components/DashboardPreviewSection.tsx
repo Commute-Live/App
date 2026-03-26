@@ -11,6 +11,7 @@ type Props = {
   onDragStateChange?: (dragging: boolean) => void;
   showHint?: boolean;
   brightness?: number;
+  mini?: boolean;
 };
 
 export default function DashboardPreviewSection({
@@ -21,6 +22,7 @@ export default function DashboardPreviewSection({
   onDragStateChange,
   showHint,
   brightness,
+  mini,
 }: Props) {
   return (
     <View style={styles.previewSection}>
@@ -32,6 +34,7 @@ export default function DashboardPreviewSection({
         onDragStateChange={onDragStateChange}
         showHint={showHint}
         brightness={brightness}
+        mini={mini}
       />
     </View>
   );

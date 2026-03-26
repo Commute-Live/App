@@ -1,11 +1,18 @@
-import React, {useCallback, useMemo} from 'react';
+import React, {useCallback, useMemo, useState} from 'react';
 import {Alert, Pressable, ScrollView, StyleSheet, Text, View} from 'react-native';
-import {SafeAreaView} from 'react-native-safe-area-context';
+import {useSafeAreaInsets} from 'react-native-safe-area-context';
+import {Ionicons} from '@expo/vector-icons';
 import {useRouter} from 'expo-router';
 import {useFocusEffect} from 'expo-router';
 import {useMutation, useQueries, useQuery, useQueryClient} from '@tanstack/react-query';
-import {BottomNav, type BottomNavItem} from '../../../components/BottomNav';
 import {colors, radii, spacing} from '../../../theme';
+import {BottomNav, type BottomNavItem} from '../../../components/BottomNav';
+
+const NAV_ITEMS: BottomNavItem[] = [
+  {key: 'home', label: 'Home', icon: 'home-outline', route: '/dashboard'},
+  {key: 'presets', label: 'Displays', icon: 'albums-outline', route: '/presets'},
+  {key: 'settings', label: 'Settings', icon: 'settings-outline', route: '/settings'},
+];
 import DashboardPreviewSection from '../components/DashboardPreviewSection';
 import {CITY_BRANDS, CITY_LABELS} from '../../../constants/cities';
 import {useAppState} from '../../../state/appState';
@@ -14,7 +21,6 @@ import {
   deleteDisplay,
   fetchDisplays,
   providerToCity,
-  toDisplayScheduleText,
   toPreviewSlots,
   type DeviceDisplay,
 } from '../../../lib/displays';
@@ -23,18 +29,16 @@ import {queryKeys} from '../../../lib/queryKeys';
 
 const stopNameCache: Record<string, string> = {};
 
-const NAV_ITEMS: BottomNavItem[] = [
-  {key: 'home', label: 'Home', icon: 'home-outline', route: '/dashboard'},
-  {key: 'presets', label: 'Displays', icon: 'albums-outline', route: '/presets'},
-  {key: 'settings', label: 'Settings', icon: 'settings-outline', route: '/settings'},
-];
 
 export default function PresetsScreen() {
+  const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
   const router = useRouter();
   const {state: appState} = useAppState();
-  const {deviceId, status} = useAuth();
+  const {deviceId, status, user} = useAuth();
   const selectedCity = appState.selectedCity;
+  const [carouselIndex, setCarouselIndex] = useState(0);
+
   const displaysQuery = useQuery({
     queryKey: queryKeys.displays(deviceId || 'none'),
     queryFn: () => {
@@ -42,11 +46,12 @@ export default function PresetsScreen() {
       return fetchDisplays(deviceId);
     },
     enabled: !!deviceId && status === 'authenticated',
+    staleTime: 30_000,
   });
 
   const displays = displaysQuery.data?.displays ?? [];
   const activeDisplayId = displaysQuery.data?.activeDisplayId ?? null;
-  const loading = displaysQuery.isPending || displaysQuery.isFetching;
+  const loading = displaysQuery.isPending;
   const errorText = displaysQuery.error instanceof Error ? displaysQuery.error.message : '';
 
   const stopPairs = useMemo(() => {
@@ -102,12 +107,17 @@ export default function PresetsScreen() {
 
   const visibleDisplays = useMemo(
     () =>
-      displays.filter((display) => {
+      displays.filter(display => {
         const city = providerToCity(display.config.lines?.[0]?.provider ?? null);
         return city === selectedCity;
       }),
     [displays, selectedCity],
   );
+
+  const safeIndex = visibleDisplays.length > 0 ? Math.min(carouselIndex, visibleDisplays.length - 1) : 0;
+  const currentDisplay = visibleDisplays[safeIndex] ?? null;
+
+  const brand = CITY_BRANDS[selectedCity];
 
   const confirmDelete = useCallback(
     (display: DeviceDisplay) => {
@@ -120,6 +130,7 @@ export default function PresetsScreen() {
           onPress: async () => {
             try {
               await deleteDisplayMutation.mutateAsync(display);
+              setCarouselIndex(prev => Math.max(0, prev - 1));
             } catch (err) {
               Alert.alert('Delete failed', err instanceof Error ? err.message : 'Failed to delete display');
             }
@@ -130,184 +141,390 @@ export default function PresetsScreen() {
     [deleteDisplayMutation, deviceId],
   );
 
-  const brand = CITY_BRANDS[selectedCity];
+  const goTo = (index: number) => {
+    if (index < 0 || index >= visibleDisplays.length) return;
+    setCarouselIndex(index);
+  };
 
   return (
-    <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
-      <ScrollView contentContainerStyle={styles.scroll}>
-        <View style={styles.header}>
-          <Text style={styles.title}>Displays</Text>
-          <Text style={styles.subtitle}>Manage your saved displays and open one to edit.</Text>
-          <Pressable
-            style={styles.addButton}
-            onPress={() => router.push({pathname: '/preset-editor', params: {city: selectedCity, from: 'presets', mode: 'new'}})}>
-            <Text style={styles.addButtonText}>+ Add Display</Text>
-          </Pressable>
+    <View style={[styles.container, {paddingTop: insets.top}]}>
+
+      {/* ── Brand Header ─────────────────────────────────────────────── */}
+      <View style={styles.appHeader}>
+        <View style={styles.wordmarkLockup}>
+          <Ionicons name="navigate-outline" size={18} color={colors.accent} />
+          <Text style={styles.wordmark}>CommuteLive</Text>
         </View>
-
-{loading ? <Text style={styles.hint}>Loading displays...</Text> : null}
-        {!loading && errorText ? <Text style={styles.error}>{errorText}</Text> : null}
-
-        {!loading && !errorText && visibleDisplays.length === 0 ? (
-          <View style={styles.card}>
-            <Text style={styles.emptyTitle}>No displays yet</Text>
-            <Text style={styles.hint}>Create a {CITY_LABELS[selectedCity]} display to start scheduling what appears on your device.</Text>
+        {user?.email ? (
+          <View style={styles.avatarCircle}>
+            <Text style={styles.avatarText}>{user.email.charAt(0).toUpperCase()}</Text>
           </View>
         ) : null}
+      </View>
 
-        {!loading &&
-          !errorText &&
-          visibleDisplays.map(display => (
-            <View key={display.displayId} style={[styles.presetCard, {borderColor: brand.accentSoft}]}>
-              <View style={styles.presetHeader}>
-                <View style={styles.presetHeaderText}>
-                  <Text style={styles.presetName}>{display.name}</Text>
-                  <Text style={styles.presetMeta}>
-                    {display.paused ? 'Paused' : 'Enabled'} | Brightness {display.config.brightness ?? 60}%
-                  </Text>
-                </View>
-                <View style={styles.headerActions}>
-                  {display.displayId === activeDisplayId ? (
-                    <View style={[styles.statusChip, styles.statusChipOn]}>
-                      <Text style={styles.statusChipText}>Active</Text>
-                    </View>
-                  ) : null}
-                  <View style={[styles.statusChip, display.paused ? styles.statusChipOff : styles.statusChipOn]}>
-                    <Text style={styles.statusChipText}>{display.paused ? 'Paused' : 'Ready'}</Text>
+      <ScrollView contentContainerStyle={styles.scroll} bounces={false}>
+
+
+        {/* ── Page Header ───────────────────────────────────────────────── */}
+        <View style={styles.pageHeader}>
+          <View style={styles.pageHeaderRow}>
+            <View style={styles.pageHeaderLeft}>
+              <Text style={styles.pageTitle}>Displays</Text>
+              {currentDisplay ? (
+                <Text style={styles.displayMeta}>{currentDisplay.name}</Text>
+              ) : null}
+            </View>
+            <View style={styles.pageHeaderRight}>
+              <View style={styles.displayBadges}>
+                {currentDisplay?.displayId === activeDisplayId ? (
+                  <View style={[styles.badge, styles.badgeActive]}>
+                    <View style={styles.badgeDot} />
+                    <Text style={styles.badgeText}>Active</Text>
                   </View>
+                ) : null}
+                {currentDisplay?.paused ? (
+                  <View style={[styles.badge, styles.badgePaused]}>
+                    <Text style={styles.badgeText}>Paused</Text>
+                  </View>
+                ) : null}
+              </View>
+              <Pressable
+                style={styles.addBtn}
+                onPress={() => router.push({pathname: '/preset-editor', params: {city: selectedCity, from: 'presets', mode: 'new'}})}>
+                <Ionicons name="add" size={20} color={colors.background} />
+              </Pressable>
+            </View>
+          </View>
+        </View>
+
+        {/* ── Loading / Error ───────────────────────────────────────────── */}
+        {loading ? <Text style={styles.hintText}>Loading displays…</Text> : null}
+        {!loading && errorText ? <Text style={styles.errorText}>{errorText}</Text> : null}
+
+        {/* ── LED + Controls ────────────────────────────────────────────── */}
+        {!loading && !errorText ? (
+          <View style={styles.ledSection}>
+            <Text style={styles.sectionOverline}>Current Display</Text>
+
+            {currentDisplay ? (
+              <>
+                <DashboardPreviewSection
+                  slots={toPreviewSlots(currentDisplay, brand.accent, stopNames)}
+                  displayType={currentDisplay.config.displayType ?? Number(currentDisplay.config.lines?.[0]?.displayType) ?? 1}
+                  onSelectSlot={() =>
+                    router.push({
+                      pathname: '/preset-editor',
+                      params: {city: selectedCity, from: 'presets', mode: 'edit', displayId: currentDisplay.displayId},
+                    })
+                  }
+                  onReorderSlot={() => {}}
+                  onDragStateChange={() => {}}
+                  showHint={false}
+                  brightness={currentDisplay.config.brightness ?? 60}
+                />
+
+                <View style={styles.controlsRow}>
                   <Pressable
-                    style={styles.editIcon}
+                    style={styles.editBtn}
                     onPress={() =>
                       router.push({
                         pathname: '/preset-editor',
-                        params: {city: selectedCity, from: 'presets', mode: 'edit', displayId: display.displayId},
+                        params: {city: selectedCity, from: 'presets', mode: 'edit', displayId: currentDisplay.displayId},
                       })
                     }>
-                    <Text style={styles.editIconText}>✎</Text>
+                    <Ionicons name="pencil-outline" size={14} color={colors.text} />
+                    <Text style={styles.editBtnText}>Edit</Text>
                   </Pressable>
-                  <Pressable style={styles.deleteX} onPress={() => confirmDelete(display)}>
-                    <Text style={styles.deleteXText}>✕</Text>
+
+                  <View style={styles.slideshowControls}>
+                    <Pressable
+                      style={[styles.arrowBtn, safeIndex === 0 && styles.arrowBtnDisabled]}
+                      onPress={() => goTo(safeIndex - 1)}
+                      disabled={safeIndex === 0}>
+                      <Ionicons name="chevron-back" size={14} color={safeIndex === 0 ? colors.border : colors.text} />
+                    </Pressable>
+                    <View style={styles.dotRow}>
+                      {visibleDisplays.map((_, i) => (
+                        <Pressable key={i} onPress={() => goTo(i)}>
+                          <View style={[styles.dot, i === safeIndex && styles.dotActive]} />
+                        </Pressable>
+                      ))}
+                    </View>
+                    <Pressable
+                      style={[styles.arrowBtn, safeIndex === visibleDisplays.length - 1 && styles.arrowBtnDisabled]}
+                      onPress={() => goTo(safeIndex + 1)}
+                      disabled={safeIndex === visibleDisplays.length - 1}>
+                      <Ionicons name="chevron-forward" size={14} color={safeIndex === visibleDisplays.length - 1 ? colors.border : colors.text} />
+                    </Pressable>
+                  </View>
+
+                  <Pressable style={styles.deleteBtn} onPress={() => confirmDelete(currentDisplay)}>
+                    <Ionicons name="trash-outline" size={14} color="#FCA5A5" />
                   </Pressable>
                 </View>
+              </>
+            ) : (
+              <View style={styles.emptyState}>
+                <Text style={styles.emptyTitle}>No displays yet</Text>
+                <Text style={styles.emptyBody}>Create your first display below.</Text>
               </View>
+            )}
+          </View>
+        ) : null}
 
-              <DashboardPreviewSection
-                slots={toPreviewSlots(display, brand.accent, stopNames)}
-                displayType={display.config.displayType ?? Number(display.config.lines?.[0]?.displayType) ?? 1}
-                onSelectSlot={() =>
-                  router.push({
-                    pathname: '/preset-editor',
-                    params: {city: selectedCity, from: 'presets', mode: 'edit', displayId: display.displayId},
-                  })
-                }
-                onReorderSlot={() => {}}
-                onDragStateChange={() => {}}
-                showHint={false}
-                brightness={display.config.brightness ?? 60}
-              />
 
-              <View style={styles.summaryBlock}>
-                <SummaryRow label="Schedule" value={toDisplayScheduleText(display)} />
-              </View>
 
-            </View>
-          ))}
       </ScrollView>
 
       <BottomNav items={NAV_ITEMS} />
-    </SafeAreaView>
-  );
-}
-
-function SummaryRow({label, value}: {label: string; value: string}) {
-  return (
-    <View style={styles.summaryRow}>
-      <Text style={styles.summaryLabel}>{label}</Text>
-      <Text style={styles.summaryValue}>{value}</Text>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
+  // ─── Layout ───────────────────────────────────────────────────────────────
   container: {flex: 1, backgroundColor: colors.background},
-  scroll: {padding: spacing.lg, paddingBottom: 120, gap: spacing.md},
-  header: {gap: spacing.sm, alignItems: 'center'},
-  title: {color: colors.text, fontSize: 24, fontWeight: '900', textAlign: 'center'},
-  subtitle: {color: colors.textMuted, fontSize: 12, textAlign: 'center', maxWidth: 320},
-  addButton: {
-    alignSelf: 'stretch',
-    backgroundColor: colors.accent,
-    borderRadius: radii.md,
-    paddingVertical: spacing.sm,
+  scroll: {
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.lg,
+    paddingBottom: 120,
+    gap: spacing.xl,
+  },
+
+  // ─── Brand Header ─────────────────────────────────────────────────────────
+  appHeader: {
+    flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
   },
-  addButtonText: {color: colors.background, fontSize: 14, fontWeight: '900'},
-  card: {
-    backgroundColor: colors.card,
-    borderRadius: radii.lg,
-    borderWidth: 1,
-    borderColor: colors.border,
-    padding: spacing.md,
-    gap: spacing.xs,
+  wordmarkLockup: {flexDirection: 'row', alignItems: 'center', gap: 7},
+  wordmark: {color: colors.text, fontSize: 20, fontWeight: '900', letterSpacing: -0.5},
+  avatarCircle: {
+    position: 'absolute',
+    right: spacing.lg,
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: colors.accentMuted,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  deviceName: {color: colors.text, fontSize: 15, fontWeight: '800'},
-  deviceMeta: {color: colors.textMuted, fontSize: 12},
-  emptyTitle: {color: colors.text, fontSize: 15, fontWeight: '800'},
-  hint: {color: colors.textMuted, fontSize: 12},
-  error: {color: colors.warning, fontSize: 12},
-  presetCard: {
-    backgroundColor: colors.card,
-    borderRadius: radii.lg,
-    borderWidth: 1,
-    borderColor: colors.border,
-    padding: spacing.md,
+  avatarText: {color: colors.accent, fontSize: 13, fontWeight: '800'},
+
+  // ─── Page Header ──────────────────────────────────────────────────────────
+  pageHeader: {
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.xs,
     gap: spacing.sm,
   },
-  presetHeader: {flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: spacing.sm},
-  presetHeaderText: {flex: 1},
-  presetName: {color: colors.text, fontSize: 16, fontWeight: '900'},
-  presetMeta: {color: colors.textMuted, fontSize: 12, marginTop: 2},
-  headerActions: {flexDirection: 'row', alignItems: 'center', gap: spacing.xs, flexWrap: 'wrap', justifyContent: 'flex-end'},
-  statusChip: {
+  pageHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.sm,
+  },
+  pageHeaderLeft: {gap: 3, flex: 1},
+  pageHeaderRight: {flexDirection: 'row', alignItems: 'center', gap: spacing.xs},
+  addBtn: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: colors.accent,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pageTitle: {
+    color: colors.text,
+    fontSize: 28,
+    fontWeight: '900',
+    letterSpacing: -0.8,
+    lineHeight: 33,
+  },
+  displayMeta: {
+    color: colors.textMuted,
+    fontSize: 13,
+    lineHeight: 18,
+  },
+
+  // ─── LED Section ──────────────────────────────────────────────────────────
+  ledSection: {
+    gap: spacing.md,
+  },
+
+  // ─── Sections ─────────────────────────────────────────────────────────────
+  section: {gap: spacing.md},
+  sectionOverline: {
+    color: colors.textMuted,
+    fontSize: 11,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 1.2,
+  },
+
+  // ─── Loading / Error / Empty ───────────────────────────────────────────────
+  loadingRow: {alignItems: 'center', paddingVertical: spacing.xl},
+  hintText: {color: colors.textMuted, fontSize: 13},
+  errorText: {color: colors.warning, fontSize: 13},
+  emptyState: {gap: spacing.xs},
+  emptyTitle: {color: colors.text, fontSize: 15, fontWeight: '800'},
+  emptyBody: {color: colors.textMuted, fontSize: 13, lineHeight: 18},
+
+
+  displayBadges: {
+    flexDirection: 'row',
+    gap: spacing.xs,
+    flexWrap: 'wrap',
+    justifyContent: 'flex-end',
+    flexShrink: 0,
+  },
+  badge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
     borderRadius: radii.md,
     borderWidth: 1,
     paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
+    paddingVertical: 5,
   },
-  statusChipOn: {backgroundColor: '#0E2B21', borderColor: '#1B5E4A'},
-  statusChipOff: {backgroundColor: colors.surface, borderColor: colors.border},
-  statusChipText: {color: colors.text, fontSize: 11, fontWeight: '800'},
-  summaryBlock: {
+  badgeActive: {backgroundColor: '#0E2B21', borderColor: '#1B5E4A'},
+  badgePaused: {backgroundColor: colors.surface, borderColor: colors.border},
+  badgeDot: {width: 7, height: 7, borderRadius: 4, backgroundColor: '#34D399'},
+  badgeText: {color: colors.text, fontSize: 11, fontWeight: '800'},
+
+  // ─── Controls Row ─────────────────────────────────────────────────────────
+  controlsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: spacing.xs,
+  },
+  slideshowControls: {flexDirection: 'row', alignItems: 'center', gap: spacing.sm},
+  arrowBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  arrowBtnDisabled: {opacity: 0.35},
+  dotRow: {flexDirection: 'row', alignItems: 'center', gap: 5},
+  dot: {width: 5, height: 5, borderRadius: 3, backgroundColor: colors.border},
+  dotActive: {width: 14, height: 5, borderRadius: 3, backgroundColor: colors.accent},
+  editBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 6,
+  },
+  editBtnText: {color: colors.text, fontSize: 13, fontWeight: '700'},
+  deleteBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: '#5B1C1C',
+    backgroundColor: '#231011',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  // ─── Quick Settings ───────────────────────────────────────────────────────
+  quickSettings: {
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    paddingTop: spacing.md,
+    gap: spacing.md,
+  },
+  settingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.sm,
+  },
+  settingLabel: {
+    color: colors.textMuted,
+    fontSize: 11,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+    flex: 1,
+  },
+
+  // ─── Stepper ──────────────────────────────────────────────────────────────
+  stepperRow: {flexDirection: 'row', alignItems: 'center', gap: spacing.xs},
+  stepperBtn: {
+    width: 30,
+    height: 30,
+    borderRadius: radii.sm,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  stepperBtnText: {color: colors.text, fontSize: 18, fontWeight: '500', lineHeight: 22},
+  stepperValue: {
+    color: colors.text,
+    fontSize: 14,
+    fontWeight: '800',
+    minWidth: 48,
+    textAlign: 'center',
+  },
+
+  // ─── Days ─────────────────────────────────────────────────────────────────
+  daysRow: {flexDirection: 'row', gap: 5},
+  dayPill: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  dayPillActive: {borderColor: colors.accent, backgroundColor: colors.accentMuted},
+  dayPillText: {color: colors.textMuted, fontSize: 11, fontWeight: '800'},
+  dayPillTextActive: {color: colors.accent},
+
+  // ─── Time Range ───────────────────────────────────────────────────────────
+  timeRangeRow: {flexDirection: 'row', gap: spacing.sm},
+  timeField: {
+    flex: 1,
+    gap: spacing.xs,
     borderRadius: radii.md,
     borderWidth: 1,
     borderColor: colors.border,
     backgroundColor: colors.surface,
     padding: spacing.sm,
-    gap: spacing.xs,
   },
-  summaryRow: {gap: 2},
-  summaryLabel: {color: colors.textMuted, fontSize: 11, fontWeight: '700', textTransform: 'uppercase'},
-  summaryValue: {color: colors.text, fontSize: 13, fontWeight: '700'},
-  editIcon: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: '#FACC15',
+  timeFieldLabel: {
+    color: colors.textMuted,
+    fontSize: 11,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+  },
+
+  // ─── Save Button ──────────────────────────────────────────────────────────
+  saveBtn: {
+    backgroundColor: colors.accent,
+    borderRadius: radii.md,
+    paddingVertical: spacing.sm,
     alignItems: 'center',
-    justifyContent: 'center',
   },
-  editIconText: {color: colors.text, fontSize: 12, fontWeight: '900', lineHeight: 14},
-  deleteX: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: '#231011',
-    borderWidth: 1,
-    borderColor: '#5B1C1C',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  deleteXText: {color: '#FCA5A5', fontSize: 11, fontWeight: '900', lineHeight: 14},
+  saveBtnDisabled: {opacity: 0.5},
+  saveBtnText: {color: colors.background, fontSize: 14, fontWeight: '800'},
 });

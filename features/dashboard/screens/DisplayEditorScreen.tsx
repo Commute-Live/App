@@ -97,15 +97,15 @@ const DAY_OPTIONS = [
 ] as const;
 type DayId = (typeof DAY_OPTIONS)[number]['id'];
 const LAYOUT_OPTIONS = [
-  {id: 'layout-1', slots: 1, label: '1 stop'},
-  {id: 'layout-2', slots: 2, label: '2 stops'},
+  {id: 'layout-1', slots: 1, label: '1 line'},
+  {id: 'layout-2', slots: 2, label: '2 lines'},
 ];
 const DISPLAY_PRESET_OPTIONS = [
-  {id: 1, label: 'Destination + ETA', description: 'Single destination name with next arrival time on the right.'},
-  {id: 2, label: 'Direction + ETA', description: 'Direction-focused row with next arrival time on the right.'},
-  {id: 3, label: 'Stacked Destinations', description: 'Two destination lines stacked in one row with no extra ETA line.'},
-  {id: 4, label: 'Destination + Multi ETA', description: 'Single destination with additional ETA values under the main text.'},
-  {id: 5, label: 'Direction + Multi ETA', description: 'Direction-focused row with additional ETA values under the main text.'},
+  {id: 1, label: 'Destination', description: 'Stop name on the left, next arrival on the right.'},
+  {id: 2, label: 'Direction', description: 'Travel direction on the left, next arrival on the right.'},
+  {id: 3, label: 'Stacked', description: 'Two destinations side by side in a single row.'},
+  {id: 4, label: 'Destination + Times', description: 'Stop name with multiple upcoming arrival times.'},
+  {id: 5, label: 'Direction + Times', description: 'Travel direction with multiple upcoming arrival times.'},
 ] as const;
 const PRESET_CAROUSEL_ITEM_WIDTH = 292;
 const Haptics = {selectionAsync: async () => {}, notificationAsync: async (_: any) => {}};
@@ -214,6 +214,8 @@ export default function DisplayEditorScreen() {
   const [arrivals, setArrivals] = useState<Arrival[]>([]);
   const [liveStatusText, setLiveStatusText] = useState('');
   const [editorStep, setEditorStep] = useState<EditorStep>(isCreateMode ? 'lines' : 'done');
+  // Tracks the style the user is hovering/previewing in Step 3 (format) before confirming
+  const [liveStylePreview, setLiveStylePreview] = useState<number | null>(null);
   const [linesByMode, setLinesByMode] = useState<Partial<Record<ModeId, Route[]>>>({});
   const [linesLoadingByMode, setLinesLoadingByMode] = useState<Partial<Record<ModeId, boolean>>>({});
   const stepAnim = useRef(new Animated.Value(1)).current;
@@ -225,6 +227,8 @@ export default function DisplayEditorScreen() {
   const selectedDisplayPreset = displayPresetsByLine[selectedLineId] ?? DEFAULT_DISPLAY_PRESET;
   const selectedLinePresetConfirmed = selectedLineId in displayPresetsByLine;
   const allLinesPresetConfirmed = lines.every(line => line.id in displayPresetsByLine);
+  // When the user is browsing styles in Step 3, reflect that in the fixed preview
+  const liveDisplayType = editorStep === 'format' && liveStylePreview !== null ? liveStylePreview : selectedDisplayPreset;
   const animateSectionLayout = () => {
     LayoutAnimation.configureNext({
       duration: 180,
@@ -1285,303 +1289,192 @@ export default function DisplayEditorScreen() {
   ] as const;
 
   return (
-    <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
+    <SafeAreaView style={styles.container} edges={['top', 'left', 'right', 'bottom']}>
       <KeyboardAvoidingView
         style={styles.keyboardAvoid}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         keyboardVerticalOffset={Platform.OS === 'ios' ? 12 : 0}>
-      <ScrollView
-        contentContainerStyle={styles.scroll}
-        scrollEnabled={!previewDragging}
-        keyboardShouldPersistTaps="handled"
-        keyboardDismissMode="on-drag"
-        stickyHeaderIndices={[0]}>
-        <View style={styles.stickyTopShell}>
-          <Animated.View style={headerAnimatedStyle}>
-            <TopBar
-              layoutSlots={layoutSlots}
-              presetName={presetName}
-              onPresetNameChange={setPresetName}
-              onLayoutOpen={() => setShowLayoutSelector(true)}
-              onBackPress={handleBackPress}
+
+        {/* ── Wizard header (fixed, not scrollable) ─────────────────────── */}
+        <Animated.View style={[styles.topBarWrap, headerAnimatedStyle]}>
+          <TopBar
+            layoutSlots={layoutSlots}
+            presetName={presetName}
+            onPresetNameChange={setPresetName}
+            onLayoutOpen={() => setShowLayoutSelector(true)}
+            onBackPress={handleBackPress}
+          />
+          <WizardStepBar
+            step={editorStep}
+            hasLine={!!selectedLine?.routeId}
+            hasStop={!!selectedLine?.stationId}
+            hasPreset={selectedLinePresetConfirmed}
+            onGoTo={targetStep => {
+              if (!selectedLine) return;
+              if (targetStep === 'lines') { setEditorStep('lines'); return; }
+              if (targetStep === 'stops' && selectedLine.routeId) { setEditorStep('stops'); return; }
+              if (targetStep === 'format' && selectedLine.routeId && selectedLine.stationId) { setEditorStep('format'); return; }
+              if (targetStep === 'done' && selectedLine.routeId && selectedLine.stationId && selectedLinePresetConfirmed) { setEditorStep('done'); return; }
+            }}
+          />
+        </Animated.View>
+
+        {/* ── Fixed preview — always visible, never scrolls ─────────────── */}
+        <Animated.View style={[styles.wizardFixedPreview, previewAnimatedStyle]}>
+          <DashboardPreviewSection
+            slots={previewSlots}
+            displayType={liveDisplayType}
+            onSelectSlot={handleSelectSlotForEdit}
+            onReorderSlot={reorderLineByHold}
+            onDragStateChange={setPreviewDragging}
+            showHint={false}
+            mini
+          />
+        </Animated.View>
+
+        {/* ── Stop picker — fixed layout, lives outside the scroll view ── */}
+        {editorStep === 'stops' && selectedLine ? (
+          <Animated.View style={[stepAnimatedStyle, styles.stopPickerFullScreen]}>
+            <StopPickerStep
+              city={city}
+              selectedMode={normalizeMode(city, selectedLine.mode)}
+              selectedRoute={selectedRouteForEditor}
+              stations={stationsByLine[selectedLine.routeId] ?? []}
+              loading={!!stationsLoadingByLine[selectedLine.routeId]}
+              selectedStationId={selectedLine.stationId}
+              selectedRouteId={selectedLine.routeId}
+              selectedDirection={selectedLine.direction}
+              search={stationSearch[selectedLine.id] ?? ''}
+              onSearch={text => setStationSearch(prev => ({...prev, [selectedLine.id]: text}))}
+              onSelectDirection={direction => updateLine(selectedLine.id, {direction})}
+              onSelectStation={id => {
+                updateLine(selectedLine.id, {stationId: id});
+                setEditorStep(selectedLinePresetConfirmed ? 'done' : 'format');
+              }}
+              onBack={() => setEditorStep('lines')}
             />
           </Animated.View>
-
-          <Animated.View style={[styles.stickyPreviewShell, previewAnimatedStyle]}>
-            <View>
-              <View style={styles.stickyPreviewHeader}>
-                <Text style={styles.stickyPreviewEyebrow}>Live Display Preview</Text>
-              </View>
-              <DashboardPreviewSection
-                slots={previewSlots}
-                displayType={selectedDisplayPreset}
-                onSelectSlot={handleSelectSlotForEdit}
-                onReorderSlot={reorderLineByHold}
-                onDragStateChange={setPreviewDragging}
-                showHint={false}
-              />
-            </View>
-          </Animated.View>
-        </View>
-
-        {!hasLinkedDevice ? (
-          <Pressable style={styles.noDeviceBar} onPress={() => router.push('/register-device')}>
-            <Text style={styles.noDeviceText}>No device linked — tap to add one</Text>
-          </Pressable>
         ) : null}
 
-        {!liveSupported ? (
-          <View style={styles.liveDisabledCard}>
-            <Text style={styles.liveDisabledTitle}>Live Transit Unavailable</Text>
-            <Text style={styles.liveDisabledBody}>
-              Real-time transit is currently supported in New York and Philadelphia only. {CITY_LABELS[city]} does
-              not support live stop/line lookups yet.
-            </Text>
-          </View>
+        {/* ── Scrollable step content (all steps except stops) ───────────── */}
+        {editorStep !== 'stops' ? (
+        <ScrollView
+          contentContainerStyle={styles.wizardScroll}
+          scrollEnabled={!previewDragging}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag">
+
+          {!hasLinkedDevice ? (
+            <Pressable style={styles.noDeviceBar} onPress={() => router.push('/register-device')}>
+              <Text style={styles.noDeviceText}>No device linked — tap to add one</Text>
+            </Pressable>
+          ) : null}
+
+          {!liveSupported ? (
+            <View style={styles.liveDisabledCard}>
+              <Text style={styles.liveDisabledTitle}>Live Transit Unavailable</Text>
+              <Text style={styles.liveDisabledBody}>
+                Real-time transit is currently supported in New York and Philadelphia only. {CITY_LABELS[city]} does not support live stop/line lookups yet.
+              </Text>
+            </View>
+          ) : null}
+
+          {selectedLine ? (
+            <Animated.View style={stepAnimatedStyle}>
+
+              {/* Step 1: Line picker */}
+              {editorStep === 'lines' ? (
+                <LinePickerStep
+                  city={city}
+                  selectedMode={normalizeMode(city, selectedLine.mode)}
+                  linesByMode={linesByMode}
+                  linesLoadingByMode={linesLoadingByMode}
+                  selectedRouteId={selectedLine.routeId}
+                  onModeChange={mode => updateLine(selectedLine.id, {mode, stationId: '', routeId: ''})}
+                  onSelectLine={routeId => {
+                    updateLine(selectedLine.id, {routeId, stationId: ''});
+                    setEditorStep('stops');
+                  }}
+                  onBack={handleBackPress}
+                />
+              ) : null}
+
+              {/* Step 3: Style picker — fixed preview above reflects live selection */}
+              {editorStep === 'format' ? (
+                <LedStylePickerStep
+                  displayType={selectedDisplayPreset}
+                  line={selectedLine}
+                  selectedRoute={selectedRouteForEditor}
+                  onChangeLine={next => updateLine(selectedLine.id, next)}
+                  onPreview={setLiveStylePreview}
+                  onSelect={preset => {
+                    setLiveStylePreview(null);
+                    const behavior = getPresetBehavior(preset);
+                    const nextPrimaryContent = selectedLine.label.trim().length > 0 ? 'custom' : behavior.primaryContent;
+                    const nextSecondaryContent =
+                      behavior.supportsBottomCustom && selectedLine.secondaryLabel.trim().length > 0
+                        ? 'custom'
+                        : behavior.secondaryContent;
+                    updateLine(selectedLine.id, {
+                      displayFormat: behavior.displayFormat,
+                      primaryContent: nextPrimaryContent,
+                      secondaryContent: nextSecondaryContent,
+                    });
+                    setDisplayPresetsByLine(prev => ({...prev, [selectedLine.id]: preset}));
+                    if (advanceToNextSlotIfNeeded(selectedLine.id)) return;
+                    setEditorStep('done');
+                  }}
+                />
+              ) : null}
+
+              {/* Step 4: Review & save */}
+              {editorStep === 'done' ? (
+                <WizardReviewStep
+                  line={selectedLine}
+                  displayPreset={selectedDisplayPreset}
+                  presetConfirmed={selectedLinePresetConfirmed}
+                  selectedRoute={selectedRouteForEditor}
+                  selectedStation={selectedStationForEditor}
+                  presetName={presetName}
+                  displayMetadata={displayMetadata}
+                  customScheduleEnabled={customDisplayScheduleEnabled}
+                  displaySchedule={displaySchedule}
+                  displayDays={displayDays}
+                  scheduleExpanded={scheduleExpanded}
+                  layoutSlots={layoutSlots}
+                  onChangeLine={next => updateLine(selectedLine.id, next)}
+                  onClearLine={() => clearLineSelection(selectedLine.id)}
+                  onClearStop={() => clearStopSelection(selectedLine.id)}
+                  onClearDisplayType={() => clearDisplayPreset(selectedLine.id)}
+                  onPresetNameChange={setPresetName}
+                  onBrightnessChange={brightness => setDisplayMetadata(prev => ({...prev, brightness}))}
+                  onScrollingChange={scrolling => setDisplayMetadata(prev => ({...prev, scrolling}))}
+                  onScheduleEnabledChange={() => setCustomDisplayScheduleEnabled(prev => !prev)}
+                  onScheduleStartChange={start => setDisplaySchedule(prev => ({...prev, start}))}
+                  onScheduleEndChange={end => setDisplaySchedule(prev => ({...prev, end}))}
+                  onToggleDay={day => setDisplayDays(prev => prev.includes(day) ? prev.filter(d => d !== day) : [...prev, day])}
+                  onToggleScheduleExpanded={toggleScheduleEditor}
+                  onExpandToTwoStops={expandToTwoStops}
+                  onRemoveStop={() => removeStopFromLayout(selectedLine.id)}
+                />
+              ) : null}
+
+            </Animated.View>
+          ) : null}
+        </ScrollView>
         ) : null}
-
-        <Animated.View style={editorAnimatedStyle}>
-          <View style={styles.card}>
-            <View style={styles.builderSection}>
-              <View style={styles.builderHeader}>
-                <View style={styles.builderHeaderCopy}>
-                  <Text style={styles.builderTitle}>Build your Display!</Text>
-                </View>
-              </View>
-
-              <BuilderProgress items={builderProgressItems} />
-
-              {selectedLine ? (
-                <Animated.View style={[styles.builderStepPanel, stepAnimatedStyle]}>
-                  {editorStep === 'lines' && (
-                    <LinePickerStep
-                      city={city}
-                      selectedMode={normalizeMode(city, selectedLine.mode)}
-                      linesByMode={linesByMode}
-                      linesLoadingByMode={linesLoadingByMode}
-                      selectedRouteId={selectedLine.routeId}
-                      onModeChange={mode => updateLine(selectedLine.id, {mode, stationId: '', routeId: ''})}
-                      onSelectLine={routeId => {
-                        updateLine(selectedLine.id, {routeId, stationId: ''});
-                        setEditorStep('stops');
-                      }}
-                      onBack={handleBackPress}
-                    />
-                  )}
-
-                  {editorStep === 'stops' && (
-                    <StopPickerStep
-                      city={city}
-                      selectedMode={normalizeMode(city, selectedLine.mode)}
-                      selectedRoute={selectedRouteForEditor}
-                      stations={stationsByLine[selectedLine.routeId] ?? []}
-                      loading={!!stationsLoadingByLine[selectedLine.routeId]}
-                      selectedStationId={selectedLine.stationId}
-                      selectedRouteId={selectedLine.routeId}
-                      selectedDirection={selectedLine.direction}
-                      search={stationSearch[selectedLine.id] ?? ''}
-                      onSearch={text => setStationSearch(prev => ({...prev, [selectedLine.id]: text}))}
-                      onSelectDirection={direction => updateLine(selectedLine.id, {direction})}
-                      onSelectStation={id => {
-                        updateLine(selectedLine.id, {stationId: id});
-                        setEditorStep(selectedLinePresetConfirmed ? 'done' : 'format');
-                      }}
-                      onBack={() => setEditorStep('lines')}
-                    />
-                  )}
-
-                  {editorStep === 'format' && (
-                    <DisplayPresetPickerStep
-                      selectedPreset={selectedLinePresetConfirmed ? selectedDisplayPreset : null}
-                      line={selectedLine}
-                      selectedRoute={selectedRouteForEditor}
-                      selectedStation={selectedStationForEditor}
-                      arrival={arrivals.find(item => item.lineId === selectedLine.id)}
-                      showCompletionHint={false}
-                      onChangeLine={next => updateLine(selectedLine.id, next)}
-                      onSelect={preset => {
-                        const behavior = getPresetBehavior(preset);
-                        const nextPrimaryContent = selectedLine.label.trim().length > 0 ? 'custom' : behavior.primaryContent;
-                        const nextSecondaryContent =
-                          behavior.supportsBottomCustom && selectedLine.secondaryLabel.trim().length > 0
-                            ? 'custom'
-                            : behavior.secondaryContent;
-                        updateLine(selectedLine.id, {
-                          displayFormat: behavior.displayFormat,
-                          primaryContent: nextPrimaryContent,
-                          secondaryContent: nextSecondaryContent,
-                        });
-                        setDisplayPresetsByLine(prev => ({...prev, [selectedLine.id]: preset}));
-                        if (advanceToNextSlotIfNeeded(selectedLine.id)) {
-                          return;
-                        }
-                        setEditorStep('done');
-                      }}
-                    />
-                  )}
-
-                  {editorStep === 'done' && (
-                    <ReviewDoneStep
-                      line={selectedLine}
-                      displayPreset={selectedDisplayPreset}
-                      presetConfirmed={selectedLinePresetConfirmed}
-                      selectedRoute={selectedRouteForEditor}
-                      selectedStation={selectedStationForEditor}
-                      onChangeLine={next => updateLine(selectedLine.id, next)}
-                      onClearLine={() => clearLineSelection(selectedLine.id)}
-                      onClearStop={() => clearStopSelection(selectedLine.id)}
-                      onClearDisplayType={() => clearDisplayPreset(selectedLine.id)}
-                    />
-                  )}
-                  {(layoutSlots === 1 || layoutSlots === 2) && selectedLine ? (
-                    <View style={styles.stepFooterActionRow}>
-                      {layoutSlots === 1 && selectedLine.id === 'line-1' ? (
-                        <Pressable style={styles.reviewActionButton} onPress={expandToTwoStops}>
-                          <Text style={styles.reviewActionButtonText}>Add Display</Text>
-                        </Pressable>
-                      ) : null}
-                      {layoutSlots === 2 ? (
-                        <Pressable style={styles.reviewRemoveButton} onPress={() => removeStopFromLayout(selectedLine.id)}>
-                          <Text style={styles.reviewRemoveButtonText}>Remove This Display</Text>
-                        </Pressable>
-                      ) : null}
-                    </View>
-                  ) : null}
-                </Animated.View>
-              ) : (
-                <Text style={styles.emptyHint}>Select a slot in the preview to start editing.</Text>
-              )}
-            </View>
-
-            <View style={styles.additionalSettingsSection}>
-              <Text style={styles.additionalSettingsTitle}>Additional Settings</Text>
-              <Text style={styles.additionalSettingsHint}>Optional display controls.</Text>
-
-              <View style={styles.additionalSettingsCard}>
-                <View style={styles.additionalSettingsHeader}>
-                  <View style={styles.additionalSettingsCopy}>
-                    <Text style={styles.sectionLabel}>Display Brightness</Text>
-                    <Text style={styles.sectionHint}>Adjust the screen brightness on the device.</Text>
-                  </View>
-                </View>
-                <View style={styles.stepperRow}>
-                  <Pressable
-                    style={[styles.stepperButton, displayMetadata.brightness <= MIN_BRIGHTNESS && styles.stepperButtonDisabled]}
-                    disabled={displayMetadata.brightness <= MIN_BRIGHTNESS}
-                    onPress={() =>
-                      setDisplayMetadata(prev => ({
-                        ...prev,
-                        brightness: Math.max(MIN_BRIGHTNESS, prev.brightness - 10),
-                      }))
-                    }>
-                    <Text
-                      style={[
-                        styles.stepperButtonText,
-                        displayMetadata.brightness <= MIN_BRIGHTNESS && styles.stepperButtonTextDisabled,
-                      ]}>
-                      -
-                    </Text>
-                  </Pressable>
-                  <Text style={styles.stepperValue}>{displayMetadata.brightness}%</Text>
-                  <Pressable
-                    style={[styles.stepperButton, displayMetadata.brightness >= MAX_BRIGHTNESS && styles.stepperButtonDisabled]}
-                    disabled={displayMetadata.brightness >= MAX_BRIGHTNESS}
-                    onPress={() =>
-                      setDisplayMetadata(prev => ({
-                        ...prev,
-                        brightness: Math.min(MAX_BRIGHTNESS, prev.brightness + 10),
-                      }))
-                    }>
-                    <Text
-                      style={[
-                        styles.stepperButtonText,
-                        displayMetadata.brightness >= MAX_BRIGHTNESS && styles.stepperButtonTextDisabled,
-                      ]}>
-                      +
-                    </Text>
-                  </Pressable>
-                </View>
-              </View>
-
-              <View style={styles.additionalSettingsCard}>
-                <View style={styles.additionalSettingsHeader}>
-                  <View style={styles.additionalSettingsCopy}>
-                    <Text style={styles.sectionLabel}>Long Text Scroll</Text>
-                    <Text style={styles.sectionHint}>Scroll long text on the device.</Text>
-                  </View>
-                </View>
-                <View style={styles.segmented}>
-                  {[
-                    {id: 'truncate', label: 'Cut Off', active: !displayMetadata.scrolling},
-                    {id: 'scroll', label: 'Scroll', active: displayMetadata.scrolling},
-                  ].map(option => (
-                    <Pressable
-                      key={option.id}
-                      style={[styles.segment, option.active && styles.segmentActive]}
-                      onPress={() => setDisplayMetadata(prev => ({...prev, scrolling: option.id === 'scroll'}))}>
-                      <Text style={[styles.segmentText, option.active && styles.segmentTextActive]}>{option.label}</Text>
-                    </Pressable>
-                  ))}
-                </View>
-              </View>
-
-              <View style={styles.additionalSettingsCard}>
-                <Pressable style={styles.collapsibleHeader} onPress={toggleScheduleEditor}>
-                  <View style={styles.additionalSettingsCopy}>
-                    <Text style={styles.sectionLabel}>Edit Schedule</Text>
-                    <Text style={styles.sectionHint}>Set active days and hours.</Text>
-                  </View>
-                  <View style={styles.collapsibleArrowBubble}>
-                    <AnimatedChevron expanded={scheduleExpanded} />
-                  </View>
-                </Pressable>
-                <FadeSection visible={scheduleExpanded}>
-                  <View style={styles.collapsibleBody}>
-                    <View style={styles.sectionBlock}>
-                      <Text style={styles.sectionHint}>Turn this on to limit when the display runs.</Text>
-                      <Pressable
-                        style={styles.scheduleToggleRow}
-                        onPress={() => setCustomDisplayScheduleEnabled(prev => !prev)}>
-                        <Text style={styles.scheduleToggleLabel}>Custom Schedule</Text>
-                        <ScheduleToggleControl enabled={customDisplayScheduleEnabled} />
-                      </Pressable>
-                    </View>
-                    {customDisplayScheduleEnabled ? (
-                      <ScheduleTimingEditor
-                        start={displaySchedule.start}
-                        end={displaySchedule.end}
-                        days={displayDays}
-                        onStartChange={start => setDisplaySchedule(prev => ({...prev, start}))}
-                        onEndChange={end => setDisplaySchedule(prev => ({...prev, end}))}
-                        onToggleDay={day =>
-                          setDisplayDays(prev =>
-                            prev.includes(day) ? prev.filter(item => item !== day) : [...prev, day],
-                          )
-                        }
-                      />
-                    ) : (
-                      <View style={styles.schedule24x7Card}>
-                        <Text style={styles.schedule24x7Title}>Always On</Text>
-                        <Text style={styles.schedule24x7Body}>This display runs all day, every day.</Text>
-                      </View>
-                    )}
-                  </View>
-                </FadeSection>
-              </View>
-            </View>
-          </View>
-        </Animated.View>
-      </ScrollView>
       </KeyboardAvoidingView>
 
-      <SaveBar
-        dirty={isDirty}
-        loading={saving}
-        success={saveDone}
-        disabled={!canSaveToDevice}
-        message={liveStatusText}
-        onPress={handleSave}
-      />
+      {editorStep === 'done' ? (
+        <SaveBar
+          dirty={isDirty}
+          loading={saving}
+          success={saveDone}
+          disabled={!canSaveToDevice}
+          message={liveStatusText}
+          onPress={handleSave}
+        />
+      ) : null}
       <ConfirmDiscardModal
         visible={showDiscardConfirm}
         onStay={() => setShowDiscardConfirm(false)}
@@ -1642,7 +1535,7 @@ function TopBar({
       <View style={styles.topBar}>
         <View style={styles.topBarSideLeft}>
           <Pressable style={styles.backButton} onPress={onBackPress}>
-            <Text style={styles.backButtonText}>Back</Text>
+            <Text style={styles.backButtonText}>‹ Back</Text>
           </Pressable>
         </View>
 
@@ -1654,15 +1547,15 @@ function TopBar({
             <Pressable
               style={styles.presetNameEditButton}
               onPress={() => setRenameOpen(prev => !prev)}>
-              <Text style={styles.presetNameEditEmoji}>✏️</Text>
+              <Text style={styles.presetNameEditEmoji}>Edit</Text>
             </Pressable>
           </View>
         </View>
 
         <View style={styles.topBarSideRight}>
           <Pressable style={styles.layoutPillTopRight} onPress={onLayoutOpen}>
-            <Text style={styles.layoutPillTopRightText}>{layoutSlots === 1 ? '1 Display' : '2 Displays'}</Text>
-            <Text style={styles.layoutPillChevron}>v</Text>
+            <Text style={styles.layoutPillTopRightText}>{layoutSlots === 1 ? '1 line' : '2 lines'}</Text>
+            <Text style={styles.layoutPillChevron}>⌄</Text>
           </Pressable>
         </View>
       </View>
@@ -1684,6 +1577,69 @@ function TopBar({
           </Pressable>
         </View>
       </FadeSection>
+    </View>
+  );
+}
+
+function WizardStepBar({
+  step,
+  hasLine,
+  hasStop,
+  hasPreset,
+  onGoTo,
+}: {
+  step: EditorStep;
+  hasLine: boolean;
+  hasStop: boolean;
+  hasPreset: boolean;
+  onGoTo: (step: EditorStep) => void;
+}) {
+  const stepDefs: Array<{id: EditorStep; label: string; complete: boolean; reachable: boolean}> = [
+    {id: 'lines', label: 'Line', complete: hasLine, reachable: true},
+    {id: 'stops', label: 'Stop', complete: hasStop, reachable: hasLine},
+    {id: 'format', label: 'Style', complete: hasPreset, reachable: hasLine && hasStop},
+    {id: 'done', label: 'Save', complete: false, reachable: hasLine && hasStop && hasPreset},
+  ];
+
+  const activeIndex = stepDefs.findIndex(s => s.id === step);
+  // Track fill width as a fraction of the gap between first and last node
+  const fillPct = activeIndex === 0 ? '0%' : `${(activeIndex / (stepDefs.length - 1)) * 100}%`;
+
+  return (
+    <View style={styles.wizardStepBar}>
+      {/* Background track */}
+      <View style={styles.wizardTrack} />
+      {/* Filled portion up to the active node */}
+      <View style={[styles.wizardTrackFill, {width: fillPct}]} />
+
+      {stepDefs.map((s, index) => {
+        const isActive = s.id === step;
+        const isComplete = s.complete;
+        return (
+          <Pressable
+            key={s.id}
+            style={styles.wizardStepItem}
+            onPress={() => { if (s.reachable) onGoTo(s.id); }}
+            disabled={!s.reachable}>
+            <View style={[
+              styles.wizardStepCircle,
+              isActive && styles.wizardStepCircleActive,
+              isComplete && styles.wizardStepCircleComplete,
+            ]}>
+              <Text style={[
+                styles.wizardStepNumber,
+                isActive && styles.wizardStepNumberActive,
+                isComplete && styles.wizardStepNumberComplete,
+              ]}>
+                {isComplete ? '✓' : String(index + 1)}
+              </Text>
+            </View>
+            <Text style={[styles.wizardStepLabel, isActive && styles.wizardStepLabelActive]}>
+              {s.label}
+            </Text>
+          </Pressable>
+        );
+      })}
     </View>
   );
 }
@@ -2323,7 +2279,7 @@ function LayoutSlotsPickerStep({
   return (
     <View style={styles.stepSection}>
       <Text style={styles.stepTitle}>How many stops?</Text>
-      <Text style={styles.stepSubtitle}>Choose whether the device should show one tracked stop or two.</Text>
+      <Text style={styles.stepSubtitle}>Choose whether the device should show one line or two.</Text>
       <View style={styles.choiceList}>
         {LAYOUT_OPTIONS.map(option => {
           const active = option.slots === selectedSlots;
@@ -2504,6 +2460,13 @@ function ScheduleToggleControl({enabled}: {enabled: boolean}) {
   );
 }
 
+const NYC_MODE_COLORS: Partial<Record<ModeId, string>> = {
+  train: '#0039A6',
+  bus: '#17844B',
+  'commuter-rail': '#6D3FA9',
+};
+
+
 function LinePickerStep({
   city,
   selectedMode,
@@ -2568,16 +2531,19 @@ function LinePickerStep({
 
   return (
     <View style={styles.stepContainer}>
-      <Text style={styles.stepTitle}>Select line</Text>
-      <View style={styles.segmented}>
+      <View style={styles.modePickerGrid}>
         {modeOptions.map(mode => {
           const active = selectedMode === mode;
+          const accentColor = NYC_MODE_COLORS[mode] ?? colors.accent;
           return (
             <Pressable
               key={mode}
-              style={[styles.segment, active && styles.segmentActive]}
+              style={[styles.modeTile, active && styles.modeTileActive]}
               onPress={() => onModeChange(mode)}>
-              <Text style={[styles.segmentText, active && styles.segmentTextActive]}>{getModeLabel(city, mode)}</Text>
+              <View style={[styles.modeTileBar, {backgroundColor: accentColor}, active && styles.modeTileBarActive]} />
+              <View style={styles.modeTileContent}>
+                <Text style={[styles.modeTileLabel, active && styles.modeTileLabelActive]}>{getModeLabel(city, mode)}</Text>
+              </View>
             </Pressable>
           );
         })}
@@ -2730,30 +2696,28 @@ function StopPickerStep({
   }, [stations, term]);
 
   return (
-    <View style={styles.stepContainer}>
-      <View style={styles.stepNavRow}>
-        <Pressable style={styles.stepBackButton} onPress={onBack}>
-          <Text style={styles.stepBackText}>← Back</Text>
+    <View style={[styles.stepContainer, styles.stopPickerStepFull]}>
+      <View style={styles.stopPickerHeader}>
+        <Pressable style={styles.stopPickerBack} onPress={onBack}>
+          <Text style={styles.stopPickerBackText}>← Back</Text>
         </Pressable>
-      </View>
-
-      {selectedRoute ? (
-        <View style={styles.stopContextBar}>
-          <View style={[styles.stopContextBadge, showBusBadge && styles.stopContextBadgeBus, {backgroundColor: selectedRoute.color}]}>
-            <Text
-              adjustsFontSizeToFit
-              minimumFontScale={0.74}
-              numberOfLines={1}
-              style={[styles.stopContextBadgeText, showBusBadge && styles.stopContextBadgeTextBus, {color: selectedRoute.textColor ?? '#fff'}]}>
-              {selectedRouteBadgeLabel}
-            </Text>
-          </View>
-          <Text style={styles.stopContextLabel}>{selectedRoute.label} line</Text>
+        <View style={{flex: 1}} />
+        <View style={styles.stopPickerDirRow}>
+          {(['uptown', 'downtown'] as Direction[]).map(dir => {
+            const active = selectedDirection === dir;
+            return (
+              <Pressable
+                key={dir}
+                style={[styles.stopPickerDirPill, active && styles.stopPickerDirPillActive]}
+                onPress={() => onSelectDirection(dir)}>
+                <Text style={[styles.stopPickerDirText, active && styles.stopPickerDirTextActive]}>
+                  {dir === 'uptown' ? '↑ North' : '↓ South'}
+                </Text>
+              </Pressable>
+            );
+          })}
         </View>
-      ) : null}
-
-      <Text style={styles.stepTitle}>Select stop</Text>
-      <DirectionToggle value={selectedDirection} onChange={onSelectDirection} />
+      </View>
 
       <TextInput
         value={search}
@@ -2766,7 +2730,7 @@ function StopPickerStep({
       {loading ? (
         <Text style={styles.sectionHint}>Loading stops…</Text>
       ) : (
-        <ScrollView style={styles.stopListScroll} showsVerticalScrollIndicator={false} nestedScrollEnabled>
+        <ScrollView style={styles.stopListFull} contentContainerStyle={styles.stopListContent} showsVerticalScrollIndicator={false}>
           {filtered.map(station => (
             <StopRow
               key={station.id}
@@ -2812,7 +2776,7 @@ function StopRow({
           <Text style={styles.stopCheckmarkText}>✓</Text>
         </Animated.View>
       ) : (
-        <Text style={styles.chevron}>Tap</Text>
+        <Text style={styles.chevron}>›</Text>
       )}
     </Pressable>
   );
@@ -3008,6 +2972,379 @@ function ReviewRow({label, value, onClear}: {label: string; value: string; onCle
       </View>
       <Pressable style={styles.reviewRowClear} onPress={onClear}>
         <Text style={styles.reviewRowClearText}>X</Text>
+      </Pressable>
+    </View>
+  );
+}
+
+// ─── Mini LED mockup inside each style row ────────────────────────────────────
+function StyleMockLed({preset, routeColor, routeLabel, active}: {
+  preset: number;
+  routeColor: string;
+  routeLabel: string;
+  active: boolean;
+}) {
+  const textOpacity = active ? 0.9 : 0.45;
+  const badge = (
+    <View style={[styles.mockBadge, {backgroundColor: routeColor, opacity: active ? 1 : 0.6}]}>
+      <Text style={styles.mockBadgeText} numberOfLines={1}>{routeLabel}</Text>
+    </View>
+  );
+  const bar = (flex: number) => (
+    <View style={[styles.mockBar, {flex, opacity: textOpacity}]} />
+  );
+  const tag = <View style={[styles.mockTag, {opacity: textOpacity}]} />;
+  const tags = <View style={styles.mockTags}>{tag}{tag}{tag}</View>;
+
+  const layout: Record<number, React.ReactNode> = {
+    1: <>{badge}{bar(1)}{tag}</>,
+    2: <>{badge}{bar(0.5)}{tag}</>,
+    3: <>{badge}{bar(0.65)}{bar(0.55)}</>,
+    4: <>{badge}{bar(0.65)}{tags}</>,
+    5: <>{badge}{bar(0.4)}{tags}</>,
+  };
+
+  return (
+    <View style={[styles.mockScreen, active && styles.mockScreenActive]}>
+      {layout[preset] ?? layout[1]}
+    </View>
+  );
+}
+
+// ─── Wizard: LED Style Picker Step ───────────────────────────────────────────
+// Tap = preview on fixed LED above. Confirm button locks in and advances.
+function LedStylePickerStep({
+  displayType,
+  line,
+  selectedRoute,
+  onChangeLine,
+  onPreview,
+  onSelect,
+}: {
+  displayType: number;
+  line: LinePick;
+  selectedRoute: Route | undefined;
+  onChangeLine: (next: Partial<LinePick>) => void;
+  onPreview: (preset: number) => void;
+  onSelect: (preset: number) => void;
+}) {
+  const [localPreset, setLocalPreset] = useState(displayType || DEFAULT_DISPLAY_PRESET);
+  const isTimesLine = getPresetBehavior(localPreset).displayFormat === 'times-line';
+
+  const handleTap = (id: number) => {
+    setLocalPreset(id);
+    onPreview(id);
+  };
+
+  const routeLabel = selectedRoute?.label ?? line.routeId.replace(/^[a-z]+-/, '').toUpperCase().slice(0, 3);
+  const routeColor = selectedRoute?.color ?? '#1C3A2A';
+
+  return (
+    <View style={styles.stepSection}>
+      <View style={styles.styleRowList}>
+        {DISPLAY_PRESET_OPTIONS.map(option => {
+          const isActive = option.id === localPreset;
+          return (
+            <Pressable
+              key={option.id}
+              style={[styles.styleRow, isActive && styles.styleRowActive]}
+              onPress={() => handleTap(option.id)}>
+              <View style={[styles.styleRowBar, isActive && styles.styleRowBarActive]} />
+              <View style={styles.styleRowBody}>
+                <Text style={[styles.styleRowLabel, isActive && styles.styleRowLabelActive]}>
+                  {option.label}
+                </Text>
+                <StyleMockLed
+                  preset={option.id}
+                  routeColor={routeColor}
+                  routeLabel={routeLabel}
+                  active={isActive}
+                />
+              </View>
+              <View style={[styles.styleRowRadio, isActive && styles.styleRowRadioActive]}>
+                {isActive ? <View style={styles.styleRowRadioDot} /> : null}
+              </View>
+            </Pressable>
+          );
+        })}
+      </View>
+
+      {/* Times count — only for times-line presets */}
+      {isTimesLine ? (
+        <View style={styles.styleTimesRow}>
+          <Text style={styles.styleTimesLabel}>Show</Text>
+          <View style={styles.segmented}>
+            {Array.from({length: MAX_NEXT_STOPS}, (_, idx) => idx + 1).map(count => {
+              const active = line.nextStops === count;
+              return (
+                <Pressable
+                  key={count}
+                  style={[styles.segment, active && styles.segmentActive]}
+                  onPress={() => onChangeLine({nextStops: count})}>
+                  <Text style={[styles.segmentText, active && styles.segmentTextActive]}>{count}</Text>
+                </Pressable>
+              );
+            })}
+          </View>
+          <Text style={styles.styleTimesLabel}>arrivals</Text>
+        </View>
+      ) : null}
+
+      <Pressable style={styles.wizardConfirmBtn} onPress={() => onSelect(localPreset)}>
+        <Text style={styles.wizardConfirmBtnText}>Use This Style →</Text>
+      </Pressable>
+    </View>
+  );
+}
+
+// ─── Wizard: Review & Save Step ───────────────────────────────────────────────
+// Step 4 — name, review summary, settings, save via SaveBar
+// The LED preview is fixed above (in the parent), so no internal preview here.
+function WizardReviewStep({
+  line,
+  displayPreset,
+  presetConfirmed,
+  selectedRoute,
+  selectedStation,
+  presetName,
+  displayMetadata,
+  customScheduleEnabled,
+  displaySchedule,
+  displayDays,
+  scheduleExpanded,
+  layoutSlots,
+  onChangeLine,
+  onClearLine,
+  onClearStop,
+  onClearDisplayType,
+  onPresetNameChange,
+  onBrightnessChange,
+  onScrollingChange,
+  onScheduleEnabledChange,
+  onScheduleStartChange,
+  onScheduleEndChange,
+  onToggleDay,
+  onToggleScheduleExpanded,
+  onExpandToTwoStops,
+  onRemoveStop,
+}: {
+  line: LinePick;
+  displayPreset: number;
+  presetConfirmed: boolean;
+  selectedRoute: Route | undefined;
+  selectedStation: Station | undefined;
+  presetName: string;
+  displayMetadata: {brightness: number; scrolling: boolean; paused: boolean; priority: number; sortOrder: number};
+  customScheduleEnabled: boolean;
+  displaySchedule: {start: string; end: string};
+  displayDays: DayId[];
+  scheduleExpanded: boolean;
+  layoutSlots: number;
+  onChangeLine: (next: Partial<LinePick>) => void;
+  onClearLine: () => void;
+  onClearStop: () => void;
+  onClearDisplayType: () => void;
+  onPresetNameChange: (name: string) => void;
+  onBrightnessChange: (brightness: number) => void;
+  onScrollingChange: (scrolling: boolean) => void;
+  onScheduleEnabledChange: () => void;
+  onScheduleStartChange: (start: string) => void;
+  onScheduleEndChange: (end: string) => void;
+  onToggleDay: (day: DayId) => void;
+  onToggleScheduleExpanded: () => void;
+  onExpandToTwoStops: () => void;
+  onRemoveStop: () => void;
+}) {
+  const presetOption = DISPLAY_PRESET_OPTIONS.find(o => o.id === displayPreset);
+  const directionLabel = line.direction === 'downtown' ? 'Downtown / South' : 'Uptown / North';
+  const activePresetBehavior = getPresetBehavior(displayPreset);
+
+  return (
+    <View style={styles.wizardReviewContainer}>
+      {/* Display name */}
+      <View style={styles.wizardSection}>
+        <Text style={styles.wizardSectionLabel}>Display Name</Text>
+        <TextInput
+          value={presetName}
+          onChangeText={onPresetNameChange}
+          placeholder="Display 1"
+          placeholderTextColor={colors.textMuted}
+          style={styles.wizardNameInput}
+          returnKeyType="done"
+        />
+      </View>
+
+      {/* Review summary with edit buttons */}
+      <View style={styles.wizardSection}>
+        <Text style={styles.wizardSectionLabel}>Your Selection</Text>
+        <View style={styles.wizardReviewList}>
+          <WizardReviewRow
+            label="Line"
+            value={selectedRoute ? `${selectedRoute.label} line` : 'Not selected'}
+            onEdit={onClearLine}
+          />
+          <WizardReviewRow
+            label="Stop"
+            value={selectedStation?.name ?? 'Not selected'}
+            onEdit={onClearStop}
+          />
+          <WizardReviewRow
+            label="Direction"
+            value={directionLabel}
+            onEdit={onClearStop}
+          />
+          <WizardReviewRow
+            label="Style"
+            value={presetConfirmed ? (presetOption?.label ?? `Style ${displayPreset}`) : 'Not selected'}
+            onEdit={onClearDisplayType}
+          />
+        </View>
+      </View>
+
+      {/* Custom text (optional) */}
+      <View style={styles.wizardSection}>
+        <Text style={styles.wizardSectionLabel}>Custom Text (Optional)</Text>
+        <View style={styles.reviewControlsCard}>
+          <View style={styles.reviewField}>
+            <Text style={styles.reviewFieldLabel}>Top Line</Text>
+            <TextInput
+              value={line.label}
+              onChangeText={text =>
+                onChangeLine({
+                  label: text,
+                  primaryContent: text.trim().length > 0 ? 'custom' : activePresetBehavior.primaryContent,
+                })
+              }
+              placeholder="Leave blank for default"
+              placeholderTextColor={colors.textMuted}
+              style={styles.reviewFieldInput}
+              returnKeyType="done"
+            />
+          </View>
+          {activePresetBehavior.supportsBottomCustom ? (
+            <View style={styles.reviewField}>
+              <Text style={styles.reviewFieldLabel}>Bottom Line</Text>
+              <TextInput
+                value={line.secondaryLabel}
+                onChangeText={text =>
+                  onChangeLine({
+                    secondaryLabel: text,
+                    secondaryContent: text.trim().length > 0 ? 'custom' : activePresetBehavior.secondaryContent,
+                  })
+                }
+                placeholder="Leave blank for default"
+                placeholderTextColor={colors.textMuted}
+                style={styles.reviewFieldInput}
+                returnKeyType="done"
+              />
+            </View>
+          ) : null}
+        </View>
+      </View>
+
+      {/* Settings */}
+      <View style={styles.wizardSection}>
+        <Text style={styles.wizardSectionLabel}>Settings</Text>
+
+        <View style={styles.additionalSettingsCard}>
+          <Text style={styles.sectionLabel}>Display Brightness</Text>
+          <View style={styles.stepperRow}>
+            <Pressable
+              style={[styles.stepperButton, displayMetadata.brightness <= MIN_BRIGHTNESS && styles.stepperButtonDisabled]}
+              disabled={displayMetadata.brightness <= MIN_BRIGHTNESS}
+              onPress={() => onBrightnessChange(Math.max(MIN_BRIGHTNESS, displayMetadata.brightness - 10))}>
+              <Text style={[styles.stepperButtonText, displayMetadata.brightness <= MIN_BRIGHTNESS && styles.stepperButtonTextDisabled]}>-</Text>
+            </Pressable>
+            <Text style={styles.stepperValue}>{displayMetadata.brightness}%</Text>
+            <Pressable
+              style={[styles.stepperButton, displayMetadata.brightness >= MAX_BRIGHTNESS && styles.stepperButtonDisabled]}
+              disabled={displayMetadata.brightness >= MAX_BRIGHTNESS}
+              onPress={() => onBrightnessChange(Math.min(MAX_BRIGHTNESS, displayMetadata.brightness + 10))}>
+              <Text style={[styles.stepperButtonText, displayMetadata.brightness >= MAX_BRIGHTNESS && styles.stepperButtonTextDisabled]}>+</Text>
+            </Pressable>
+          </View>
+        </View>
+
+        <View style={styles.additionalSettingsCard}>
+          <Text style={styles.sectionLabel}>Long Text</Text>
+          <View style={styles.segmented}>
+            {[
+              {id: 'truncate', label: 'Cut Off', active: !displayMetadata.scrolling},
+              {id: 'scroll', label: 'Scroll', active: displayMetadata.scrolling},
+            ].map(option => (
+              <Pressable
+                key={option.id}
+                style={[styles.segment, option.active && styles.segmentActive]}
+                onPress={() => onScrollingChange(option.id === 'scroll')}>
+                <Text style={[styles.segmentText, option.active && styles.segmentTextActive]}>{option.label}</Text>
+              </Pressable>
+            ))}
+          </View>
+        </View>
+
+        <View style={styles.additionalSettingsCard}>
+          <Pressable style={styles.collapsibleHeader} onPress={onToggleScheduleExpanded}>
+            <View style={styles.additionalSettingsCopy}>
+              <Text style={styles.sectionLabel}>Schedule</Text>
+              <Text style={styles.sectionHint}>Set active days and hours.</Text>
+            </View>
+            <View style={styles.collapsibleArrowBubble}>
+              <AnimatedChevron expanded={scheduleExpanded} />
+            </View>
+          </Pressable>
+          <FadeSection visible={scheduleExpanded}>
+            <View style={styles.collapsibleBody}>
+              <Pressable style={styles.scheduleToggleRow} onPress={onScheduleEnabledChange}>
+                <Text style={styles.scheduleToggleLabel}>Custom Schedule</Text>
+                <ScheduleToggleControl enabled={customScheduleEnabled} />
+              </Pressable>
+              {customScheduleEnabled ? (
+                <ScheduleTimingEditor
+                  start={displaySchedule.start}
+                  end={displaySchedule.end}
+                  days={displayDays}
+                  onStartChange={onScheduleStartChange}
+                  onEndChange={onScheduleEndChange}
+                  onToggleDay={onToggleDay}
+                />
+              ) : (
+                <View style={styles.schedule24x7Card}>
+                  <Text style={styles.schedule24x7Title}>Always On</Text>
+                  <Text style={styles.schedule24x7Body}>This display runs all day, every day.</Text>
+                </View>
+              )}
+            </View>
+          </FadeSection>
+        </View>
+      </View>
+
+      {/* Multi-stop controls */}
+      <View style={styles.stepFooterActionRow}>
+        {layoutSlots === 1 ? (
+          <Pressable style={styles.reviewActionButton} onPress={onExpandToTwoStops}>
+            <Text style={styles.reviewActionButtonText}>Add Second Stop</Text>
+          </Pressable>
+        ) : null}
+        {layoutSlots === 2 ? (
+          <Pressable style={styles.reviewRemoveButton} onPress={onRemoveStop}>
+            <Text style={styles.reviewRemoveButtonText}>Remove This Stop</Text>
+          </Pressable>
+        ) : null}
+      </View>
+    </View>
+  );
+}
+
+function WizardReviewRow({label, value, onEdit}: {label: string; value: string; onEdit: () => void}) {
+  return (
+    <View style={styles.reviewRow}>
+      <View style={styles.reviewRowAccent} />
+      <View style={styles.reviewRowCopy}>
+        <Text style={styles.reviewRowLabel}>{label}</Text>
+        <Text style={styles.reviewRowValue} numberOfLines={1}>{value}</Text>
+      </View>
+      <Pressable style={styles.wizardReviewEditBtn} onPress={onEdit}>
+        <Text style={styles.wizardReviewEditText}>Edit</Text>
       </Pressable>
     </View>
   );

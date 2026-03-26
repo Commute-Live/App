@@ -1,10 +1,17 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, PanResponder, Pressable, ScrollView, Text, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
-import { BottomNav, type BottomNavItem } from '../../../components/BottomNav';
 import { colors, spacing } from '../../../theme';
+import { BottomNav, type BottomNavItem } from '../../../components/BottomNav';
+
+const NAV_ITEMS: BottomNavItem[] = [
+  {key: 'home', label: 'Home', icon: 'home-outline', route: '/dashboard'},
+  {key: 'presets', label: 'Displays', icon: 'albums-outline', route: '/presets'},
+  {key: 'settings', label: 'Settings', icon: 'settings-outline', route: '/settings'},
+];
 import DashboardPreviewSection from '../components/DashboardPreviewSection';
 import { useAppState } from '../../../state/appState';
 import {
@@ -31,22 +38,8 @@ import {styles} from './DashboardOverview.styles';
 import {cycleTimeOption} from './DashboardOverview.time';
 import {DashboardOverviewTimeAdjustField as TimeAdjustField} from './DashboardOverviewTimeAdjustField';
 
-const NAV_ITEMS: BottomNavItem[] = [
-   { key: 'home', label: 'Home', icon: 'home-outline', route: '/dashboard' },
-   {
-      key: 'presets',
-      label: 'Displays',
-      icon: 'albums-outline',
-      route: '/presets',
-   },
-   {
-      key: 'settings',
-      label: 'Settings',
-      icon: 'settings-outline',
-      route: '/settings',
-   },
-];
 export default function DashboardOverviewScreen() {
+   const insets = useSafeAreaInsets();
    const queryClient = useQueryClient();
    const router = useRouter();
    const { state: appState, setDeviceStatus } = useAppState();
@@ -60,9 +53,8 @@ export default function DashboardOverviewScreen() {
 
    const city = appState.selectedCity;
    const cityBrand = CITY_BRANDS[city];
-   const cityAgency =
-      CITY_OPTIONS.find((option) => option.id === city)?.agencyCode ??
-      CITY_LABELS[city];
+   const cityOption = CITY_OPTIONS.find((option) => option.id === city);
+   const cityAgency = cityOption?.agencyCode ?? CITY_LABELS[city];
 
    useFocusEffect(
       useCallback(() => {
@@ -233,7 +225,13 @@ export default function DashboardOverviewScreen() {
       }, [hasLinkedDevice, queryClient, selectedDevice.id, status]),
    );
 
-   const activePreset = carouselPresets[carouselIndex] ?? null;
+   const activePreset = useMemo(
+      () => carouselPresets.length === 0
+         ? null
+         : [...carouselPresets].sort((a, b) => b.priority - a.priority)[0] ?? null,
+      [carouselPresets],
+   );
+   const activeScheduleText = activePreset ? toDisplayScheduleText(activePreset) : 'No schedule set';
    const liveArrivalLookup = useMemo(
       () => getLiveArrivalLookup(lastCommandPayload),
       [lastCommandPayload],
@@ -301,42 +299,45 @@ export default function DashboardOverviewScreen() {
    // Show loading screen while auth hydration is in progress
    if (status === 'loading') {
       return (
-         <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
+         <View style={[styles.container, {paddingTop: insets.top}]}>
             <View style={styles.loadingContainer}>
                <ActivityIndicator size="large" color={colors.accent} />
                <Text style={styles.loadingText}>Loading…</Text>
             </View>
-            <BottomNav items={NAV_ITEMS} />
-         </SafeAreaView>
+         </View>
       );
    }
 
    return (
-      <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
-         <ScrollView contentContainerStyle={styles.scroll}>
-            <View style={styles.header}>
-               <Text style={styles.title}>Home</Text>
-               <Text style={styles.subtitle}>
-                  Device status and what will be displayed next.
-               </Text>
-            </View>
+      <View style={[styles.container, {paddingTop: insets.top}]}>
 
+         {/* ── Fixed App Header ──────────────────────────────────────── */}
+         <View style={styles.appHeader}>
+            <View style={styles.wordmarkLockup}>
+               <Ionicons name="navigate-outline" size={18} color={colors.accent} />
+               <Text style={styles.wordmark}>CommuteLive</Text>
+            </View>
+            {user?.email ? (
+               <View style={styles.avatarCircle}>
+                  <Text style={styles.avatarText}>{user.email.charAt(0).toUpperCase()}</Text>
+               </View>
+            ) : null}
+         </View>
+
+         <ScrollView contentContainerStyle={styles.scroll} bounces={false}>
+
+            {/* ── Device Status ─────────────────────────────────────── */}
             {hasLinkedDevice ? (
-               <View style={styles.card}>
-                  <View style={styles.deviceHeaderRow}>
-                     <View style={styles.deviceHeaderText}>
-                        <Text style={styles.deviceName}>{selectedDevice.name}</Text>
-                        <Text style={styles.deviceSubMeta}>City: {CITY_LABELS[city]}</Text>
-                        {user?.email ? (
-                           <Text style={styles.deviceSubMeta}>{user.email}</Text>
-                        ) : null}
+               <View style={styles.pageHeader}>
+                  <View style={styles.pageHeaderRow}>
+                     <View style={styles.pageHeaderLeft}>
+                        <Text style={styles.pageStatusText}>My Device</Text>
+                        <Text style={styles.pageHeaderMeta}>{CITY_LABELS[city]}</Text>
                      </View>
                      <Pressable
                         style={[
-                           styles.onlineChip,
-                           selectedDevice.status === 'Online'
-                              ? styles.onlineChipOn
-                              : styles.onlineChipOff,
+                           styles.statusPill,
+                           selectedDevice.status === 'Online' ? styles.statusPillOn : styles.statusPillOff,
                         ]}
                         onPress={() => {
                            if (selectedDevice.status !== 'Online') {
@@ -346,19 +347,18 @@ export default function DashboardOverviewScreen() {
                      >
                         <View
                            style={[
-                              styles.onlineDot,
-                              selectedDevice.status === 'Online'
-                                 ? styles.onlineDotOn
-                                 : styles.onlineDotOff,
+                              styles.statusDot,
+                              selectedDevice.status === 'Online' ? styles.statusDotOn : styles.statusDotOff,
                            ]}
                         />
-                        <Text style={styles.onlineChipText}>{selectedDevice.status}</Text>
+                        <Text style={styles.statusPillText}>{selectedDevice.status}</Text>
                      </Pressable>
                   </View>
+
                   {deviceIds.length > 1 && (
                      <View style={styles.deviceSwitcherRow}>
                         <Text style={styles.switcherLabel}>Switch Device</Text>
-                        <View style={{ flexDirection: 'row', gap: spacing.xs, flexWrap: 'wrap' }}>
+                        <View style={{flexDirection: 'row', gap: spacing.xs, flexWrap: 'wrap'}}>
                            {deviceIds.map((id) => (
                               <Pressable
                                  key={id}
@@ -389,17 +389,17 @@ export default function DashboardOverviewScreen() {
                      </View>
                      <View
                         style={[
-                           styles.onlineChip,
-                           espStatus === 'connected' ? styles.onlineChipOn : styles.onlineChipOff,
+                           styles.statusPill,
+                           espStatus === 'connected' ? styles.statusPillOn : styles.statusPillOff,
                         ]}
                      >
                         <View
                            style={[
-                              styles.onlineDot,
-                              espStatus === 'connected' ? styles.onlineDotOn : styles.onlineDotOff,
+                              styles.statusDot,
+                              espStatus === 'connected' ? styles.statusDotOn : styles.statusDotOff,
                            ]}
                         />
-                        <Text style={styles.onlineChipText}>
+                        <Text style={styles.statusPillText}>
                            {espStatus === 'connected' ? 'Found' : espStatus === 'checking' ? '···' : 'None'}
                         </Text>
                      </View>
@@ -407,55 +407,15 @@ export default function DashboardOverviewScreen() {
                </Pressable>
             )}
 
-            {hasLinkedDevice && <View style={styles.heroCard}>
-               <View style={styles.heroTopRow}>
-                  <View style={styles.heroTitleWrap}>
-                     <View style={styles.heroBrandRow}>
-                        <View
-                           style={[
-                              styles.mtaBadge,
-                              {
-                                 backgroundColor: cityBrand.badgeBg,
-                                 borderColor: cityBrand.badgeBorder,
-                              },
-                           ]}
-                        >
-                           <Text
-                              style={[
-                                 styles.mtaBadgeText,
-                                 { color: cityBrand.badgeText },
-                              ]}
-                           >
-                              {cityAgency}
-                           </Text>
-                        </View>
-                        <Text style={styles.heroBrandText}>
-                           Live Transit Preview
-                        </Text>
-                     </View>
-                     <Text style={styles.heroTitle}>
-                        {activePreset?.name ?? 'No displays yet'}
-                     </Text>
-                  </View>
-                  <View style={styles.heroArrowRow}>
-                     <Pressable
-                        style={styles.heroArrowButton}
-                        onPress={() => moveCarousel(-1)}
-                     >
-                        <Text style={styles.heroArrowText}>‹</Text>
-                     </Pressable>
-                     <Pressable
-                        style={styles.heroArrowButton}
-                        onPress={() => moveCarousel(1)}
-                     >
-                        <Text style={styles.heroArrowText}>›</Text>
-                     </Pressable>
-                  </View>
-               </View>
+            {/* ── Current Live Display ──────────────────────────────── */}
+            {hasLinkedDevice && (
+               <View style={styles.sectionBlock}>
+                  <Text style={styles.sectionBlockLabel}>Current live display</Text>
 
-               {activePreset ? (
-                  <>
-                     <View style={styles.heroPreviewGesture} {...heroSwipeResponder.panHandlers}>
+                  <Text style={styles.heroDisplayName}>{activePreset?.name ?? 'No displays yet'}</Text>
+
+                  {activePreset ? (
+                     <View style={styles.ledContainer}>
                         <DashboardPreviewSection
                            slots={toPreviewSlots(activePreset, cityBrand.accent, stopNames, liveArrivalLookup, {
                               showDirectionFallback: false,
@@ -473,109 +433,86 @@ export default function DashboardOverviewScreen() {
                            brightness={activePreset.config.brightness ?? 60}
                         />
                      </View>
-                     <View style={styles.heroFooter}>
-                        <View style={styles.heroDots}>
-                           {carouselPresets.map((preset, index) => (
-                              <Pressable
-                                 key={preset.displayId}
-                                 style={[
-                                    styles.heroDot,
-                                    index === carouselIndex &&
-                                       styles.heroDotActive,
-                                 ]}
-                                 onPress={() => {
-                                 setCarouselIndex(index);
-                                 const preset = carouselPresets[index];
-                                 if (preset) void activateDisplayOnDevice(preset);
-                              }}
-                              />
-                           ))}
-                        </View>
+                  ) : (
+                     <View style={styles.emptyState}>
+                        <Text style={styles.emptyStateText}>
+                           No displays for {CITY_LABELS[city]} yet.
+                        </Text>
+                        {displaysError ? <Text style={styles.commandError}>{displaysError}</Text> : null}
+                        <Pressable
+                           style={styles.setupButton}
+                           onPress={() =>
+                              router.push({
+                                 pathname: '/preset-editor',
+                                 params: {city, from: 'dashboard', mode: 'new'},
+                              })
+                           }
+                        >
+                           <Text style={styles.setupButtonText}>Add First Display</Text>
+                        </Pressable>
                      </View>
-                  </>
-               ) : (
-                  <View style={styles.emptyHeroState}>
-                     <Text style={styles.emptyHeroText}>
-                        No displays for {CITY_LABELS[city]} yet.
-                     </Text>
-                     {displaysError ? <Text style={styles.commandError}>{displaysError}</Text> : null}
+                  )}
+               </View>
+            )}
+
+            {/* ── Quiet Hours ───────────────────────────────────────── */}
+            {hasLinkedDevice && (
+               <View style={styles.sectionBlock}>
+                  <View style={styles.heroNameRow}>
+                     <Text style={styles.sectionBlockLabel}>Quiet Hours</Text>
                      <Pressable
-                        style={styles.setupButton}
-                        onPress={() =>
-                           router.push({
-                              pathname: '/preset-editor',
-                              params: { city, from: 'dashboard', mode: 'new' },
-                           })
-                        }
+                        style={[
+                           styles.toggleChip,
+                           quietHoursEnabled ? styles.toggleChipOn : styles.toggleChipOff,
+                        ]}
+                        onPress={() => setQuietHoursEnabled((prev) => !prev)}
                      >
-                        <Text style={styles.setupButtonText}>Add First Display</Text>
+                        <View style={[styles.toggleDot, quietHoursEnabled ? styles.toggleDotOn : styles.toggleDotOff]} />
+                        <Text style={styles.toggleChipText}>{quietHoursEnabled ? 'On' : 'Off'}</Text>
                      </Pressable>
                   </View>
-               )}
-            </View>}
 
-            {hasLinkedDevice && <View style={styles.card}>
-               <View style={styles.quietHeaderRow}>
-                  <View style={styles.deviceHeaderText}>
-                     <Text style={styles.sectionLabel}>Quiet Hours</Text>
-                     <Text style={styles.quietSubtext}>
-                        Sleep window overrides all other displays.
-                     </Text>
-                  </View>
-                  <Pressable
-                     style={[
-                        styles.stateChip,
-                        quietHoursEnabled
-                           ? styles.onlineChipOn
-                           : styles.stateChipOff,
-                     ]}
-                     onPress={() => setQuietHoursEnabled((prev) => !prev)}
-                  >
-                     <Text style={styles.stateChipText}>
-                        {quietHoursEnabled ? 'On' : 'Off'}
-                     </Text>
-                  </Pressable>
-               </View>
+                  <View style={styles.quietRangeRow}>
+                        <TimeAdjustField
+                           label="Sleep From"
+                           value={quietHours.start}
+                           onPrev={() =>
+                              setQuietHours((prev) => ({
+                                 ...prev,
+                                 start: cycleTimeOption(prev.start, -1),
+                              }))
+                           }
+                           onNext={() =>
+                              setQuietHours((prev) => ({
+                                 ...prev,
+                                 start: cycleTimeOption(prev.start, 1),
+                              }))
+                           }
+                        />
+                        <TimeAdjustField
+                           label="Wake At"
+                           value={quietHours.end}
+                           onPrev={() =>
+                              setQuietHours((prev) => ({
+                                 ...prev,
+                                 end: cycleTimeOption(prev.end, -1),
+                              }))
+                           }
+                           onNext={() =>
+                              setQuietHours((prev) => ({
+                                 ...prev,
+                                 end: cycleTimeOption(prev.end, 1),
+                              }))
+                           }
+                        />
+                     </View>
 
-               <View style={styles.quietRangeRow}>
-                  <TimeAdjustField
-                     label='Sleep From'
-                     value={quietHours.start}
-                     onPrev={() =>
-                        setQuietHours((prev) => ({
-                           ...prev,
-                           start: cycleTimeOption(prev.start, -1),
-                        }))
-                     }
-                     onNext={() =>
-                        setQuietHours((prev) => ({
-                           ...prev,
-                           start: cycleTimeOption(prev.start, 1),
-                        }))
-                     }
-                  />
-                  <TimeAdjustField
-                     label='Wake At'
-                     value={quietHours.end}
-                     onPrev={() =>
-                        setQuietHours((prev) => ({
-                           ...prev,
-                           end: cycleTimeOption(prev.end, -1),
-                        }))
-                     }
-                     onNext={() =>
-                        setQuietHours((prev) => ({
-                           ...prev,
-                           end: cycleTimeOption(prev.end, 1),
-                        }))
-                     }
-                  />
                </View>
-            </View>}
+            )}
 
          </ScrollView>
 
          <BottomNav items={NAV_ITEMS} />
-      </SafeAreaView>
+      </View>
    );
 }

@@ -92,6 +92,7 @@ export function getModeLabel(city: CityId, mode: ModeId) {
   if (mode === 'bus') return 'Bus';
   if (mode === 'trolley') return 'Trolley';
   if (mode === 'ferry') return 'Ferry';
+  if (mode === 'commuter-rail') return city === 'new-york' ? 'LIRR' : 'Commuter Rail';
   return 'Commuter Rail';
 }
 

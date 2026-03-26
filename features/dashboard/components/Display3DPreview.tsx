@@ -24,6 +24,7 @@ type Props = {
   onDragStateChange?: (dragging: boolean) => void;
   showHint?: boolean;
   brightness?: number;
+  mini?: boolean;
 };
 
 export default function Display3DPreview({
@@ -34,6 +35,7 @@ export default function Display3DPreview({
   onDragStateChange,
   showHint = true,
   brightness = 100,
+  mini = false,
 }: Props) {
   const compact = slots.length > 1 || displayType >= 3;
   const safeBrightness = Math.max(0, Math.min(100, brightness));
@@ -83,10 +85,10 @@ export default function Display3DPreview({
 
   return (
     <View style={styles.wrap}>
-      <View style={styles.glowOuter} />
-      <View style={styles.glowInner} />
+      <View style={[styles.glowOuter, mini && styles.glowOuterMini]} />
+      <View style={[styles.glowInner, mini && styles.glowInnerMini]} />
       <View style={styles.device}>
-        <View style={[styles.screen, compact && styles.screenCompact]}>
+        <View style={[styles.screen, compact && styles.screenCompact, mini && styles.screenMini]}>
           {slots.map(slot => (
             <Pressable
               key={slot.id}
@@ -169,31 +171,31 @@ const styles = StyleSheet.create({
   wrap: {gap: spacing.xs, position: 'relative'},
   glowOuter: {
     position: 'absolute',
-    left: 12,
-    right: 12,
-    top: 18,
-    bottom: 28,
+    left: 6,
+    right: 6,
+    top: 12,
+    bottom: 20,
     borderRadius: 30,
     backgroundColor: '#5CE1E6',
-    opacity: 0.14,
+    opacity: 0.25,
     shadowColor: '#5CE1E6',
-    shadowOpacity: 0.85,
-    shadowRadius: 42,
+    shadowOpacity: 1,
+    shadowRadius: 70,
     shadowOffset: {width: 0, height: 0},
-    elevation: 16,
+    elevation: 24,
   },
   glowInner: {
     position: 'absolute',
-    left: 24,
-    right: 24,
-    top: 32,
-    bottom: 42,
+    left: 18,
+    right: 18,
+    top: 24,
+    bottom: 32,
     borderRadius: 24,
     backgroundColor: '#5CE1E6',
-    opacity: 0.12,
+    opacity: 0.2,
     shadowColor: '#5CE1E6',
-    shadowOpacity: 0.8,
-    shadowRadius: 28,
+    shadowOpacity: 1,
+    shadowRadius: 45,
     shadowOffset: {width: 0, height: 0},
   },
   device: {
@@ -211,6 +213,17 @@ const styles = StyleSheet.create({
     padding: spacing.xs,
     gap: spacing.xs,
     overflow: 'hidden',
+  },
+  screenMini: {
+    height: 90,
+  },
+  glowOuterMini: {
+    shadowRadius: 36,
+    opacity: 0.18,
+  },
+  glowInnerMini: {
+    shadowRadius: 22,
+    opacity: 0.14,
   },
   screenCompact: {
     paddingVertical: 4,
@@ -257,18 +270,18 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  routeBadgeCompact: {width: 40, height: 40, borderRadius: 20},
+  routeBadgeCompact: {width: 30, height: 30, borderRadius: 15},
   routeBadgePill: {width: 58, height: 36, borderRadius: 10, paddingHorizontal: 6},
-  routeBadgePillCompact: {width: 52, height: 32, borderRadius: 10},
+  routeBadgePillCompact: {width: 44, height: 26, borderRadius: 8},
   routeBadgeRail: {width: 58, height: 48, borderRadius: 12, paddingHorizontal: 5},
-  routeBadgeRailCompact: {width: 50, height: 40, borderRadius: 10, paddingHorizontal: 4},
+  routeBadgeRailCompact: {width: 40, height: 30, borderRadius: 8, paddingHorizontal: 3},
   routeBadgeText: {fontSize: 20, fontWeight: '900'},
-  routeBadgeTextCompact: {fontSize: 16},
+  routeBadgeTextCompact: {fontSize: 13},
   routeBadgeTextRail: {fontSize: 12, lineHeight: 14, textAlign: 'center', includeFontPadding: false},
-  routeBadgeTextRailCompact: {fontSize: 10, lineHeight: 11},
+  routeBadgeTextRailCompact: {fontSize: 9, lineHeight: 10},
   slotBody: {flex: 1, paddingLeft: 2},
   slotTitle: {color: '#E4EDF6', fontSize: 20, fontWeight: '800'},
-  slotTitleCompact: {fontSize: 17},
+  slotTitleCompact: {fontSize: 15},
   slotTitlePlaceholder: {
     height: 16,
     width: '88%',
@@ -285,7 +298,7 @@ const styles = StyleSheet.create({
   slotSubLine: {color: '#8B9EAD', fontSize: 12, marginTop: 1},
   slotSubLineCompact: {fontSize: 11},
   slotTimes: {color: '#D7E3EF', fontSize: 18, fontWeight: '700', minWidth: 60, textAlign: 'right'},
-  slotTimesCompact: {fontSize: 16, minWidth: 56},
+  slotTimesCompact: {fontSize: 14, minWidth: 48},
   brightnessOverlay: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: '#000000',

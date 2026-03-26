@@ -2,6 +2,7 @@ import React from 'react';
 import {Pressable, StyleSheet, Text, View} from 'react-native';
 import {Ionicons} from '@expo/vector-icons';
 import {usePathname, useRouter, type Href} from 'expo-router';
+import {useSafeAreaInsets} from 'react-native-safe-area-context';
 import {colors, spacing} from '../theme';
 
 export interface BottomNavItem {
@@ -18,25 +19,31 @@ interface Props {
 export const BottomNav: React.FC<Props> = ({items}) => {
   const router = useRouter();
   const pathname = usePathname();
+  const insets = useSafeAreaInsets();
 
   return (
-    <View style={styles.container}>
-      {items.map((item, index) => {
+    <View style={[styles.container, {paddingBottom: insets.bottom > 0 ? insets.bottom : spacing.sm}]}>
+      {items.map((item) => {
         const isActive = pathname === item.route || pathname.startsWith(`${item.route}/`);
         return (
-        <View key={item.key} style={styles.itemWrap}>
           <Pressable
+            key={item.key}
             style={styles.item}
             onPress={() => {
               if (isActive) return;
               router.navigate(item.route);
-            }}>
-            <Ionicons name={item.icon} size={18} color={isActive ? colors.text : colors.textMuted} />
+            }}
+          >
+            <View style={[styles.indicator, isActive && styles.indicatorActive]} />
+            <Ionicons
+              name={item.icon}
+              size={22}
+              color={isActive ? colors.accent : colors.textMuted}
+            />
             <Text style={[styles.label, isActive && styles.labelActive]}>{item.label}</Text>
           </Pressable>
-          {index < items.length - 1 ? <View style={styles.divider} /> : null}
-        </View>
-      )})}
+        );
+      })}
     </View>
   );
 };
@@ -44,25 +51,37 @@ export const BottomNav: React.FC<Props> = ({items}) => {
 const styles = StyleSheet.create({
   container: {
     flexDirection: 'row',
-    justifyContent: 'space-around',
-    alignItems: 'center',
-    paddingVertical: spacing.xs,
+    backgroundColor: colors.background,
     borderTopWidth: 1,
     borderTopColor: colors.border,
-    backgroundColor: colors.card,
+    paddingTop: spacing.md,
   },
-  itemWrap: {flexDirection: 'row', alignItems: 'center'},
   item: {
+    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
     gap: 4,
-    paddingHorizontal: spacing.sm,
-    borderRadius: 10,
-    paddingVertical: 4,
-    minWidth: 64,
-    position: 'relative',
+    paddingVertical: spacing.xs,
   },
-  divider: {width: 1, height: 28, backgroundColor: colors.border},
-  label: {color: colors.textMuted, fontSize: 11, fontWeight: '600'},
-  labelActive: {color: colors.text, fontWeight: '800', opacity: 1},
+  indicator: {
+    position: 'absolute',
+    top: 0,
+    width: 24,
+    height: 2,
+    borderRadius: 1,
+    backgroundColor: 'transparent',
+  },
+  indicatorActive: {
+    backgroundColor: colors.accent,
+  },
+  label: {
+    color: colors.textMuted,
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 0.3,
+  },
+  labelActive: {
+    color: colors.accent,
+    fontWeight: '800',
+  },
 });
