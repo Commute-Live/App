@@ -1,5 +1,5 @@
 import React, {useState} from 'react';
-import {Alert, Pressable, ScrollView, StyleSheet, Text, View} from 'react-native';
+import {Alert, Image, Pressable, ScrollView, StyleSheet, Text, View} from 'react-native';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
 import {Ionicons} from '@expo/vector-icons';
 import {useRouter} from 'expo-router';
@@ -103,8 +103,10 @@ export default function SettingsScreen() {
 
       {/* ── Brand Header ─────────────────────────────────────────────── */}
       <View style={styles.appHeader}>
+        <View style={styles.logoWrap}>
+          <Image source={require('../../../assets/images/app-logo.png')} style={styles.appLogo} resizeMode="contain" />
+        </View>
         <View style={styles.wordmarkLockup}>
-          <Ionicons name="navigate-outline" size={18} color={colors.accent} />
           <Text style={styles.wordmark}>CommuteLive</Text>
         </View>
         {user?.email ? (
@@ -319,6 +321,18 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.md,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
+  },
+  logoWrap: {
+    position: 'absolute',
+    left: spacing.lg,
+    width: 30,
+    height: 30,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  appLogo: {
+    width: 26,
+    height: 26,
   },
   wordmarkLockup: {flexDirection: 'row', alignItems: 'center', gap: 7},
   wordmark: {color: colors.text, fontSize: 20, fontWeight: '900', letterSpacing: -0.5},

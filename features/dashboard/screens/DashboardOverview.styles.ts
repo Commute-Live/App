@@ -23,6 +23,18 @@ export const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
   },
+  logoWrap: {
+    position: 'absolute',
+    left: spacing.lg,
+    width: 30,
+    height: 30,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  appLogo: {
+    width: 26,
+    height: 26,
+  },
   wordmarkLockup: {
     flexDirection: 'row',
     alignItems: 'center',

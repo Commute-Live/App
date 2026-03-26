@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, PanResponder, Pressable, ScrollView, Text, View } from 'react-native';
+import { ActivityIndicator, Image, PanResponder, Pressable, ScrollView, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect, useRouter } from 'expo-router';
@@ -313,8 +313,10 @@ export default function DashboardOverviewScreen() {
 
          {/* ── Fixed App Header ──────────────────────────────────────── */}
          <View style={styles.appHeader}>
+            <View style={styles.logoWrap}>
+               <Image source={require('../../../assets/images/app-logo.png')} style={styles.appLogo} resizeMode="contain" />
+            </View>
             <View style={styles.wordmarkLockup}>
-               <Ionicons name="navigate-outline" size={18} color={colors.accent} />
                <Text style={styles.wordmark}>CommuteLive</Text>
             </View>
             {user?.email ? (
