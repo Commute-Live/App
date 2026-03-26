@@ -52,7 +52,7 @@ export const styles = StyleSheet.create({
 
   // ─── Page Header (device linked — not a card) ────────────────────────────
   pageHeader: {
-    paddingTop: spacing.sm,
+    paddingTop: 0,
     paddingBottom: spacing.xs,
     gap: spacing.sm,
   },
@@ -180,12 +180,6 @@ export const styles = StyleSheet.create({
     textTransform: 'uppercase',
     letterSpacing: 1,
   },
-  heroDisplayName: {
-    color: colors.text,
-    fontSize: 17,
-    fontWeight: '700',
-    letterSpacing: -0.2,
-  },
   heroDisplayMeta: {color: colors.textMuted, fontSize: 12, lineHeight: 17},
 
   // ─── Hero Label Row (section label + inline carousel) ────────────────────
@@ -240,13 +234,15 @@ export const styles = StyleSheet.create({
 
   // ─── Empty / Error State ──────────────────────────────────────────────────
   emptyState: {
-    borderRadius: radii.md,
+    borderRadius: radii.lg,
     borderWidth: 1,
     borderColor: colors.border,
-    backgroundColor: colors.surface,
-    padding: spacing.md,
-    gap: spacing.sm,
+    backgroundColor: colors.card,
+    padding: spacing.lg,
+    gap: spacing.md,
   },
+  emptyStateBody: {gap: spacing.xs},
+  emptyStateTitle: {color: colors.text, fontSize: 15, fontWeight: '800'},
   emptyStateText: {color: colors.textMuted, fontSize: 13, lineHeight: 19},
   commandError: {color: colors.warning, fontSize: 12},
   setupButton: {

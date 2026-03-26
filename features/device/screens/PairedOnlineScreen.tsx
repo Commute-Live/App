@@ -44,6 +44,13 @@ export default function PairedOnlineScreen() {
         if (data?.error === 'REFRESH_INVALID' || data?.error === 'REFRESH_REUSED') {
           return {ok: false as const, authExpired: true, message: data?.error};
         }
+        if (data?.error === 'DEVICE_COMMAND_CLEAR_FAILED') {
+          return {
+            ok: false as const,
+            authExpired: false,
+            message: 'Could not finish pairing right now. Try again in a moment.',
+          };
+        }
         return {ok: false as const, authExpired: false, message: data?.error || text || 'Link failed.'};
       }
       return {ok: true as const, message: data?.message || 'Device linked successfully.'};

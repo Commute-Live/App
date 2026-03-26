@@ -39,6 +39,20 @@ export type PreviewSlotOptions = {
   showDirectionFallback?: boolean;
 };
 
+type PreviewSlot = {
+  id: string;
+  color: string;
+  textColor: string;
+  routeLabel: string;
+  badgeShape?: 'circle' | 'pill' | 'rail';
+  selected: boolean;
+  stopName: string;
+  subLine?: string;
+  subLineColor?: string;
+  times: string;
+  timesColor?: string;
+};
+
 export type DeviceDisplay = {
   displayId: string;
   deviceId: string;
@@ -388,7 +402,7 @@ export const toPreviewSlots = (
   stopNames: Record<string, string> = {},
   liveArrivals: LiveArrivalLookup | null = null,
   options: PreviewSlotOptions = {},
-) => {
+): PreviewSlot[] => {
   const showDirectionFallback = options.showDirectionFallback ?? true;
   return (display.config.lines ?? []).slice(0, 2).map((line, index) => {
     const city = PROVIDER_TO_CITY[line.provider ?? ''] ?? null;
@@ -425,12 +439,19 @@ export const toPreviewSlots = (
         : displayType === 4 || displayType === 5
           ? buildPreviewEtaList(extractMinutesFromPreviewTime(liveTime), line.nextStops ?? DEFAULT_NEXT_STOPS)
           : undefined;
+    const badgeShape: PreviewSlot['badgeShape'] =
+      city === 'new-york' && line.provider === 'mta-bus'
+        ? 'pill'
+        : line.provider === 'mta-lirr' || line.provider === 'mbta'
+          ? 'rail'
+          : 'circle';
+
     return {
       id: `${display.displayId}-${index}`,
       color,
       textColor: line.textColor || lineTextColor,
       routeLabel: lineId.slice(0, 4) || '--',
-      badgeShape: city === 'new-york' && line.provider === 'mta-bus' ? 'pill' : line.provider === 'mta-lirr' || line.provider === 'mbta' ? 'rail' : 'circle',
+      badgeShape,
       selected: false,
       stopName: previewTitle,
       subLine: previewSubLine,

@@ -68,6 +68,11 @@ const parseBleStatusPayload = (value: string | null | undefined): BleStatusPaylo
   }
 };
 
+const isCancelledBleError = (error: BleError | null | undefined) => {
+  if (!error) return false;
+  return error.message.trim().toLowerCase() === 'operation was cancelled';
+};
+
 // Singleton BleManager — created once per app session, never recreated.
 let managerInstance: BleManager | null = null;
 function getManager(): BleManager | null {
@@ -209,6 +214,9 @@ export function useBleProvision() {
         BLE_STATUS_UUID,
         (error, characteristic) => {
           if (error) {
+            if (isCancelledBleError(error)) {
+              return;
+            }
             console.log('[BLE] status monitor error:', error.message);
             return;
           }
@@ -359,6 +367,9 @@ export function useBleProvision() {
       BLE_WIFI_SCAN_UUID,
       (error, characteristic) => {
         if (error) {
+          if (isCancelledBleError(error)) {
+            return;
+          }
           console.log('[BLE] scan monitor error:', error.message);
           return;
         }

@@ -152,6 +152,12 @@ export function AuthProvider({children}: {children: React.ReactNode}) {
               error: 'This device is not linked to your account.',
             };
           }
+          if (data?.error === 'DEVICE_UNPAIR_DISPATCH_FAILED') {
+            return {
+              ok: false as const,
+              error: 'Could not reset the display right now. Try again when the device is online.',
+            };
+          }
           return {
             ok: false as const,
             error: 'Failed to disconnect device.',

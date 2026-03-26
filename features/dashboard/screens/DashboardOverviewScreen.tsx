@@ -412,8 +412,6 @@ export default function DashboardOverviewScreen() {
                <View style={styles.sectionBlock}>
                   <Text style={styles.sectionBlockLabel}>Current live display</Text>
 
-                  <Text style={styles.heroDisplayName}>{activePreset?.name ?? 'No displays yet'}</Text>
-
                   {activePreset ? (
                      <View style={styles.ledContainer}>
                         <DashboardPreviewSection
@@ -435,10 +433,10 @@ export default function DashboardOverviewScreen() {
                      </View>
                   ) : (
                      <View style={styles.emptyState}>
-                        <Text style={styles.emptyStateText}>
-                           No displays for {CITY_LABELS[city]} yet.
-                        </Text>
-                        {displaysError ? <Text style={styles.commandError}>{displaysError}</Text> : null}
+                        <View style={styles.emptyStateBody}>
+                           <Text style={styles.emptyStateTitle}>Nothing here yet</Text>
+                           {displaysError ? <Text style={styles.commandError}>{displaysError}</Text> : null}
+                        </View>
                         <Pressable
                            style={styles.setupButton}
                            onPress={() =>
@@ -448,7 +446,7 @@ export default function DashboardOverviewScreen() {
                               })
                            }
                         >
-                           <Text style={styles.setupButtonText}>Add First Display</Text>
+                           <Text style={styles.setupButtonText}>Create Display</Text>
                         </Pressable>
                      </View>
                   )}

@@ -10,7 +10,7 @@ const MAX_PHILLY_LINES = 2;
 const DISPLAY_PRESETS = [1, 2, 3, 4, 5] as const;
 
 type City = 'boston' | 'philadelphia';
-type Mode = 'train' | 'bus' | 'trolley';
+type Mode = 'train' | 'bus';
 type StopOption = {stopId: string; stop: string};
 
 type Props = {
@@ -21,41 +21,34 @@ type Props = {
 
 const providerFor = (city: City, mode: Mode) => {
   if (city === 'boston') return 'mbta';
-  if (mode === 'trolley') return 'septa-trolley';
   return mode === 'bus' ? 'septa-bus' : 'septa-rail';
 };
 
-// Maps UI mode to SEPTA API mode parameter
-const septaModeParam = (mode: Mode): string => {
-  if (mode === 'train') return 'rail';
-  return mode; // 'bus' | 'trolley' pass through unchanged
+const stopsEndpointFor = (city: City, mode: Mode, route: string) => {
+  if (city === 'boston') {
+      return mode === 'bus'
+      ? `/providers/boston/stops/bus?route=${encodeURIComponent(route)}&limit=1000`
+      : `/providers/boston/stops/subway?route=${encodeURIComponent(route)}&limit=1000`;
+  }
+  return mode === 'bus'
+    ? '/providers/philly/stops/bus'
+    : '/providers/philly/stops/train';
 };
 
-// Builds the stations search endpoint for SEPTA (Philadelphia)
-const septaStationsEndpoint = (mode: Mode, query: string): string => {
+const linesForStopEndpointFor = (city: City, mode: Mode, stopId: string, direction?: 'N' | 'S') => {
+  if (city !== 'philadelphia') return '';
+  if (mode === 'bus') {
+    return `/providers/philly/stops/bus/${encodeURIComponent(stopId)}/lines`;
+  }
   const params = new URLSearchParams();
-  if (query.trim()) params.set('q', query.trim());
-  params.set('limit', '100');
-  return `/septa/stations?mode=${septaModeParam(mode)}&${params.toString()}`;
+  if (direction) params.set('direction', direction);
+  const query = `?${params.toString()}`;
+  return `/providers/philly/stops/train/${encodeURIComponent(stopId)}/lines${query}`;
 };
-
-// Builds the lines-for-stop endpoint for SEPTA (Philadelphia)
-const septaLinesEndpoint = (mode: Mode, stopId: string): string =>
-  `/septa/stations/${septaModeParam(mode)}/${encodeURIComponent(stopId)}/lines`;
-
-// Boston uses old provider endpoints (unchanged)
-const bostonStopsEndpoint = (mode: Mode, route: string): string =>
-  mode === 'bus'
-    ? `/providers/boston/stops/bus?route=${encodeURIComponent(route)}&limit=1000`
-    : `/providers/boston/stops/subway?route=${encodeURIComponent(route)}&limit=1000`;
 
 const directionHint = (dir: 'N' | 'S') => (dir === 'N' ? 'Northbound (N)' : 'Southbound (S)');
 
-const cityModeTitle = (city: City, mode: Mode) => {
-  if (city === 'boston') return `Boston ${mode === 'bus' ? 'Bus' : 'Train'}`;
-  if (mode === 'trolley') return 'Philly Trolley';
-  return `Philly ${mode === 'bus' ? 'Bus' : 'Rail'}`;
-};
+const cityTitle = (city: City) => (city === 'boston' ? 'Boston' : 'Philly');
 
 export default function RegionalTransitConfig({deviceId, city, mode}: Props) {
   const queryClient = useQueryClient();
@@ -80,7 +73,6 @@ export default function RegionalTransitConfig({deviceId, city, mode}: Props) {
 
   const provider = useMemo(() => providerFor(city, mode), [city, mode]);
 
-  // ─── Reset on city/mode change ──────────────────────────────────────────
   useEffect(() => {
     setRoute('');
     setSelectedLines([]);
@@ -95,7 +87,6 @@ export default function RegionalTransitConfig({deviceId, city, mode}: Props) {
     setSeptaDebugJson('');
   }, [city, mode]);
 
-  // ─── SEPTA/Philadelphia: fetch lines when stopId or direction changes ───
   useEffect(() => {
     let cancelled = false;
     if (city !== 'philadelphia' || !stopId) return;
@@ -103,7 +94,6 @@ export default function RegionalTransitConfig({deviceId, city, mode}: Props) {
     const loadLines = async () => {
       setIsLoadingRoutes(true);
       try {
-<<<<<<< Updated upstream
         const result = await queryClient.fetchQuery({
           queryKey: ['providers', city, mode, 'lines-for-stop', stopId, phillyDirection],
           queryFn: async () => {
@@ -118,19 +108,9 @@ export default function RegionalTransitConfig({deviceId, city, mode}: Props) {
         }
         const data = result.data;
         const nextLines = Array.isArray(data?.lines)
-=======
-        const response = await apiFetch(septaLinesEndpoint(mode, stopId));
-        if (!response.ok) {
-          if (!cancelled) setLineOptions([]);
-          return;
-        }
-        const data = await response.json();
-        // New API returns lines as [{id, label}] objects
-        const nextLines: string[] = Array.isArray(data?.lines)
->>>>>>> Stashed changes
           ? data.lines
-              .map((l: any) => (typeof l?.id === 'string' ? l.id.toUpperCase() : ''))
-              .filter((id: string) => id.length > 0)
+              .map((line: unknown) => (typeof line === 'string' ? line.toUpperCase() : ''))
+              .filter((line: string) => line.length > 0)
           : [];
         if (!cancelled) {
           setLineOptions(nextLines);
@@ -148,14 +128,15 @@ export default function RegionalTransitConfig({deviceId, city, mode}: Props) {
     };
 
     void loadLines();
+
     return () => {
       cancelled = true;
     };
   }, [city, mode, phillyDirection, queryClient, stopId]);
 
-  // ─── Load saved config ──────────────────────────────────────────────────
   useEffect(() => {
     let cancelled = false;
+
     const loadConfig = async () => {
       try {
         const result = await queryClient.fetchQuery({
@@ -172,22 +153,14 @@ export default function RegionalTransitConfig({deviceId, city, mode}: Props) {
           setActiveDisplayId(extractConfigDisplayId(data));
         }
         const rows = Array.isArray(data?.config?.lines) ? data.config.lines : [];
-        const matches = rows.filter(
-          (row: any) => typeof row?.provider === 'string' && row.provider === provider,
-        );
+        const matches = rows.filter((row: any) => typeof row?.provider === 'string' && row.provider === provider);
         if (matches.length === 0 || cancelled) return;
 
         const savedLines = matches
-          .map((row: any) =>
-            typeof row?.line === 'string' ? row.line.toUpperCase().trim() : '',
-          )
+          .map((row: any) => (typeof row?.line === 'string' ? row.line.toUpperCase().trim() : ''))
           .filter((line: string) => line.length > 0);
         const savedStop = typeof matches[0]?.stop === 'string' ? matches[0].stop : '';
-        const savedDirectionRaw =
-          typeof matches[0]?.direction === 'string'
-            ? matches[0].direction.toUpperCase()
-            : '';
-
+        const savedDirectionRaw = typeof matches[0]?.direction === 'string' ? matches[0].direction.toUpperCase() : '';
         if (savedLines.length > 0) {
           setRoute(savedLines[0]);
           setSelectedLines(savedLines.slice(0, MAX_PHILLY_LINES));
@@ -196,16 +169,13 @@ export default function RegionalTransitConfig({deviceId, city, mode}: Props) {
           setStopId(savedStop);
           setStopName(savedStop);
         }
-        if (
-          city === 'philadelphia' &&
-          mode === 'train' &&
-          (savedDirectionRaw === 'N' || savedDirectionRaw === 'S')
-        ) {
-          setPhillyDirection(savedDirectionRaw as 'N' | 'S');
+        if (city === 'philadelphia' && mode === 'train' && (savedDirectionRaw === 'N' || savedDirectionRaw === 'S')) {
+          setPhillyDirection(savedDirectionRaw);
         }
         const configuredDisplayType = Number(data?.config?.displayType);
         if (Number.isFinite(configuredDisplayType)) {
-          setDisplayType(Math.max(1, Math.min(5, Math.trunc(configuredDisplayType))));
+          const normalizedPreset = Math.max(1, Math.min(5, Math.trunc(configuredDisplayType)));
+          setDisplayType(normalizedPreset);
         }
       } catch {
         // no-op
@@ -213,12 +183,12 @@ export default function RegionalTransitConfig({deviceId, city, mode}: Props) {
     };
 
     void loadConfig();
+
     return () => {
       cancelled = true;
     };
   }, [city, deviceId, mode, provider, queryClient]);
 
-  // ─── Load stops when dropdown opens ────────────────────────────────────
   useEffect(() => {
     let cancelled = false;
     if (!stopDropdownOpen) return;
@@ -231,11 +201,14 @@ export default function RegionalTransitConfig({deviceId, city, mode}: Props) {
     const loadStops = async () => {
       setIsLoadingStops(true);
       try {
-        let endpoint: string;
+        let endpoint = stopsEndpointFor(city, mode, route.trim());
         if (city === 'philadelphia') {
-          endpoint = septaStationsEndpoint(mode, phillyStopQuery);
-        } else {
-          endpoint = bostonStopsEndpoint(mode, route.trim());
+          const params = new URLSearchParams();
+          if (phillyStopQuery.trim().length > 0) {
+            params.set('q', phillyStopQuery.trim());
+          }
+          params.set('limit', '1000');
+          endpoint = `${endpoint}?${params.toString()}`;
         }
 
         const result = await queryClient.fetchQuery({
@@ -250,7 +223,6 @@ export default function RegionalTransitConfig({deviceId, city, mode}: Props) {
           if (!cancelled) setStops([]);
           return;
         }
-<<<<<<< Updated upstream
         const data = result.data;
         const options: StopOption[] = Array.isArray(data?.stops)
           ? data.stops
@@ -260,43 +232,6 @@ export default function RegionalTransitConfig({deviceId, city, mode}: Props) {
               }))
               .filter((row: StopOption) => row.stopId.length > 0 && row.stop.length > 0)
           : [];
-=======
-        const data = await response.json();
-
-        let options: StopOption[] = [];
-        if (city === 'philadelphia') {
-          // New SEPTA API: {stations: [{stopId, name}]}
-          options = Array.isArray(data?.stations)
-            ? data.stations
-                .map((s: any) => ({
-                  stopId: typeof s?.stopId === 'string' ? s.stopId : '',
-                  stop: typeof s?.name === 'string' ? s.name : '',
-                }))
-                .filter((s: StopOption) => s.stopId.length > 0 && s.stop.length > 0)
-            : [];
-        } else {
-          // Boston (unchanged): {stops: [{stopId, stop} or {id, name}]}
-          options = Array.isArray(data?.stops)
-            ? data.stops
-                .map((row: any) => ({
-                  stopId:
-                    typeof row?.stopId === 'string'
-                      ? row.stopId
-                      : typeof row?.id === 'string'
-                        ? row.id
-                        : '',
-                  stop:
-                    typeof row?.stop === 'string'
-                      ? row.stop
-                      : typeof row?.name === 'string'
-                        ? row.name
-                        : '',
-                }))
-                .filter((s: StopOption) => s.stopId.length > 0 && s.stop.length > 0)
-            : [];
-        }
-
->>>>>>> Stashed changes
         if (!cancelled) {
           setStops(options);
           const selected = options.find(s => s.stopId === stopId);
@@ -310,6 +245,7 @@ export default function RegionalTransitConfig({deviceId, city, mode}: Props) {
     };
 
     void loadStops();
+
     return () => {
       cancelled = true;
     };
@@ -370,15 +306,9 @@ export default function RegionalTransitConfig({deviceId, city, mode}: Props) {
   const saveConfig = useCallback(async () => {
     if (!deviceId) return;
     const routeTrimmed = route.trim();
-    const linesToSave =
-      city === 'philadelphia'
-        ? selectedLines
-            .map(line => line.trim())
-            .filter(line => line.length > 0)
-            .slice(0, MAX_PHILLY_LINES)
-        : routeTrimmed
-          ? [routeTrimmed]
-          : [];
+    const linesToSave = city === 'philadelphia'
+      ? selectedLines.map(line => line.trim()).filter(line => line.length > 0).slice(0, MAX_PHILLY_LINES)
+      : (routeTrimmed ? [routeTrimmed] : []);
     const stopTrimmed = stopId.trim();
     if (linesToSave.length === 0 || !stopTrimmed) {
       setStatusText('Pick line and stop');
@@ -388,7 +318,6 @@ export default function RegionalTransitConfig({deviceId, city, mode}: Props) {
     setIsSaving(true);
     setStatusText('');
     try {
-<<<<<<< Updated upstream
       const result = await saveConfigMutation.mutateAsync({
         nextDeviceId: deviceId,
         nextDisplayId: activeDisplayId,
@@ -407,29 +336,6 @@ export default function RegionalTransitConfig({deviceId, city, mode}: Props) {
             ? result.data.error
             : `Failed to save line (${result.status})`;
         setStatusText(message);
-=======
-      const response = await apiFetch(`/device/${deviceId}/config`, {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({
-          displayType,
-          lines: linesToSave.map(line => ({
-            provider,
-            line,
-            stop: stopTrimmed,
-            ...(city === 'philadelphia' && mode === 'train' ? {direction: phillyDirection} : {}),
-          })),
-        }),
-      });
-
-      if (!response.ok) {
-        const data = await response.json().catch(() => null);
-        setStatusText(
-          typeof data?.error === 'string'
-            ? data.error
-            : `Failed to save (${response.status})`,
-        );
->>>>>>> Stashed changes
         return;
       }
 
@@ -441,7 +347,6 @@ export default function RegionalTransitConfig({deviceId, city, mode}: Props) {
       setIsSaving(false);
     }
   }, [
-<<<<<<< Updated upstream
     activeDisplayId,
     city,
     deviceId,
@@ -454,67 +359,38 @@ export default function RegionalTransitConfig({deviceId, city, mode}: Props) {
     selectedLines,
     stopId,
     stopName,
-=======
-    city,
-    deviceId,
-    provider,
-    route,
-    selectedLines,
-    stopId,
-    stopName,
-    displayType,
-    mode,
-    phillyDirection,
->>>>>>> Stashed changes
   ]);
 
-  // ─── SEPTA arrivals debug (rail only) ───────────────────────────────────
   const loadSeptaDebugJson = useCallback(async () => {
     if (city !== 'philadelphia' || mode !== 'train') return;
-    if (!stopId) {
+    const stationValue = stopName.trim() || stopId.trim();
+    if (!stationValue) {
       setSeptaDebugJson('Select a SEPTA rail station first.');
-      return;
-    }
-    if (selectedLines.length === 0) {
-      setSeptaDebugJson('Select at least one line first.');
       return;
     }
 
     setSeptaDebugLoading(true);
     try {
-<<<<<<< Updated upstream
       const result = await septaDebugMutation.mutateAsync({stationValue, direction: phillyDirection});
       if (!result.ok) {
         const message = typeof result.data?.error === 'string' ? result.data.error : `Debug fetch failed (${result.status})`;
         setSeptaDebugJson(JSON.stringify({error: message, details: result.data ?? null}, null, 2));
-=======
-      const lineIds = selectedLines.join(',');
-      const endpoint = `/septa/stations/rail/${encodeURIComponent(stopId)}/arrivals?line_ids=${encodeURIComponent(lineIds)}&direction=${phillyDirection}&limit_per_line=30`;
-      const response = await apiFetch(endpoint);
-      const data = await response.json().catch(() => null);
-      if (!response.ok) {
-        const message =
-          typeof data?.error === 'string' ? data.error : `Fetch failed (${response.status})`;
-        setSeptaDebugJson(JSON.stringify({error: message, details: data ?? null}, null, 2));
->>>>>>> Stashed changes
         return;
       }
       setSeptaDebugJson(JSON.stringify(result.data, null, 2));
     } catch {
-      setSeptaDebugJson(JSON.stringify({error: 'Network error while loading SEPTA arrivals'}, null, 2));
+      setSeptaDebugJson(JSON.stringify({error: 'Network error while loading SEPTA debug JSON'}, null, 2));
     } finally {
       setSeptaDebugLoading(false);
     }
-<<<<<<< Updated upstream
   }, [city, mode, phillyDirection, septaDebugMutation, stopId, stopName]);
-=======
-  }, [city, mode, stopId, selectedLines, phillyDirection]);
->>>>>>> Stashed changes
 
   const shareSeptaDebugJson = useCallback(async () => {
     if (!septaDebugJson) return;
     try {
-      await Share.share({message: septaDebugJson});
+      await Share.share({
+        message: septaDebugJson,
+      });
     } catch {
       setStatusText('Unable to open share sheet');
     }
@@ -522,10 +398,9 @@ export default function RegionalTransitConfig({deviceId, city, mode}: Props) {
 
   return (
     <>
-      {/* Preset Layout */}
       <View style={styles.sectionCard}>
         <Text style={styles.sectionTitle}>Preset Layout</Text>
-        <Text style={styles.hintText}>Choose layout preset for this device (1–5).</Text>
+        <Text style={styles.hintText}>Choose layout preset for this device (1-5).</Text>
         <Pressable
           style={({pressed}) => [
             styles.stationSelector,
@@ -536,38 +411,38 @@ export default function RegionalTransitConfig({deviceId, city, mode}: Props) {
           <Text style={styles.stationSelectorText}>Preset {displayType}</Text>
           <Text style={styles.stationSelectorCaret}>{presetDropdownOpen ? '▲' : '▼'}</Text>
         </Pressable>
+
         {presetDropdownOpen && (
           <View style={styles.stopList}>
             <ScrollView style={styles.stopListScroll} nestedScrollEnabled>
-              {DISPLAY_PRESETS.map(option => (
-                <Pressable
-                  key={option}
-                  style={({pressed}) => [
-                    styles.stopItem,
-                    displayType === option && styles.stopItemSelected,
-                    pressed && styles.stopItemPressed,
-                  ]}
-                  onPress={() => {
-                    setDisplayType(option);
-                    setPresetDropdownOpen(false);
-                  }}>
-                  <Text style={styles.stopItemTitle}>Preset {option}</Text>
-                </Pressable>
-              ))}
+              {DISPLAY_PRESETS.map(option => {
+                const isSelected = displayType === option;
+                return (
+                  <Pressable
+                    key={option}
+                    style={({pressed}) => [
+                      styles.stopItem,
+                      isSelected && styles.stopItemSelected,
+                      pressed && styles.stopItemPressed,
+                    ]}
+                    onPress={() => {
+                      setDisplayType(option);
+                      setPresetDropdownOpen(false);
+                    }}>
+                    <Text style={styles.stopItemTitle}>Preset {option}</Text>
+                  </Pressable>
+                );
+              })}
             </ScrollView>
           </View>
         )}
       </View>
 
-      {/* Transit Config */}
       <View style={styles.sectionCard}>
-        <Text style={styles.sectionTitle}>{cityModeTitle(city, mode)}</Text>
-
+        <Text style={styles.sectionTitle}>{cityTitle(city)} {mode === 'train' ? 'Train' : 'Bus'}</Text>
         {city === 'philadelphia' ? (
           <Text style={styles.hintText}>
-            Pick{' '}
-            {mode === 'train' ? 'rail station' : mode === 'trolley' ? 'trolley stop' : 'bus stop'}{' '}
-            first, then choose up to {MAX_PHILLY_LINES} lines.
+            Pick {mode === 'train' ? 'rail station' : 'bus stop'} first, then choose up to 2 lines.
           </Text>
         ) : (
           <>
@@ -585,48 +460,27 @@ export default function RegionalTransitConfig({deviceId, city, mode}: Props) {
           </>
         )}
 
-        {/* Direction picker — SEPTA rail only */}
         {city === 'philadelphia' && mode === 'train' && (
           <>
             <Text style={styles.hintText}>Direction</Text>
             <View style={styles.lineGrid}>
-              {(['N', 'S'] as const).map(dir => (
-                <Pressable
-                  key={dir}
-                  style={[styles.lineChip, phillyDirection === dir && styles.lineChipActive]}
-                  onPress={() => setPhillyDirection(dir)}>
-                  <Text
-                    style={[
-                      styles.lineChipText,
-                      phillyDirection === dir && styles.lineChipTextActive,
-                    ]}>
-                    {directionHint(dir)}
-                  </Text>
-                </Pressable>
-              ))}
+              {(['N', 'S'] as const).map(dir => {
+                const isSelected = phillyDirection === dir;
+                return (
+                  <Pressable
+                    key={dir}
+                    style={[styles.lineChip, isSelected && styles.lineChipActive]}
+                    onPress={() => setPhillyDirection(dir)}>
+                    <Text style={[styles.lineChipText, isSelected && styles.lineChipTextActive]}>
+                      {directionHint(dir)}
+                    </Text>
+                  </Pressable>
+                );
+              })}
             </View>
           </>
         )}
 
-        {/* Stop/station search query — SEPTA only */}
-        {city === 'philadelphia' && (
-          <TextInput
-            value={phillyStopQuery}
-            onChangeText={setPhillyStopQuery}
-            placeholder={
-              mode === 'train'
-                ? 'Search rail stations'
-                : mode === 'trolley'
-                  ? 'Search trolley stops'
-                  : 'Search bus stops'
-            }
-            placeholderTextColor={colors.textMuted}
-            style={styles.input}
-            autoCapitalize="words"
-          />
-        )}
-
-        {/* Stop selector */}
         <Pressable
           style={({pressed}) => [
             styles.stationSelector,
@@ -634,11 +488,20 @@ export default function RegionalTransitConfig({deviceId, city, mode}: Props) {
             pressed && styles.stationSelectorPressed,
           ]}
           onPress={() => setStopDropdownOpen(prev => !prev)}>
-          <Text style={styles.stationSelectorText}>
-            {stopName} ({stopId || '-'})
-          </Text>
+          <Text style={styles.stationSelectorText}>{stopName} ({stopId || '-'})</Text>
           <Text style={styles.stationSelectorCaret}>{stopDropdownOpen ? '▲' : '▼'}</Text>
         </Pressable>
+
+        {city === 'philadelphia' && (
+          <TextInput
+            value={phillyStopQuery}
+            onChangeText={setPhillyStopQuery}
+            placeholder={mode === 'train' ? 'Search rail stations' : 'Search bus stops'}
+            placeholderTextColor={colors.textMuted}
+            style={styles.input}
+            autoCapitalize="words"
+          />
+        )}
 
         {isLoadingStops && <Text style={styles.hintText}>Loading stops...</Text>}
 
@@ -647,41 +510,34 @@ export default function RegionalTransitConfig({deviceId, city, mode}: Props) {
             <ScrollView style={styles.stopListScroll} nestedScrollEnabled>
               {!isLoadingStops && stops.length === 0 && (
                 <Text style={styles.emptyText}>
-                  {city === 'philadelphia'
-                    ? phillyStopQuery.trim()
-                      ? 'No stops found'
-                      : 'Type to search above'
-                    : 'No stops available'}
+                  No {city === 'philadelphia' ? (mode === 'train' ? 'stations' : 'stops') : 'stops'} available
                 </Text>
               )}
-              {stops.map(option => (
-                <Pressable
-                  key={option.stopId}
-                  style={({pressed}) => [
-                    styles.stopItem,
-                    option.stopId.toUpperCase() === stopId.toUpperCase() &&
-                      styles.stopItemSelected,
-                    pressed && styles.stopItemPressed,
-                  ]}
-                  onPress={() => chooseStop(option)}>
-                  <Text style={styles.stopItemTitle}>{option.stop}</Text>
-                  <Text style={styles.stopItemSubtitle}>{option.stopId}</Text>
-                </Pressable>
-              ))}
+              {stops.map(option => {
+                const isSelected = option.stopId.toUpperCase() === stopId.toUpperCase();
+                return (
+                  <Pressable
+                    key={option.stopId}
+                    style={({pressed}) => [
+                      styles.stopItem,
+                      isSelected && styles.stopItemSelected,
+                      pressed && styles.stopItemPressed,
+                    ]}
+                    onPress={() => chooseStop(option)}>
+                    <Text style={styles.stopItemTitle}>{option.stop}</Text>
+                    <Text style={styles.stopItemSubtitle}>{option.stopId}</Text>
+                  </Pressable>
+                );
+              })}
             </ScrollView>
           </View>
         )}
 
-        {/* SEPTA: lines at the selected stop */}
         {city === 'philadelphia' && (
           <>
             {isLoadingRoutes && <Text style={styles.hintText}>Loading lines...</Text>}
-            {!isLoadingRoutes && lineOptions.length === 0 && stopId && (
-              <Text style={styles.hintText}>No lines for this stop.</Text>
-            )}
-            {!!selectedLines.length && (
-              <Text style={styles.hintText}>Selected: {selectedLines.join(', ')}</Text>
-            )}
+            {!isLoadingRoutes && lineOptions.length === 0 && <Text style={styles.hintText}>No lines for this stop</Text>}
+            {!!selectedLines.length && <Text style={styles.hintText}>Selected: {selectedLines.join(', ')}</Text>}
             <View style={styles.lineGrid}>
               {lineOptions.map(line => {
                 const isSelected = selectedLines.includes(line);
@@ -691,39 +547,36 @@ export default function RegionalTransitConfig({deviceId, city, mode}: Props) {
                     style={[styles.lineChip, isSelected && styles.lineChipActive]}
                     onPress={() => {
                       setSelectedLines(prev => {
-                        if (prev.includes(line)) return prev.filter(item => item !== line);
-                        if (prev.length >= MAX_PHILLY_LINES) return [...prev.slice(1), line];
+                        if (prev.includes(line)) {
+                          return prev.filter(item => item !== line);
+                        }
+                        if (prev.length >= MAX_PHILLY_LINES) {
+                          return [...prev.slice(1), line];
+                        }
                         return [...prev, line];
                       });
                       setStatusText('');
                     }}>
-                    <Text style={[styles.lineChipText, isSelected && styles.lineChipTextActive]}>
-                      {line}
-                    </Text>
+                    <Text style={[styles.lineChipText, isSelected && styles.lineChipTextActive]}>{line}</Text>
                   </Pressable>
                 );
               })}
             </View>
 
-            {/* SEPTA rail arrivals debug */}
             {mode === 'train' && (
               <>
                 <Pressable
                   style={[styles.saveButton, septaDebugLoading && styles.saveButtonDisabled]}
                   onPress={loadSeptaDebugJson}
                   disabled={septaDebugLoading}>
-                  <Text style={styles.saveButtonText}>
-                    {septaDebugLoading ? 'Loading Arrivals...' : 'Show SEPTA Arrivals JSON'}
-                  </Text>
+                  <Text style={styles.saveButtonText}>{septaDebugLoading ? 'Loading API JSON...' : 'Show SEPTA API JSON'}</Text>
                 </Pressable>
                 {!!septaDebugJson && (
                   <View style={styles.debugBox}>
                     <Pressable style={styles.debugShareButton} onPress={shareSeptaDebugJson}>
                       <Text style={styles.debugShareButtonText}>Share / Copy JSON</Text>
                     </Pressable>
-                    <Text style={styles.hintText}>
-                      Tip: long-press inside JSON to select and copy text.
-                    </Text>
+                    <Text style={styles.hintText}>Tip: long-press inside JSON to select and copy text.</Text>
                     <ScrollView style={styles.debugScroll} nestedScrollEnabled>
                       <Text style={styles.debugText} selectable>
                         {septaDebugJson}
@@ -736,10 +589,7 @@ export default function RegionalTransitConfig({deviceId, city, mode}: Props) {
           </>
         )}
 
-        <Pressable
-          style={styles.saveButton}
-          onPress={saveConfig}
-          disabled={isSaving || isLoadingStops}>
+        <Pressable style={styles.saveButton} onPress={saveConfig} disabled={isSaving || isLoadingStops}>
           <Text style={styles.saveButtonText}>{isSaving ? 'Saving...' : 'Save to Device'}</Text>
         </Pressable>
 
@@ -823,20 +673,6 @@ const styles = StyleSheet.create({
   saveButtonText: {color: colors.background, fontSize: 12, fontWeight: '800'},
   statusNote: {color: colors.textMuted, fontSize: 11, marginTop: spacing.sm},
   lineGrid: {flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs, marginBottom: spacing.sm},
-  lineChip: {
-    borderColor: colors.border,
-    borderWidth: 1,
-    borderRadius: radii.md,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
-    backgroundColor: colors.surface,
-  },
-  lineChipActive: {
-    borderColor: colors.accent,
-    backgroundColor: colors.accentMuted,
-  },
-  lineChipText: {color: colors.text, fontSize: 12, fontWeight: '700'},
-  lineChipTextActive: {color: colors.accent},
   debugBox: {
     borderWidth: 1,
     borderColor: colors.border,
@@ -862,4 +698,18 @@ const styles = StyleSheet.create({
     padding: spacing.sm,
     fontFamily: 'Courier',
   },
+  lineChip: {
+    borderColor: colors.border,
+    borderWidth: 1,
+    borderRadius: radii.md,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    backgroundColor: colors.surface,
+  },
+  lineChipActive: {
+    borderColor: colors.accent,
+    backgroundColor: colors.accentMuted,
+  },
+  lineChipText: {color: colors.text, fontSize: 12, fontWeight: '700'},
+  lineChipTextActive: {color: colors.accent},
 });

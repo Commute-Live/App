@@ -65,7 +65,7 @@ const styles = StyleSheet.create({
   },
   indicator: {
     position: 'absolute',
-    top: 0,
+    bottom: 0,
     width: 24,
     height: 2,
     borderRadius: 1,

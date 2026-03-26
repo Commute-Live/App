@@ -65,10 +65,14 @@ export default function SetupIntroScreen() {
 
       if (!linkResponse.ok) {
         const linkData = await linkResponse.json().catch(() => null);
+        const linkError =
+          typeof linkData?.error === 'string' ? linkData.error : '';
         return {
           ok: false as const,
           error:
-            typeof linkData?.error === 'string'
+            linkError === 'DEVICE_COMMAND_CLEAR_FAILED'
+              ? 'Wi-Fi connected, but pairing could not finish. Try again in a moment.'
+              : typeof linkData?.error === 'string'
               ? `Wi-Fi connected, but device link failed: ${linkData.error}`
               : `Wi-Fi connected, but device link failed (${linkResponse.status})`,
         };

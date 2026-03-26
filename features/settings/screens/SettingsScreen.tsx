@@ -336,7 +336,7 @@ const styles = StyleSheet.create({
 
   // ─── Page Title ───────────────────────────────────────────────────────────
   pageHeader: {
-    paddingTop: spacing.sm,
+    paddingTop: 0,
     paddingBottom: spacing.xs,
   },
   pageTitle: {
