@@ -16,7 +16,7 @@ import {useAppState} from '../../../state/appState';
 import {CITY_BRANDS, CITY_LABELS, CITY_OPTIONS} from '../../../constants/cities';
 
 
-type SectionKey = 'Account' | 'Device' | 'City' | 'Time Format' | 'Notifications' | 'Privacy';
+type SectionKey = 'Account' | 'Session' | 'Device' | 'City' | 'Time Format' | 'Notifications' | 'Privacy';
 
 const SECTIONS: {key: SectionKey; label: string; icon: keyof typeof Ionicons.glyphMap; iconBg: string; iconColor: string}[] = [
   {key: 'Account',       label: 'Account',        icon: 'person-outline',          iconBg: '#1A2744', iconColor: '#6EA8FE'},
@@ -25,6 +25,7 @@ const SECTIONS: {key: SectionKey; label: string; icon: keyof typeof Ionicons.gly
   {key: 'Time Format',   label: 'Time Format',     icon: 'time-outline',            iconBg: '#1E1A2B', iconColor: '#C4B5FD'},
   {key: 'Notifications', label: 'Notifications',   icon: 'notifications-outline',   iconBg: '#2B1A1A', iconColor: '#FCA5A5'},
   {key: 'Privacy',       label: 'Privacy & Legal', icon: 'shield-checkmark-outline',iconBg: '#1A2428', iconColor: '#67E8F9'},
+  {key: 'Session',       label: 'Session',        icon: 'log-out-outline',         iconBg: '#241A28', iconColor: '#F9A8D4'},
 ];
 
 export default function SettingsScreen() {
@@ -38,10 +39,23 @@ export default function SettingsScreen() {
   const [isDisconnecting, setIsDisconnecting] = useState(false);
   const [deviceNotice, setDeviceNotice] = useState<{kind: 'success' | 'error'; text: string} | null>(null);
   const [timeFormat, setTimeFormat] = useState<'ampm' | '24h'>('ampm');
+  const [scrollViewportHeight, setScrollViewportHeight] = useState(0);
+  const [scrollContentHeight, setScrollContentHeight] = useState(0);
   const currentDeviceId = deviceId ?? appState.deviceId;
+  const scrollEnabled = scrollContentHeight > scrollViewportHeight + 1;
 
   const toggle = (key: SectionKey) =>
     setOpenSection(prev => (prev === key ? null : key));
+
+  const handleSignOut = async () => {
+    if (isSigningOut || isDeleting) return;
+    setIsSigningOut(true);
+    try {
+      await signOut();
+    } catch {
+      setIsSigningOut(false);
+    }
+  };
 
   const handleDeleteAccount = () => {
     const providerName = currentProvider === 'apple' ? 'Apple' : 'Google';
@@ -90,6 +104,7 @@ export default function SettingsScreen() {
   const getSectionValue = (key: SectionKey): string => {
     switch (key) {
       case 'Account': return user?.email ?? '-';
+      case 'Session': return 'Manage';
       case 'Device': return currentDeviceId ? 'Paired' : 'Not paired';
       case 'City': return CITY_LABELS[appState.selectedCity];
       case 'Time Format': return timeFormat === 'ampm' ? 'AM / PM' : '24-hour';
@@ -116,7 +131,12 @@ export default function SettingsScreen() {
         ) : null}
       </View>
 
-      <ScrollView contentContainerStyle={styles.scroll} bounces={false}>
+      <ScrollView
+        contentContainerStyle={[styles.scroll, styles.scrollContent]}
+        bounces={false}
+        scrollEnabled={scrollEnabled}
+        onLayout={event => setScrollViewportHeight(event.nativeEvent.layout.height)}
+        onContentSizeChange={(_, height) => setScrollContentHeight(height)}>
 
         {/* ── Page Title ───────────────────────────────────────────────── */}
         <View style={styles.pageHeader}>
@@ -154,6 +174,11 @@ export default function SettingsScreen() {
                           <Text style={styles.detailLabel}>Email</Text>
                           <Text style={styles.detailValue}>{user?.email ?? '-'}</Text>
                         </View>
+                      </>
+                    )}
+
+                    {section.key === 'Session' && (
+                      <>
                         <View style={styles.detailRow}>
                           <Text style={styles.detailLabel}>Signed in with</Text>
                           <Text style={styles.detailValue}>
@@ -162,11 +187,8 @@ export default function SettingsScreen() {
                         </View>
                         <Pressable
                           style={styles.destructiveButton}
-                          onPress={async () => {
-                            if (isSigningOut || isDeleting) return;
-                            setIsSigningOut(true);
-                            try { await signOut(); } catch { setIsSigningOut(false); }
-                          }}>
+                          onPress={handleSignOut}
+                          disabled={isSigningOut || isDeleting}>
                           <Text style={styles.destructiveButtonText}>
                             {isSigningOut ? 'Signing out…' : 'Sign out'}
                           </Text>
@@ -310,6 +332,9 @@ const styles = StyleSheet.create({
     paddingTop: spacing.lg,
     paddingBottom: 120,
     gap: spacing.sm,
+  },
+  scrollContent: {
+    flexGrow: 1,
   },
 
   // ─── Brand Header ─────────────────────────────────────────────────────────

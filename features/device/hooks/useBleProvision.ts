@@ -10,8 +10,7 @@ export const BLE_STATUS_UUID     = 'a1b2c3d4-0002-4a5b-8c7d-9e0f1a2b3c4d';
 export const BLE_WIFI_SCAN_UUID  = 'a1b2c3d4-0003-4a5b-8c7d-9e0f1a2b3c4d';
 
 // The firmware advertises as "esp32-XXXX" (same as its MQTT deviceId).
-// Also accept "CommuteLive-" for backwards compatibility with older firmware.
-const BLE_NAME_PREFIXES = ['esp32-', 'CommuteLive-'];
+const BLE_NAME_PREFIX = 'esp32-';
 
 export type BleProvisionPhase =
   | 'idle'
@@ -34,6 +33,7 @@ export interface WifiNetwork {
 export interface BleProvisionState {
   phase: BleProvisionPhase;
   foundDevice: Device | null;
+  foundDevices: Device[];
   deviceId: string | null;   // esp32-XXXX — set from BLE device name during scan
   errorMsg: string | null;
   wifiNetworks: WifiNetwork[];
@@ -51,6 +51,8 @@ type PendingWifiResult = {
 };
 
 const WIFI_RESULT_TIMEOUT_MS = 45_000;
+const SCAN_TIMEOUT_MS = 20_000;
+const DISCOVERY_SETTLE_MS = 2_500;
 
 const parseBleStatusPayload = (value: string | null | undefined): BleStatusPayload => {
   if (!value) {
@@ -108,6 +110,7 @@ export function useBleProvision() {
   const [state, setState] = useState<BleProvisionState>({
     phase: 'idle',
     foundDevice: null,
+    foundDevices: [],
     deviceId: null,
     errorMsg: null,
     wifiNetworks: [],
@@ -116,6 +119,7 @@ export function useBleProvision() {
 
   const deviceRef      = useRef<Device | null>(null);
   const scanTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const discoveryTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const statusSubscriptionRef = useRef<{remove: () => void} | null>(null);
   const wifiScanSubscriptionRef = useRef<{remove: () => void} | null>(null);
   const pendingWifiResultRef = useRef<PendingWifiResult | null>(null);
@@ -133,6 +137,10 @@ export function useBleProvision() {
     if (scanTimeoutRef.current) {
       clearTimeout(scanTimeoutRef.current);
       scanTimeoutRef.current = null;
+    }
+    if (discoveryTimeoutRef.current) {
+      clearTimeout(discoveryTimeoutRef.current);
+      discoveryTimeoutRef.current = null;
     }
     if (pendingWifiResultRef.current) {
       clearTimeout(pendingWifiResultRef.current.timeout);
@@ -159,7 +167,7 @@ export function useBleProvision() {
   // Firmware advertises as "esp32-XXXX" — device.name IS the deviceId.
   const startScan = useCallback(async () => {
     cleanup();
-    setPhase('requesting_permission', {errorMsg: null, foundDevice: null, deviceId: null});
+    setPhase('requesting_permission', {errorMsg: null, foundDevice: null, foundDevices: [], deviceId: null});
 
     const mgr = getManager();
     if (!mgr) {
@@ -174,36 +182,90 @@ export function useBleProvision() {
     }
 
     setPhase('scanning', {errorMsg: null});
+    const matchedDevices = new Map<string, Device>();
+    let scanFinished = false;
 
-    scanTimeoutRef.current = setTimeout(() => {
+    const finishScan = () => {
+      if (scanFinished) return;
+      scanFinished = true;
+      if (scanTimeoutRef.current) {
+        clearTimeout(scanTimeoutRef.current);
+        scanTimeoutRef.current = null;
+      }
+      if (discoveryTimeoutRef.current) {
+        clearTimeout(discoveryTimeoutRef.current);
+        discoveryTimeoutRef.current = null;
+      }
       mgr.stopDeviceScan();
-      fail('No CommuteLive device found nearby. Make sure it is powered on.');
-    }, 20000);
+
+      const foundDevices = Array.from(matchedDevices.values()).sort((a, b) =>
+        (a.name ?? a.id).localeCompare(b.name ?? b.id),
+      );
+      if (foundDevices.length === 0) {
+        fail('No CommuteLive device found nearby. Make sure it is powered on.');
+        return;
+      }
+
+      deviceRef.current = null;
+      setPhase('device_found', {
+        foundDevices,
+        foundDevice: null,
+        deviceId: null,
+        errorMsg: null,
+      });
+      console.log(
+        '[BLE] Found devices =',
+        foundDevices.map(device => device.name ?? device.id).join(', '),
+      );
+    };
+
+    scanTimeoutRef.current = setTimeout(finishScan, SCAN_TIMEOUT_MS);
 
     mgr.startDeviceScan(null, {allowDuplicates: false}, (error: BleError | null, device: Device | null) => {
       if (error) {
-        clearTimeout(scanTimeoutRef.current!);
+        if (scanTimeoutRef.current) {
+          clearTimeout(scanTimeoutRef.current);
+          scanTimeoutRef.current = null;
+        }
+        if (discoveryTimeoutRef.current) {
+          clearTimeout(discoveryTimeoutRef.current);
+          discoveryTimeoutRef.current = null;
+        }
+        mgr.stopDeviceScan();
         fail(`Scan error: ${error.message}`);
         return;
       }
-      if (device?.name && BLE_NAME_PREFIXES.some(p => device.name!.startsWith(p))) {
-        clearTimeout(scanTimeoutRef.current!);
-        mgr.stopDeviceScan();
-        deviceRef.current = device;
-        // device.name === "esp32-XXXX" which is also the MQTT deviceId
-        setPhase('device_found', {foundDevice: device, deviceId: device.name});
-        console.log('[BLE] Found device, deviceId =', device.name);
+      if (device?.name && device.name.startsWith(BLE_NAME_PREFIX)) {
+        matchedDevices.set(device.id, device);
+        if (!discoveryTimeoutRef.current) {
+          discoveryTimeoutRef.current = setTimeout(finishScan, DISCOVERY_SETTLE_MS);
+        }
       }
     });
   }, [cleanup, setPhase, fail]);
 
+  const selectFoundDevice = useCallback((device: Device) => {
+    deviceRef.current = device;
+    setState(prev => ({
+      ...prev,
+      foundDevice: device,
+      deviceId: device.name ?? prev.deviceId,
+    }));
+  }, []);
+
   // Step 2: connect to the found device.
-  const connectToDevice = useCallback(async () => {
-    const device = deviceRef.current;
+  const connectToDevice = useCallback(async (nextDevice?: Device) => {
+    const device = nextDevice ?? deviceRef.current ?? state.foundDevice;
     if (!device) {
       fail('No device to connect to.');
       return;
     }
+    deviceRef.current = device;
+    setState(prev => ({
+      ...prev,
+      foundDevice: device,
+      deviceId: device.name ?? prev.deviceId,
+    }));
     setPhase('connecting', {errorMsg: null});
     try {
       const connected = await device.connect();
@@ -269,7 +331,7 @@ export function useBleProvision() {
     } catch (e: unknown) {
       fail(`Connection failed: ${e instanceof Error ? e.message : String(e)}`);
     }
-  }, [setPhase, fail]);
+  }, [fail, setPhase, state.foundDevice]);
 
   // Step 3: write WiFi credentials + pairing token.
   // Returns the deviceId (from device name set during scan) — no characteristic read needed.
@@ -411,8 +473,8 @@ export function useBleProvision() {
   const reset = useCallback(() => {
     cleanup();
     deviceRef.current = null;
-    setState({phase: 'idle', foundDevice: null, deviceId: null, errorMsg: null, wifiNetworks: [], isScanning: false});
+    setState({phase: 'idle', foundDevice: null, foundDevices: [], deviceId: null, errorMsg: null, wifiNetworks: [], isScanning: false});
   }, [cleanup]);
 
-  return {state, startScan, connectToDevice, sendCredentials, requestWifiScan, reset};
+  return {state, startScan, selectFoundDevice, connectToDevice, sendCredentials, requestWifiScan, reset};
 }

@@ -1,6 +1,7 @@
 import React, {useEffect, useRef, useState} from 'react';
 import {
   ActivityIndicator,
+  Image,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -237,7 +238,7 @@ export default function BleProvisionScreen() {
   const {setDeviceId, setDeviceStatus} = useAppState();
   const {hydrate} = useAuth();
 
-  const {state, startScan, connectToDevice, sendCredentials, requestWifiScan, reset} =
+  const {state, startScan, selectFoundDevice, connectToDevice, sendCredentials, requestWifiScan, reset} =
     useBleProvision();
 
   const [modalVisible, setModalVisible] = useState(false);
@@ -352,12 +353,20 @@ export default function BleProvisionScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={['top', 'left', 'right', 'bottom']}>
+      <View style={styles.appHeader}>
+        <View style={styles.logoWrap}>
+          <Image source={require('../../../assets/images/app-logo.png')} style={styles.appLogo} resizeMode="contain" />
+        </View>
+        <View style={styles.wordmarkLockup}>
+          <Text style={styles.wordmark}>CommuteLive</Text>
+        </View>
+        <View style={styles.headerSpacer} />
+      </View>
+
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        <Text style={styles.heading}>Set up your device</Text>
-        <Text style={styles.subheading}>
-          Your phone stays on home Wi-Fi the whole time. CommuteLive uses Bluetooth to securely send
-          credentials to your display.
-        </Text>
+        <View style={styles.heroBlock}>
+          <Text style={styles.heading}>Set up your device</Text>
+        </View>
 
         {/* Phase: idle / error */}
         {(state.phase === 'idle' || state.phase === 'error') && (
@@ -390,14 +399,43 @@ export default function BleProvisionScreen() {
         )}
 
         {/* Phase: device_found */}
-        {state.phase === 'device_found' && state.foundDevice && (
+        {state.phase === 'device_found' && state.foundDevices.length > 0 && (
           <Animated.View entering={FadeIn.duration(300)} exiting={FadeOut.duration(200)} style={styles.section}>
             <View style={styles.deviceCard}>
-              <Text style={styles.deviceCardLabel}>Found display</Text>
-              <Text style={styles.deviceCardName}>{state.foundDevice.name}</Text>
+              <Text style={styles.deviceCardLabel}>Verify the name from the LED screen</Text>
+              <Text style={styles.deviceVerifyText}>
+                {state.foundDevices.length > 1
+                  ? 'Multiple displays were found nearby. Choose the one that matches the name shown on your display.'
+                  : 'Tap the display name below after confirming it matches what is shown on the LED screen.'}
+              </Text>
+            </View>
+            <View style={styles.deviceList}>
+              {state.foundDevices.map((device, index) => {
+                const selected = state.foundDevice?.id === device.id;
+                const isLast = index === state.foundDevices.length - 1;
+                return (
+                  <Pressable
+                    key={device.id}
+                    style={[
+                      styles.deviceRow,
+                      !isLast && styles.deviceRowBorder,
+                      selected && styles.deviceRowSelected,
+                    ]}
+                    onPress={() => selectFoundDevice(device)}>
+                    <View style={styles.deviceRowCopy}>
+                      <Text style={styles.deviceRowName}>{device.name ?? device.id}</Text>
+                      <Text style={styles.deviceRowMeta}>{selected ? 'Selected display' : 'Tap to select'}</Text>
+                    </View>
+                    <Text style={[styles.deviceRowAction, selected && styles.deviceRowActionSelected]}>
+                      {selected ? 'Selected' : 'Select'}
+                    </Text>
+                  </Pressable>
+                );
+              })}
             </View>
             <Pressable
-              style={styles.primaryButton}
+              style={[styles.primaryButton, !state.foundDevice && styles.primaryButtonDisabled]}
+              disabled={!state.foundDevice}
               onPress={async () => {
                 await connectToDevice();
                 fetchPairingToken();
@@ -514,20 +552,61 @@ export default function BleProvisionScreen() {
 // ── Styles ───────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
   container: {flex: 1, backgroundColor: colors.background},
-  content: {padding: spacing.lg, paddingBottom: spacing.xl},
+  appHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+    backgroundColor: colors.background,
+  },
+  logoWrap: {
+    position: 'absolute',
+    left: spacing.lg,
+    width: 30,
+    height: 30,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  appLogo: {
+    width: 26,
+    height: 26,
+  },
+  wordmarkLockup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  wordmark: {
+    color: colors.text,
+    fontSize: 20,
+    fontWeight: '900',
+    letterSpacing: -0.5,
+  },
+  headerSpacer: {
+    position: 'absolute',
+    right: spacing.lg,
+    width: 30,
+    height: 30,
+  },
+  content: {
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.lg,
+    paddingBottom: spacing.xl,
+    flexGrow: 1,
+  },
+  heroBlock: {
+    gap: spacing.xs,
+    marginBottom: spacing.md,
+    alignItems: 'center',
+  },
   heading: {
     color: colors.text,
-    fontSize: 22,
-    fontWeight: '800',
+    fontSize: 28,
+    fontWeight: '900',
+    letterSpacing: -0.8,
     textAlign: 'center',
-    marginBottom: spacing.xs,
-  },
-  subheading: {
-    color: colors.textMuted,
-    fontSize: 13,
-    textAlign: 'center',
-    marginBottom: spacing.lg,
-    lineHeight: 20,
   },
   section: {marginTop: spacing.sm},
   sectionTitle: {color: colors.text, fontSize: 13, fontWeight: '700', marginBottom: spacing.sm},
@@ -561,6 +640,56 @@ const styles = StyleSheet.create({
   },
   deviceCardLabel: {color: colors.textMuted, fontSize: 12},
   deviceCardName: {color: colors.text, fontWeight: '800', fontSize: 18, marginTop: 4},
+  deviceVerifyText: {
+    color: colors.text,
+    fontSize: 14,
+    lineHeight: 20,
+    marginTop: 6,
+  },
+  deviceList: {
+    borderRadius: radii.lg,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: colors.border,
+    marginBottom: spacing.md,
+  },
+  deviceRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.sm,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.md,
+    backgroundColor: colors.card,
+  },
+  deviceRowBorder: {
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.border,
+  },
+  deviceRowSelected: {
+    backgroundColor: colors.surface,
+  },
+  deviceRowCopy: {
+    flex: 1,
+    gap: 2,
+  },
+  deviceRowName: {
+    color: colors.text,
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  deviceRowMeta: {
+    color: colors.textMuted,
+    fontSize: 12,
+  },
+  deviceRowAction: {
+    color: colors.accent,
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  deviceRowActionSelected: {
+    color: colors.text,
+  },
   connectedBadge: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -636,23 +765,37 @@ const styles = StyleSheet.create({
   dotActive: {backgroundColor: colors.success},
   primaryButton: {
     backgroundColor: colors.accent,
-    paddingVertical: spacing.md,
+    minHeight: 52,
     borderRadius: radii.md,
     alignItems: 'center',
-    marginTop: spacing.sm,
+    justifyContent: 'center',
+    marginTop: spacing.md,
   },
-  primaryText: {color: colors.background, fontWeight: '800', fontSize: 14},
+  primaryButtonDisabled: {
+    opacity: 0.45,
+  },
+  primaryText: {color: colors.background, fontWeight: '800', fontSize: 15},
   secondaryButton: {
     borderColor: colors.border,
     borderWidth: 1,
-    paddingVertical: spacing.md,
+    minHeight: 48,
     borderRadius: radii.md,
     alignItems: 'center',
+    justifyContent: 'center',
     marginTop: spacing.sm,
   },
   secondaryText: {color: colors.textMuted, fontWeight: '700', fontSize: 14},
   successText: {color: colors.success, fontWeight: '700', textAlign: 'center', fontSize: 15},
-  skipLink: {alignItems: 'center', marginTop: spacing.xl},
+  skipLink: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 44,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    marginTop: spacing.lg,
+  },
   skipText: {color: colors.textMuted, fontWeight: '700', fontSize: 13},
 });
 

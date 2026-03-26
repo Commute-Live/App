@@ -9,7 +9,6 @@ import {
 } from 'react-native';
 import {SafeAreaView} from 'react-native-safe-area-context';
 import * as AppleAuthentication from 'expo-apple-authentication';
-import {MaterialIcons} from '@expo/vector-icons';
 import {GoogleLogo} from '../../../components/GoogleLogo';
 import {colors, spacing, radii} from '../../../theme';
 import {ExternalLink} from '../../../components/ExternalLink';
@@ -43,54 +42,43 @@ export default function AuthScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
+    <SafeAreaView style={styles.container} edges={['top', 'left', 'right', 'bottom']}>
       <View style={styles.content}>
-        <View style={styles.brandSection}>
-          <View style={styles.logoFrame}>
-            <Image source={require('../../../assets/images/app-logo.png')} style={styles.logo} resizeMode="contain" />
-          </View>
-          <Text style={styles.title}>CommuteLive</Text>
-          <Text style={styles.subtitle}>Sign in to continue</Text>
-        </View>
-
-        <View style={styles.actionsCard}>
-          <View style={styles.actionsHeader}>
-            <Text style={styles.actionsTitle}>Welcome back</Text>
-            <Text style={styles.actionsSubtitle}>Choose a trusted provider to access your account.</Text>
-          </View>
-
-          <View style={styles.actionsSection}>
-            {Platform.OS === 'ios' && appleAvailable && (
-              <AppleAuthentication.AppleAuthenticationButton
-                buttonType={AppleAuthentication.AppleAuthenticationButtonType.CONTINUE}
-                buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.WHITE}
-                cornerRadius={radii.md}
-                style={[styles.appleButton, isLoading && styles.buttonDisabled]}
-                onPress={handleApple}
-              />
-            )}
-
-            <Pressable
-              style={[styles.googleButton, isLoading && styles.buttonDisabled]}
-              onPress={handleGoogle}
-              disabled={isLoading}>
-              <View style={styles.googleIcon}>
-                <GoogleLogo size={18} />
-              </View>
-              <Text style={styles.googleText}>Continue with Google</Text>
-            </Pressable>
-
-            {errorText ? <Text style={styles.errorText}>{errorText}</Text> : null}
-
-            <View style={styles.securityNote}>
-              <View style={styles.securityIconWrap}>
-                <MaterialIcons name="lock" size={14} color={colors.success} />
-              </View>
-              <View style={styles.securityCopy}>
-                <Text style={styles.securityTitle}>Secure sign-in</Text>
-                <Text style={styles.securityText}>Authentication is handled through trusted Apple and Google sign-in.</Text>
-              </View>
+        <View style={styles.mainSection}>
+          <View style={styles.brandSection}>
+            <View style={styles.logoFrame}>
+              <Image source={require('../../../assets/images/app-logo.png')} style={styles.logo} resizeMode="contain" />
             </View>
+            <Text style={styles.title}>CommuteLive</Text>
+            <Text style={styles.subtitle}>Your live transit board, ready when you are.</Text>
+          </View>
+
+          <View style={styles.actionsCard}>
+            <View style={styles.actionsSection}>
+              {Platform.OS === 'ios' && appleAvailable && (
+                <AppleAuthentication.AppleAuthenticationButton
+                  buttonType={AppleAuthentication.AppleAuthenticationButtonType.CONTINUE}
+                  buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.WHITE_OUTLINE}
+                  cornerRadius={radii.md}
+                  style={[styles.appleButton, isLoading && styles.buttonDisabled]}
+                  onPress={handleApple}
+                />
+              )}
+
+              <Pressable
+                style={[styles.googleButton, isLoading && styles.buttonDisabled]}
+                onPress={handleGoogle}
+                disabled={isLoading}>
+                <View style={styles.googleIcon}>
+                  <GoogleLogo size={18} />
+                </View>
+                <Text style={styles.googleText}>Continue with Google</Text>
+              </Pressable>
+
+              {errorText ? <Text style={styles.errorText}>{errorText}</Text> : null}
+            </View>
+
+            <Text style={styles.securityText}>Secure sign-in is handled directly by Apple and Google.</Text>
           </View>
         </View>
 
@@ -117,74 +105,59 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
-    justifyContent: 'space-between',
     paddingHorizontal: spacing.lg,
-    paddingTop: spacing.xl,
+    paddingTop: spacing.lg,
     paddingBottom: spacing.lg,
   },
+  mainSection: {
+    flex: 1,
+    justifyContent: 'flex-end',
+    paddingTop: 72,
+    paddingBottom: 28,
+    position: 'relative',
+  },
   brandSection: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: '44%',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingTop: 24,
+    gap: 4,
+    transform: [{translateY: -56}],
   },
   logoFrame: {
-    width: 192,
-    height: 192,
-    borderRadius: 40,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
+    width: 108,
+    height: 108,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: spacing.lg,
   },
   logo: {
-    width: 150,
-    height: 150,
+    width: 74,
+    height: 74,
   },
   title: {
     color: colors.text,
-    fontSize: 32,
+    fontSize: 28,
     fontWeight: '800',
-    letterSpacing: -0.8,
+    letterSpacing: -0.6,
     textAlign: 'center',
   },
   subtitle: {
     color: colors.textMuted,
-    fontSize: 14,
-    lineHeight: 20,
-    textAlign: 'center',
-    marginTop: spacing.xs,
-  },
-  actionsCard: {
-    backgroundColor: colors.surface,
-    borderColor: colors.border,
-    borderWidth: 1,
-    borderRadius: radii.lg,
-    padding: spacing.lg,
-    gap: spacing.lg,
-  },
-  actionsHeader: {
-    gap: 4,
-  },
-  actionsTitle: {
-    color: colors.text,
-    fontSize: 20,
-    fontWeight: '800',
-    letterSpacing: -0.4,
-    textAlign: 'center',
-  },
-  actionsSubtitle: {
-    color: colors.textMuted,
     fontSize: 13,
     lineHeight: 19,
     textAlign: 'center',
+    maxWidth: 240,
+  },
+  actionsCard: {
+    gap: 8,
   },
   actionsSection: {
-    gap: spacing.md,
+    gap: 10,
   },
   appleButton: {
-    height: 52,
+    height: 44,
     borderRadius: radii.md,
   },
   googleButton: {
@@ -195,53 +168,28 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'center',
     backgroundColor: colors.card,
-    minHeight: 52,
+    minHeight: 44,
   },
   googleIcon: {marginRight: 8},
   googleText: {color: colors.text, fontWeight: '700', fontSize: 15},
   buttonDisabled: {opacity: 0.5},
   errorText: {color: '#FCA5A5', fontSize: 12, fontWeight: '700', textAlign: 'center'},
-  securityNote: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    backgroundColor: colors.card,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radii.md,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    marginTop: spacing.xs,
-  },
-  securityIconWrap: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: '#0F1A14',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 8,
-  },
-  securityCopy: {
-    flex: 1,
-  },
-  securityTitle: {
-    color: colors.text,
-    fontSize: 12,
-    fontWeight: '700',
-    marginBottom: 2,
-  },
   securityText: {
     color: colors.textMuted,
     fontSize: 12,
     lineHeight: 18,
+    textAlign: 'center',
+    marginTop: spacing.xs,
   },
   legalRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     justifyContent: 'center',
     alignItems: 'center',
-    paddingBottom: spacing.lg,
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.xs,
+    paddingHorizontal: spacing.sm,
   },
-  legalText: {color: colors.textMuted, fontSize: 12},
+  legalText: {color: colors.textMuted, fontSize: 12, lineHeight: 18, textAlign: 'center'},
   legalLink: {color: colors.accent, fontSize: 12, fontWeight: '700'},
 });
