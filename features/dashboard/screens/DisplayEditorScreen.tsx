@@ -77,6 +77,7 @@ type RoutePickerItem = {id: string; label: string; displayLabel: string; color: 
 type RouteGroup = {key: string; title?: string; routes: RoutePickerItem[]};
 
 const DEFAULT_TEXT_COLOR = '#E9ECEF';
+const BOROUGH_ORDER = ['Manhattan', 'Bronx', 'Brooklyn', 'Queens', 'Staten Island'];
 const DEFAULT_NEXT_STOPS = 3;
 const MIN_NEXT_STOPS = 1;
 const MAX_NEXT_STOPS = 5;
@@ -104,8 +105,8 @@ const DISPLAY_PRESET_OPTIONS = [
   {id: 1, label: 'Destination', description: 'Stop name on the left, next arrival on the right.'},
   {id: 2, label: 'Direction', description: 'Travel direction on the left, next arrival on the right.'},
   {id: 3, label: 'Destination + Direction', description: 'Stop name and direction stacked in a single row.'},
-  {id: 4, label: 'Destination + 2 Next Trains', description: 'Stop name with the next two upcoming arrivals.'},
-  {id: 5, label: 'Direction + 2 Next Trains', description: 'Travel direction with the next two upcoming arrivals.'},
+  {id: 4, label: 'Destination + Upcoming Trains', description: 'Stop name with upcoming arrivals.'},
+  {id: 5, label: 'Direction + Upcoming Trains', description: 'Travel direction with upcoming arrivals.'},
 ] as const;
 const PRESET_CAROUSEL_ITEM_WIDTH = 292;
 const Haptics = {selectionAsync: async () => {}, notificationAsync: async (_: any) => {}};
@@ -2474,7 +2475,18 @@ function LinePickerStep({
   const isLoading = !!linesLoadingByMode[selectedMode];
   const [lineSearch, setLineSearch] = useState('');
   const [variantPickerEntry, setVariantPickerEntry] = useState<RoutePickerItem | null>(null);
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set(['bronx', 'brooklyn', 'manhattan', 'queens', 'staten-island', 'other']));
   const pulseAnims = useRef<Record<string, Animated.Value>>({}).current;
+
+  const isBusGrouped = city === 'new-york' && selectedMode === 'bus';
+
+  const toggleGroup = (key: string) => {
+    setCollapsedGroups(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      return next;
+    });
+  };
 
   // Show search bar when there are many lines (buses especially)
   const showSearch = selectedMode === 'bus' && allRoutes.length > 15;
@@ -2491,8 +2503,11 @@ function LinePickerStep({
 
   const routeGroups = useMemo(() => buildRouteGroups(city, selectedMode, routes), [city, routes, selectedMode]);
 
-  // Reset search when mode changes
-  useEffect(() => { setLineSearch(''); }, [selectedMode]);
+  // Reset search and collapse groups when mode changes
+  useEffect(() => {
+    setLineSearch('');
+    setCollapsedGroups(new Set(['bronx', 'brooklyn', 'manhattan', 'queens', 'staten-island', 'other']));
+  }, [selectedMode]);
 
   const getPulseAnim = (id: string) => {
     if (!pulseAnims[id]) pulseAnims[id] = new Animated.Value(1);
@@ -2571,9 +2586,30 @@ function LinePickerStep({
           </Text>
         ) : (
           <View style={styles.lineGroupList}>
-            {routeGroups.map(group => (
+            {routeGroups.map(group => {
+              const isCollapsed = isBusGrouped && !!group.title && collapsedGroups.has(group.key);
+              const hasSelected = group.routes.some(r => r.routes.some(item => item.id === selectedRouteId));
+              const boroughAccent: Record<string, string> = {
+                bronx: '#E63946', brooklyn: '#F4A261', manhattan: '#5CE1E6', queens: '#A8DADC', 'staten-island': '#6EE7B7',
+              };
+              const accentColor = boroughAccent[group.key] ?? colors.border;
+              return (
               <View key={group.key} style={styles.lineGroup}>
-                {group.title ? <Text style={styles.lineGroupTitle}>{group.title}</Text> : null}
+                {group.title ? (
+                  isBusGrouped ? (
+                    <Pressable
+                      style={[styles.boroughHeader, hasSelected && styles.boroughHeaderSelected]}
+                      onPress={() => toggleGroup(group.key)}>
+                      <View style={[styles.boroughAccentPip, {backgroundColor: accentColor}]} />
+                      <Text style={[styles.boroughHeaderText, hasSelected && styles.boroughHeaderTextSelected]}>{group.title}</Text>
+                      <Text style={styles.boroughHeaderMeta}>{group.routes.length} lines</Text>
+                      <Text style={styles.boroughChevron}>{isCollapsed ? '›' : '⌄'}</Text>
+                    </Pressable>
+                  ) : (
+                    <Text style={styles.lineGroupTitle}>{group.title}</Text>
+                  )
+                ) : null}
+                {!isCollapsed ? (
                 <View style={styles.lineGrid}>
                   {group.routes.map(route => {
                       const isSelected = route.routes.some(item => item.id === selectedRouteId);
@@ -2616,8 +2652,10 @@ function LinePickerStep({
                     );
                   })}
                 </View>
+                ) : null}
               </View>
-            ))}
+              );
+            })}
           </View>
         )}
       </ScrollView>
@@ -2670,6 +2708,7 @@ function StopPickerStep({
   const checkAnims = useRef<Record<string, Animated.Value>>({}).current;
   const showBusBadge = isNycBusBadge(city, selectedMode);
   const selectedRouteBadgeLabel = selectedRoute ? formatRoutePickerLabel(city, selectedMode, selectedRoute) : '';
+  const [expandedBoroughs, setExpandedBoroughs] = useState<Set<string>>(new Set());
 
   const getCheckAnim = (id: string) => {
     if (!checkAnims[id]) checkAnims[id] = new Animated.Value(0);
@@ -2685,13 +2724,37 @@ function StopPickerStep({
     onSelectStation(id);
   };
 
+  const toggleBorough = (area: string) => {
+    setExpandedBoroughs(prev => {
+      const next = new Set(prev);
+      if (next.has(area)) next.delete(area); else next.add(area);
+      return next;
+    });
+  };
+
   const term = search.trim().toLowerCase();
+  const isBusGrouped = city === 'new-york' && selectedMode === 'bus';
+
   const filtered = useMemo(() => {
     if (!term) return stations;
     return stations.filter(s =>
       s.name.toLowerCase().includes(term) || s.area?.toLowerCase().includes(term),
     );
   }, [stations, term]);
+
+  const boroughGroups = useMemo(() => {
+    if (!isBusGrouped || term) return null;
+    const map: Record<string, Station[]> = {};
+    for (const s of stations) {
+      const area = s.area || 'Other';
+      if (!map[area]) map[area] = [];
+      map[area].push(s);
+    }
+    const ordered = BOROUGH_ORDER.filter(b => map[b]).map(b => ({area: b, stations: map[b]}));
+    const rest = Object.entries(map).filter(([k]) => !BOROUGH_ORDER.includes(k)).map(([k, v]) => ({area: k, stations: v}));
+    return [...ordered, ...rest];
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stations, isBusGrouped, term]);
 
   return (
     <View style={[styles.stepContainer, styles.stopPickerStepFull]}>
@@ -2729,18 +2792,47 @@ function StopPickerStep({
         <Text style={styles.sectionHint}>Loading stops…</Text>
       ) : (
         <ScrollView style={styles.stopListFull} contentContainerStyle={styles.stopListContent} showsVerticalScrollIndicator={false}>
-          {filtered.map(station => (
-            <StopRow
-              key={station.id}
-              station={station}
-              selected={station.id === selectedStationId}
-              routeColor={selectedRoute?.color}
-              checkAnim={getCheckAnim(station.id)}
-              showDot
-              onPress={() => handleSelect(station.id)}
-            />
-          ))}
-          {filtered.length === 0 ? <Text style={styles.sectionHint}>No stops found.</Text> : null}
+          {boroughGroups ? (
+            boroughGroups.map(group => {
+              const isExpanded = expandedBoroughs.has(group.area);
+              const hasSelected = group.stations.some(s => s.id === selectedStationId);
+              return (
+                <View key={group.area}>
+                  <Pressable style={[styles.boroughHeader, hasSelected && styles.boroughHeaderSelected]} onPress={() => toggleBorough(group.area)}>
+                    <Text style={[styles.boroughHeaderText, hasSelected && styles.boroughHeaderTextSelected]}>{group.area}</Text>
+                    <Text style={styles.boroughHeaderMeta}>{group.stations.length} stops</Text>
+                    <Text style={styles.boroughChevron}>{isExpanded ? '↑' : '↓'}</Text>
+                  </Pressable>
+                  {isExpanded ? group.stations.map(station => (
+                    <StopRow
+                      key={station.id}
+                      station={station}
+                      selected={station.id === selectedStationId}
+                      routeColor={selectedRoute?.color}
+                      checkAnim={getCheckAnim(station.id)}
+                      showDot
+                      onPress={() => handleSelect(station.id)}
+                    />
+                  )) : null}
+                </View>
+              );
+            })
+          ) : (
+            <>
+              {filtered.map(station => (
+                <StopRow
+                  key={station.id}
+                  station={station}
+                  selected={station.id === selectedStationId}
+                  routeColor={selectedRoute?.color}
+                  checkAnim={getCheckAnim(station.id)}
+                  showDot
+                  onPress={() => handleSelect(station.id)}
+                />
+              ))}
+              {filtered.length === 0 ? <Text style={styles.sectionHint}>No stops found.</Text> : null}
+            </>
+          )}
         </ScrollView>
       )}
     </View>
@@ -2976,60 +3068,82 @@ function ReviewRow({label, value, onClear}: {label: string; value: string; onCle
 }
 
 // ─── Mini LED mockup inside each style row ────────────────────────────────────
-function StyleMockLed({preset, routeColor, routeLabel, active}: {
+function StyleMockLed({preset, routeColor, routeLabel, active, direction, nextStops = 2}: {
   preset: number;
   routeColor: string;
   routeLabel: string;
   active: boolean;
+  direction: Direction;
+  nextStops?: number;
 }) {
-  const textOpacity = active ? 0.9 : 0.45;
+  const textOpacity = active ? 1 : 0.55;
+  const dirLabel = direction === 'downtown' ? 'Downtown' : 'Uptown';
+  const destLabel = 'World Trade Ctr';
+
   const badge = (
-    <View style={[styles.mockBadge, {backgroundColor: routeColor, opacity: active ? 1 : 0.6}]}>
+    <View style={[styles.mockBadge, {backgroundColor: routeColor, opacity: active ? 1 : 0.65}]}>
       <Text style={styles.mockBadgeText} numberOfLines={1}>{routeLabel}</Text>
     </View>
   );
-  const bar = (flex: number) => (
-    <View style={[styles.mockBar, {flex, opacity: textOpacity}]} />
+  const destText = (
+    <Text style={[styles.mockText, {opacity: textOpacity}]} numberOfLines={1}>{destLabel}</Text>
   );
-  const tag = <View style={[styles.mockTag, {opacity: textOpacity}]} />;
-  const miniTag = <View style={[styles.mockMiniTag, {opacity: textOpacity}]} />;
+  const dirText = (
+    <Text style={[styles.mockText, {opacity: textOpacity}]} numberOfLines={1}>{dirLabel}</Text>
+  );
+  const timeText = (
+    <Text style={[styles.mockTimeText, {opacity: textOpacity}]}>3m</Text>
+  );
+  const arrivalChip = (label: string) => (
+    <View style={[styles.mockMiniTag, {opacity: textOpacity}]}>
+      <Text style={styles.mockMiniTagText}>{label}</Text>
+    </View>
+  );
 
   const layout: Record<number, React.ReactNode> = {
-    // Destination: badge · destination bar · time tag
-    1: <>{badge}{bar(1)}{tag}</>,
-    // Direction: badge · shorter direction bar · time tag
-    2: <>{badge}{bar(0.45)}{tag}</>,
-    // Destination + Direction: badge · [direction bar / destination bar] · time tag
+    // Destination: badge · stop name · arrival time
+    1: <>{badge}<View style={styles.mockFlex}>{destText}</View>{timeText}</>,
+    // Direction: badge · direction · arrival time
+    2: <>{badge}<View style={styles.mockFlex}>{dirText}</View>{timeText}</>,
+    // Destination + Direction: badge · [stop name / direction] · arrival time
     3: (
       <>
         {badge}
         <View style={styles.mockCol}>
-          {bar(0.45)}
-          {bar(0.8)}
+          {destText}
+          {dirText}
         </View>
-        {tag}
+        {timeText}
       </>
     ),
-    // Destination + 2 Next Trains: badge · [destination bar / mini-tag mini-tag] · time tag
+    // Destination + Upcoming Trains: badge · [stop name / arrival chips] · next arrival
     4: (
       <>
         {badge}
         <View style={styles.mockCol}>
-          {bar(1)}
-          <View style={styles.mockMiniTags}>{miniTag}{miniTag}</View>
+          {destText}
+          <View style={styles.mockMiniTags}>
+            {arrivalChip('3m')}
+            {arrivalChip('8m')}
+            {nextStops >= 3 ? arrivalChip('13m') : null}
+          </View>
         </View>
-        {tag}
+        {timeText}
       </>
     ),
-    // Direction + 2 Next Trains: badge · [direction bar / mini-tag mini-tag] · time tag
+    // Direction + Upcoming Trains: badge · [direction / arrival chips] · next arrival
     5: (
       <>
         {badge}
         <View style={styles.mockCol}>
-          {bar(0.45)}
-          <View style={styles.mockMiniTags}>{miniTag}{miniTag}</View>
+          {dirText}
+          <View style={styles.mockMiniTags}>
+            {arrivalChip('3m')}
+            {arrivalChip('8m')}
+            {nextStops >= 3 ? arrivalChip('13m') : null}
+          </View>
         </View>
-        {tag}
+        {timeText}
       </>
     ),
   };
@@ -3059,21 +3173,38 @@ function LedStylePickerStep({
   onSelect: (preset: number) => void;
 }) {
   const [localPreset, setLocalPreset] = useState(displayType || DEFAULT_DISPLAY_PRESET);
-  const isTimesLine = getPresetBehavior(localPreset).displayFormat === 'times-line';
+  const isTrainCountPreset = (id: number) => getPresetBehavior(id).displayFormat === 'times-line';
 
   const handleTap = (id: number) => {
     onPreview(id);
-    onSelect(id);
+    setLocalPreset(id);
+    if (!isTrainCountPreset(id)) {
+      // Simple styles: complete immediately
+      onSelect(id);
+    } else {
+      // Train-count styles: expand inline picker, default to 2 if not already valid
+      if (line.nextStops < 2) {
+        onChangeLine({nextStops: 2});
+      }
+    }
+  };
+
+  const handleCountSelect = (count: number) => {
+    onChangeLine({nextStops: count});
+    onSelect(localPreset);
   };
 
   const routeLabel = selectedRoute?.label ?? line.routeId.replace(/^[a-z]+-/, '').toUpperCase().slice(0, 3);
   const routeColor = selectedRoute?.color ?? '#1C3A2A';
+  const activeNextStops = line.nextStops >= 2 ? line.nextStops : 2;
 
   return (
     <View style={styles.stepSection}>
+      <Text style={styles.mockPreviewNote}>Note: Previews use sample data for illustration only.</Text>
       <View style={styles.styleRowList}>
         {DISPLAY_PRESET_OPTIONS.map(option => {
           const isActive = option.id === localPreset;
+          const showCountPicker = isActive && isTrainCountPreset(option.id);
           return (
             <Pressable
               key={option.id}
@@ -3089,37 +3220,34 @@ function LedStylePickerStep({
                   routeColor={routeColor}
                   routeLabel={routeLabel}
                   active={isActive}
+                  direction={line.direction}
+                  nextStops={isActive ? activeNextStops : 2}
                 />
-              </View>
-              <View style={[styles.styleRowRadio, isActive && styles.styleRowRadioActive]}>
-                {isActive ? <View style={styles.styleRowRadioDot} /> : null}
+                {showCountPicker ? (
+                  <View style={styles.inlineCountPicker}>
+                    <Text style={styles.inlineCountLabel}>How many trains should be shown?</Text>
+                    <View style={styles.inlineCountRow}>
+                      {[2, 3].map(count => {
+                        const countActive = activeNextStops === count;
+                        return (
+                          <Pressable
+                            key={count}
+                            style={[styles.inlineCountChip, countActive && styles.inlineCountChipActive]}
+                            onPress={() => handleCountSelect(count)}>
+                            <Text style={[styles.inlineCountChipText, countActive && styles.inlineCountChipTextActive]}>
+                              {count} trains
+                            </Text>
+                          </Pressable>
+                        );
+                      })}
+                    </View>
+                  </View>
+                ) : null}
               </View>
             </Pressable>
           );
         })}
       </View>
-
-      {/* Times count — only for times-line presets */}
-      {isTimesLine ? (
-        <View style={styles.styleTimesRow}>
-          <Text style={styles.styleTimesLabel}>Show</Text>
-          <View style={styles.segmented}>
-            {Array.from({length: MAX_NEXT_STOPS}, (_, idx) => idx + 1).map(count => {
-              const active = line.nextStops === count;
-              return (
-                <Pressable
-                  key={count}
-                  style={[styles.segment, active && styles.segmentActive]}
-                  onPress={() => onChangeLine({nextStops: count})}>
-                  <Text style={[styles.segmentText, active && styles.segmentTextActive]}>{count}</Text>
-                </Pressable>
-              );
-            })}
-          </View>
-          <Text style={styles.styleTimesLabel}>arrivals</Text>
-        </View>
-      ) : null}
-
     </View>
   );
 }
@@ -3189,32 +3317,7 @@ function WizardReviewStep({
   return (
     <View style={styles.wizardReviewContainer}>
 
-      {/* Display name */}
-      <View style={styles.wizardSection}>
-        <Text style={styles.wizardSectionLabel}>Display Name</Text>
-        <TextInput
-          value={presetName}
-          onChangeText={onPresetNameChange}
-          placeholder="Display 1"
-          placeholderTextColor={colors.textMuted}
-          style={styles.wizardNameInput}
-          returnKeyType="done"
-        />
-      </View>
 
-      {/* Your Selection */}
-      <View style={styles.wizardSection}>
-        <Text style={styles.wizardSectionLabel}>Your Selection</Text>
-        <View style={styles.wizardCard}>
-          <WizardReviewRow label="Line" value={selectedRoute ? `${selectedRoute.label} line` : 'Not selected'} onEdit={onClearLine} />
-          <View style={styles.wizardCardDivider} />
-          <WizardReviewRow label="Stop" value={selectedStation?.name ?? 'Not selected'} onEdit={onClearStop} />
-          <View style={styles.wizardCardDivider} />
-          <WizardReviewRow label="Direction" value={directionLabel} onEdit={onClearStop} />
-          <View style={styles.wizardCardDivider} />
-          <WizardReviewRow label="Style" value={presetConfirmed ? (presetOption?.label ?? `Style ${displayPreset}`) : 'Not selected'} onEdit={onClearDisplayType} />
-        </View>
-      </View>
 
       {/* Custom text */}
       <View style={styles.wizardSection}>
@@ -3314,21 +3417,24 @@ function WizardReviewStep({
               <ScheduleToggleControl enabled={customScheduleEnabled} />
             </Pressable>
           </View>
-          <View style={styles.wizardCardDivider} />
-          <View style={[styles.wizardDayRow, !customScheduleEnabled && styles.wizardDayRowDisabled]}>
-            {DAY_OPTIONS.map(day => {
-              const active = customScheduleEnabled && displayDays.includes(day.id);
-              return (
-                <Pressable
-                  key={day.id}
-                  style={[styles.wizardDayPill, active && styles.wizardDayPillActive]}
-                  disabled={!customScheduleEnabled}
-                  onPress={() => onToggleDay(day.id)}>
-                  <Text style={[styles.wizardDayPillText, active && styles.wizardDayPillTextActive]}>{day.label}</Text>
-                </Pressable>
-              );
-            })}
-          </View>
+          {customScheduleEnabled ? (
+            <>
+              <View style={styles.wizardCardDivider} />
+              <View style={styles.wizardDayRow}>
+                {DAY_OPTIONS.map(day => {
+                  const active = displayDays.includes(day.id);
+                  return (
+                    <Pressable
+                      key={day.id}
+                      style={[styles.wizardDayPill, active && styles.wizardDayPillActive]}
+                      onPress={() => onToggleDay(day.id)}>
+                      <Text style={[styles.wizardDayPillText, active && styles.wizardDayPillTextActive]}>{day.label}</Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            </>
+          ) : null}
           {customScheduleEnabled ? (
             <>
               <View style={styles.wizardCardDivider} />
@@ -3341,12 +3447,6 @@ function WizardReviewStep({
         </View>
       </View>
 
-      {/* Multi-stop controls */}
-      {layoutSlots === 1 ? (
-        <Pressable style={styles.reviewActionButton} onPress={onExpandToTwoStops}>
-          <Text style={styles.reviewActionButtonText}>Add Second Stop</Text>
-        </Pressable>
-      ) : null}
 
     </View>
   );
