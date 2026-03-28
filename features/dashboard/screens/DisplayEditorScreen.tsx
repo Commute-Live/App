@@ -1052,22 +1052,32 @@ export default function DisplayEditorScreen() {
   };
 
   const resolveEditorStepForLine = (line: LinePick | null): EditorStep => {
-    if (!line?.routeId) return 'lines';
-    if (!line.stationId) return 'stops';
+    const isLirr = line?.mode === 'commuter-rail';
+    if (isLirr) {
+      if (!line?.stationId) return 'stops';
+      if (!line.routeId) return 'lines';
+    } else {
+      if (!line?.routeId) return 'lines';
+      if (!line.stationId) return 'stops';
+    }
     if (!(line.id in displayPresetsByLine)) return 'format';
     return 'done';
   };
 
   const clearLineSelection = (id: string) => {
     animateSectionLayout();
-    updateLine(id, {routeId: '', stationId: ''});
+    const line = lines.find(l => l.id === id);
+    const isLirr = line?.mode === 'commuter-rail';
+    updateLine(id, isLirr ? {routeId: ''} : {routeId: '', stationId: ''});
     setSelectedLineId(id);
     setEditorStep('lines');
   };
 
   const clearStopSelection = (id: string) => {
     animateSectionLayout();
-    updateLine(id, {stationId: ''});
+    const line = lines.find(l => l.id === id);
+    const isLirr = line?.mode === 'commuter-rail';
+    updateLine(id, isLirr ? {stationId: '', routeId: ''} : {stationId: ''});
     setSelectedLineId(id);
     setEditorStep('stops');
   };
@@ -1295,10 +1305,17 @@ export default function DisplayEditorScreen() {
             hasLine={!!selectedLine?.routeId}
             hasStop={!!selectedLine?.stationId}
             hasPreset={selectedLinePresetConfirmed}
+            isLirr={selectedLine != null && normalizeMode(city, selectedLine.mode) === 'commuter-rail'}
             onGoTo={targetStep => {
               if (!selectedLine) return;
-              if (targetStep === 'lines') { setEditorStep('lines'); return; }
-              if (targetStep === 'stops' && selectedLine.routeId) { setEditorStep('stops'); return; }
+              const isLirr = normalizeMode(city, selectedLine.mode) === 'commuter-rail';
+              if (isLirr) {
+                if (targetStep === 'stops') { setEditorStep('stops'); return; }
+                if (targetStep === 'lines' && selectedLine.stationId) { setEditorStep('lines'); return; }
+              } else {
+                if (targetStep === 'lines') { setEditorStep('lines'); return; }
+                if (targetStep === 'stops' && selectedLine.routeId) { setEditorStep('stops'); return; }
+              }
               if (targetStep === 'format' && selectedLine.routeId && selectedLine.stationId) { setEditorStep('format'); return; }
               if (targetStep === 'done' && selectedLine.routeId && selectedLine.stationId && selectedLinePresetConfirmed) { setEditorStep('done'); return; }
             }}
@@ -1321,45 +1338,81 @@ export default function DisplayEditorScreen() {
         {/* ── Stop picker — fixed layout, lives outside the scroll view ── */}
         {editorStep === 'stops' && selectedLine ? (
           <Animated.View style={[stepAnimatedStyle, styles.stopPickerFullScreen]}>
-            <StopPickerStep
-              city={city}
-              selectedMode={normalizeMode(city, selectedLine.mode)}
-              selectedRoute={selectedRouteForEditor}
-              stations={stationsByLine[selectedLine.routeId] ?? []}
-              loading={!!stationsLoadingByLine[selectedLine.routeId]}
-              selectedStationId={selectedLine.stationId}
-              selectedRouteId={selectedLine.routeId}
-              selectedDirection={selectedLine.direction}
-              search={stationSearch[selectedLine.id] ?? ''}
-              onSearch={text => setStationSearch(prev => ({...prev, [selectedLine.id]: text}))}
-              onSelectDirection={direction => updateLine(selectedLine.id, {direction})}
-              onSelectStation={id => {
-                updateLine(selectedLine.id, {stationId: id});
-                setEditorStep(selectedLinePresetConfirmed ? 'done' : 'format');
-              }}
-              onBack={() => setEditorStep('lines')}
-            />
+            {(() => {
+              const isLirr = normalizeMode(city, selectedLine.mode) === 'commuter-rail';
+              return (
+                <StopPickerStep
+                  city={city}
+                  selectedMode={normalizeMode(city, selectedLine.mode)}
+                  selectedRoute={selectedRouteForEditor}
+                  stations={
+                    isLirr
+                      ? (stationsByMode['commuter-rail'] ?? [])
+                      : (stationsByLine[selectedLine.routeId] ?? [])
+                  }
+                  loading={
+                    isLirr
+                      ? !!stationsLoadingByMode['commuter-rail']
+                      : !!stationsLoadingByLine[selectedLine.routeId]
+                  }
+                  selectedStationId={selectedLine.stationId}
+                  selectedRouteId={selectedLine.routeId}
+                  selectedDirection={selectedLine.direction}
+                  search={stationSearch[selectedLine.id] ?? ''}
+                  onSearch={text => setStationSearch(prev => ({...prev, [selectedLine.id]: text}))}
+                  onSelectDirection={direction => updateLine(selectedLine.id, {direction})}
+                  onSelectStation={id => {
+                    updateLine(selectedLine.id, {stationId: id, routeId: ''});
+                    setEditorStep(isLirr ? 'lines' : selectedLinePresetConfirmed ? 'done' : 'format');
+                  }}
+                  onBack={() => { if (isLirr) handleBackPress(); else setEditorStep('lines'); }}
+                />
+              );
+            })()}
           </Animated.View>
         ) : null}
 
         {editorStep === 'lines' && selectedLine ? (
           <Animated.View style={[stepAnimatedStyle, styles.linePickerFullScreen]}>
-            <LinePickerStep
-              city={city}
-              selectedMode={normalizeMode(city, selectedLine.mode)}
-              linesByMode={linesByMode}
-              linesLoadingByMode={linesLoadingByMode}
-              selectedRouteId={selectedLine.routeId}
-              hasLinkedDevice={hasLinkedDevice}
-              liveSupported={liveSupported}
-              onModeChange={mode => updateLine(selectedLine.id, {mode, stationId: '', routeId: ''})}
-              onSelectLine={routeId => {
-                updateLine(selectedLine.id, {routeId, stationId: ''});
-                setEditorStep('stops');
-              }}
-              onAddDevice={() => router.push('/register-device')}
-              onBack={handleBackPress}
-            />
+            {(() => {
+              const isLirr = normalizeMode(city, selectedLine.mode) === 'commuter-rail';
+              const lirrStationKey = isLirr && selectedLine.stationId
+                ? routeLookupKey('commuter-rail', selectedLine.stationId)
+                : null;
+              const lirrBranches = lirrStationKey ? (routesByStation[lirrStationKey] ?? []) : [];
+              const lirrLoading = lirrStationKey ? !!routesLoadingByStation[lirrStationKey] : false;
+              const linesByModeForPicker = isLirr && selectedLine.stationId
+                ? {...linesByMode, 'commuter-rail': lirrBranches}
+                : linesByMode;
+              const loadingForPicker = isLirr && selectedLine.stationId
+                ? {...linesLoadingByMode, 'commuter-rail': lirrLoading}
+                : linesLoadingByMode;
+              const lirrStation = isLirr ? selectedStationForEditor : undefined;
+              return (
+                <LinePickerStep
+                  city={city}
+                  selectedMode={normalizeMode(city, selectedLine.mode)}
+                  linesByMode={linesByModeForPicker}
+                  linesLoadingByMode={loadingForPicker}
+                  selectedRouteId={selectedLine.routeId}
+                  hasLinkedDevice={hasLinkedDevice}
+                  liveSupported={liveSupported}
+                  stationName={lirrStation?.name}
+                  onModeChange={mode => updateLine(selectedLine.id, {mode, stationId: '', routeId: ''})}
+                  onSelectLine={routeId => {
+                    if (isLirr) {
+                      updateLine(selectedLine.id, {routeId});
+                      setEditorStep(selectedLinePresetConfirmed ? 'done' : 'format');
+                    } else {
+                      updateLine(selectedLine.id, {routeId, stationId: ''});
+                      setEditorStep('stops');
+                    }
+                  }}
+                  onAddDevice={() => router.push('/register-device')}
+                  onBack={isLirr ? () => setEditorStep('stops') : handleBackPress}
+                />
+              );
+            })()}
           </Animated.View>
         ) : null}
 
@@ -1576,20 +1629,29 @@ function WizardStepBar({
   hasLine,
   hasStop,
   hasPreset,
+  isLirr,
   onGoTo,
 }: {
   step: EditorStep;
   hasLine: boolean;
   hasStop: boolean;
   hasPreset: boolean;
+  isLirr: boolean;
   onGoTo: (step: EditorStep) => void;
 }) {
-  const stepDefs: Array<{id: EditorStep; label: string; complete: boolean; reachable: boolean}> = [
-    {id: 'lines', label: 'Line', complete: hasLine, reachable: true},
-    {id: 'stops', label: 'Stop', complete: hasStop, reachable: hasLine},
-    {id: 'format', label: 'Style', complete: hasPreset, reachable: hasLine && hasStop},
-    {id: 'done', label: 'Save', complete: false, reachable: hasLine && hasStop && hasPreset},
-  ];
+  const stepDefs: Array<{id: EditorStep; label: string; complete: boolean; reachable: boolean}> = isLirr
+    ? [
+        {id: 'stops', label: 'Station', complete: hasStop, reachable: true},
+        {id: 'lines', label: 'Branch', complete: hasLine, reachable: hasStop},
+        {id: 'format', label: 'Style', complete: hasPreset, reachable: hasLine && hasStop},
+        {id: 'done', label: 'Save', complete: false, reachable: hasLine && hasStop && hasPreset},
+      ]
+    : [
+        {id: 'lines', label: 'Line', complete: hasLine, reachable: true},
+        {id: 'stops', label: 'Stop', complete: hasStop, reachable: hasLine},
+        {id: 'format', label: 'Style', complete: hasPreset, reachable: hasLine && hasStop},
+        {id: 'done', label: 'Save', complete: false, reachable: hasLine && hasStop && hasPreset},
+      ];
 
   return (
     <View style={styles.wizardStepBar}>
@@ -2453,6 +2515,7 @@ function LinePickerStep({
   selectedRouteId,
   hasLinkedDevice,
   liveSupported,
+  stationName,
   onModeChange,
   onSelectLine,
   onAddDevice,
@@ -2465,6 +2528,7 @@ function LinePickerStep({
   selectedRouteId: string;
   hasLinkedDevice: boolean;
   liveSupported: boolean;
+  stationName?: string;
   onModeChange: (mode: ModeId) => void;
   onSelectLine: (routeId: string) => void;
   onAddDevice: () => void;
@@ -2559,6 +2623,9 @@ function LinePickerStep({
           );
         })}
       </View>
+      {stationName ? (
+        <Text style={styles.lirrStationHeader}>Branches at {stationName}</Text>
+      ) : null}
       {showSearch && !isLoading ? (
         <TextInput
           value={lineSearch}
@@ -2763,21 +2830,23 @@ function StopPickerStep({
           <Text style={styles.stopPickerBackText}>← Back</Text>
         </Pressable>
         <View style={{flex: 1}} />
-        <View style={styles.stopPickerDirRow}>
-          {(['uptown', 'downtown'] as Direction[]).map(dir => {
-            const active = selectedDirection === dir;
-            return (
-              <Pressable
-                key={dir}
-                style={[styles.stopPickerDirPill, active && styles.stopPickerDirPillActive]}
-                onPress={() => onSelectDirection(dir)}>
-                <Text style={[styles.stopPickerDirText, active && styles.stopPickerDirTextActive]}>
-                  {dir === 'uptown' ? '↑ North' : '↓ South'}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </View>
+        {selectedMode !== 'commuter-rail' ? (
+          <View style={styles.stopPickerDirRow}>
+            {(['uptown', 'downtown'] as Direction[]).map(dir => {
+              const active = selectedDirection === dir;
+              return (
+                <Pressable
+                  key={dir}
+                  style={[styles.stopPickerDirPill, active && styles.stopPickerDirPillActive]}
+                  onPress={() => onSelectDirection(dir)}>
+                  <Text style={[styles.stopPickerDirText, active && styles.stopPickerDirTextActive]}>
+                    {dir === 'uptown' ? '↑ North' : '↓ South'}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        ) : null}
       </View>
 
       <TextInput

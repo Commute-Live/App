@@ -1044,6 +1044,7 @@ export const styles = StyleSheet.create({
   linePickerFullScreen: {flex: 1, paddingHorizontal: spacing.lg, paddingTop: spacing.sm},
   linePickerListScroll: {flex: 1},
   linePickerListContent: {paddingTop: spacing.xs, paddingBottom: spacing.xl},
+  lirrStationHeader: {fontSize: 13, fontWeight: '600', color: colors.textMuted, paddingBottom: spacing.xs},
   stopPickerStepFull: {flex: 1},
   stopPickerFullScreen: {flex: 1, paddingHorizontal: spacing.lg, paddingTop: spacing.sm},
   stopSectionHeader: {color: colors.textMuted, fontSize: 11, fontWeight: '800', textTransform: 'uppercase', paddingVertical: spacing.xs, letterSpacing: 0.5},
