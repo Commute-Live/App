@@ -51,7 +51,7 @@ import {
 } from './DashboardEditor.helpers';
 import {styles} from './DisplayEditor.styles';
 
-type ModeId = 'train' | 'bus' | 'trolley' | 'commuter-rail' | 'ferry';
+type ModeId = 'train' | 'bus' | 'trolley' | 'lirr' | 'commuter-rail' | 'ferry';
 type Direction = 'uptown' | 'downtown';
 type Station = {id: string; name: string; area: string; lines: string[]};
 type Route = {id: string; label: string; color: string; textColor?: string};
@@ -1052,7 +1052,7 @@ export default function DisplayEditorScreen() {
   };
 
   const resolveEditorStepForLine = (line: LinePick | null): EditorStep => {
-    const isLirr = line?.mode === 'commuter-rail';
+    const isLirr = line?.mode === 'lirr';
     if (isLirr) {
       if (!line?.stationId) return 'stops';
       if (!line.routeId) return 'lines';
@@ -1067,7 +1067,7 @@ export default function DisplayEditorScreen() {
   const clearLineSelection = (id: string) => {
     animateSectionLayout();
     const line = lines.find(l => l.id === id);
-    const isLirr = line?.mode === 'commuter-rail';
+    const isLirr = line?.mode === 'lirr';
     updateLine(id, isLirr ? {routeId: ''} : {routeId: '', stationId: ''});
     setSelectedLineId(id);
     setEditorStep('lines');
@@ -1076,7 +1076,7 @@ export default function DisplayEditorScreen() {
   const clearStopSelection = (id: string) => {
     animateSectionLayout();
     const line = lines.find(l => l.id === id);
-    const isLirr = line?.mode === 'commuter-rail';
+    const isLirr = line?.mode === 'lirr';
     updateLine(id, isLirr ? {stationId: '', routeId: ''} : {stationId: ''});
     setSelectedLineId(id);
     setEditorStep('stops');
@@ -1156,7 +1156,7 @@ export default function DisplayEditorScreen() {
         const previewSubLineColor = displayPreset === 4 || displayPreset === 5 ? '#E5C15A' : undefined;
 
         const isBusBadge = city === 'new-york' && safeMode === 'bus';
-        const isCommuterRailBadge = safeMode === 'commuter-rail';
+        const isCommuterRailBadge = safeMode === 'lirr' || safeMode === 'commuter-rail';
 
         const badgeShape: Display3DSlot['badgeShape'] = isBusBadge
           ? 'pill'
@@ -1305,10 +1305,10 @@ export default function DisplayEditorScreen() {
             hasLine={!!selectedLine?.routeId}
             hasStop={!!selectedLine?.stationId}
             hasPreset={selectedLinePresetConfirmed}
-            isLirr={selectedLine != null && normalizeMode(city, selectedLine.mode) === 'commuter-rail'}
+            isLirr={selectedLine != null && normalizeMode(city, selectedLine.mode) === 'lirr'}
             onGoTo={targetStep => {
               if (!selectedLine) return;
-              const isLirr = normalizeMode(city, selectedLine.mode) === 'commuter-rail';
+              const isLirr = normalizeMode(city, selectedLine.mode) === 'lirr';
               if (isLirr) {
                 if (targetStep === 'stops') { setEditorStep('stops'); return; }
                 if (targetStep === 'lines' && selectedLine.stationId) { setEditorStep('lines'); return; }
@@ -1339,7 +1339,7 @@ export default function DisplayEditorScreen() {
         {editorStep === 'stops' && selectedLine ? (
           <Animated.View style={[stepAnimatedStyle, styles.stopPickerFullScreen]}>
             {(() => {
-              const isLirr = normalizeMode(city, selectedLine.mode) === 'commuter-rail';
+              const isLirr = normalizeMode(city, selectedLine.mode) === 'lirr';
               return (
                 <StopPickerStep
                   city={city}
@@ -1347,12 +1347,12 @@ export default function DisplayEditorScreen() {
                   selectedRoute={selectedRouteForEditor}
                   stations={
                     isLirr
-                      ? (stationsByMode['commuter-rail'] ?? [])
+                      ? (stationsByMode['lirr'] ?? [])
                       : (stationsByLine[selectedLine.routeId] ?? [])
                   }
                   loading={
                     isLirr
-                      ? !!stationsLoadingByMode['commuter-rail']
+                      ? !!stationsLoadingByMode['lirr']
                       : !!stationsLoadingByLine[selectedLine.routeId]
                   }
                   selectedStationId={selectedLine.stationId}
@@ -1375,17 +1375,17 @@ export default function DisplayEditorScreen() {
         {editorStep === 'lines' && selectedLine ? (
           <Animated.View style={[stepAnimatedStyle, styles.linePickerFullScreen]}>
             {(() => {
-              const isLirr = normalizeMode(city, selectedLine.mode) === 'commuter-rail';
+              const isLirr = normalizeMode(city, selectedLine.mode) === 'lirr';
               const lirrStationKey = isLirr && selectedLine.stationId
-                ? routeLookupKey('commuter-rail', selectedLine.stationId)
+                ? routeLookupKey('lirr', selectedLine.stationId)
                 : null;
               const lirrBranches = lirrStationKey ? (routesByStation[lirrStationKey] ?? []) : [];
               const lirrLoading = lirrStationKey ? !!routesLoadingByStation[lirrStationKey] : false;
               const linesByModeForPicker = isLirr && selectedLine.stationId
-                ? {...linesByMode, 'commuter-rail': lirrBranches}
+                ? {...linesByMode, lirr: lirrBranches}
                 : linesByMode;
               const loadingForPicker = isLirr && selectedLine.stationId
-                ? {...linesLoadingByMode, 'commuter-rail': lirrLoading}
+                ? {...linesLoadingByMode, lirr: lirrLoading}
                 : linesLoadingByMode;
               const lirrStation = isLirr ? selectedStationForEditor : undefined;
               return (
@@ -1398,7 +1398,10 @@ export default function DisplayEditorScreen() {
                   hasLinkedDevice={hasLinkedDevice}
                   liveSupported={liveSupported}
                   stationName={lirrStation?.name}
-                  onModeChange={mode => updateLine(selectedLine.id, {mode, stationId: '', routeId: ''})}
+                  onModeChange={mode => {
+                    updateLine(selectedLine.id, {mode, stationId: '', routeId: ''});
+                    if (mode === 'lirr') setEditorStep('stops');
+                  }}
                   onSelectLine={routeId => {
                     if (isLirr) {
                       updateLine(selectedLine.id, {routeId});
@@ -2503,7 +2506,7 @@ function ScheduleToggleControl({enabled}: {enabled: boolean}) {
 const NYC_MODE_COLORS: Partial<Record<ModeId, string>> = {
   train: '#0039A6',
   bus: '#17844B',
-  'commuter-rail': '#6D3FA9',
+  lirr: '#6D3FA9',
 };
 
 
@@ -2681,7 +2684,7 @@ function LinePickerStep({
                   {group.routes.map(route => {
                       const isSelected = route.routes.some(item => item.id === selectedRouteId);
                       const isBusBadge = city === 'new-york' && selectedMode === 'bus';
-                      const isCommuterRailBadge = selectedMode === 'commuter-rail';
+                      const isCommuterRailBadge = selectedMode === 'lirr' || selectedMode === 'commuter-rail';
                       const isExpress = !isBusBadge && isExpressRouteBadge(city, selectedMode, route);
                       const useCompactBadgeText = isBusBadge && route.displayLabel.length >= 5;
                       const shouldAutoFitBadgeText = isBusBadge || isCommuterRailBadge || isExpress;
@@ -2830,7 +2833,7 @@ function StopPickerStep({
           <Text style={styles.stopPickerBackText}>← Back</Text>
         </Pressable>
         <View style={{flex: 1}} />
-        {selectedMode !== 'commuter-rail' ? (
+        {selectedMode !== 'lirr' && selectedMode !== 'commuter-rail' ? (
           <View style={styles.stopPickerDirRow}>
             {(['uptown', 'downtown'] as Direction[]).map(dir => {
               const active = selectedDirection === dir;

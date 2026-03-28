@@ -147,7 +147,7 @@ async function fetchLiveStations(city: CityId, query: string): Promise<StationSe
 }
 
 function getModesForCity(city: CityId): TransitUiMode[] {
-  if (city === 'new-york') return ['train', 'bus', 'commuter-rail'];
+  if (city === 'new-york') return ['train', 'bus', 'lirr'];
   if (city === 'philadelphia') return ['train', 'bus', 'trolley'];
   if (city === 'boston') return ['train', 'bus', 'commuter-rail', 'ferry'];
   if (city === 'chicago') return ['train', 'bus'];

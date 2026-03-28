@@ -19,7 +19,7 @@ export const TRANSIT_MODE_MAP: TransitModeMap = {
   'new-york': {
     train: {provider: 'mta', mode: 'subway'},
     bus: {provider: 'mta', mode: 'bus'},
-    'commuter-rail': {provider: 'mta', mode: 'lirr'},
+    lirr: {provider: 'mta', mode: 'lirr'},
   },
   philadelphia: {
     train: {provider: 'septa', mode: 'rail'},
