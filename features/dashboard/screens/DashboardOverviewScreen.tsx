@@ -24,6 +24,7 @@ import { useSelectedDevice } from '../../../hooks/useSelectedDevice';
 import { apiFetch } from '../../../lib/api';
 import { queryKeys } from '../../../lib/queryKeys';
 import {
+   DISPLAY_WEEKDAYS,
    fetchDisplays,
    getLiveArrivalLookup,
    updateDisplay,
@@ -49,6 +50,7 @@ export default function DashboardOverviewScreen() {
    const [carouselIndex, setCarouselIndex] = useState(0);
    const [quietHoursEnabled, setQuietHoursEnabled] = useState(true);
    const [quietHours, setQuietHours] = useState({ start: '23:00', end: '05:00' });
+   const [quietHoursError, setQuietHoursError] = useState('');
    const [isScreenFocused, setIsScreenFocused] = useState(false);
 
    const city = appState.selectedCity;
@@ -211,7 +213,6 @@ export default function DashboardOverviewScreen() {
       setCarouselIndex(0);
    }, [city, carouselPresets.length]);
 
-
    useFocusEffect(
       useCallback(() => {
          if (hasLinkedDevice && selectedDevice.id && status === 'authenticated') {
@@ -236,6 +237,27 @@ export default function DashboardOverviewScreen() {
       () => getLiveArrivalLookup(lastCommandPayload),
       [lastCommandPayload],
    );
+
+   useEffect(() => {
+      if (!activePreset) {
+         setQuietHoursEnabled(false);
+         setQuietHours({start: '23:00', end: '05:00'});
+         setQuietHoursError('');
+         return;
+      }
+
+      const enabled =
+         !!activePreset.scheduleStart ||
+         !!activePreset.scheduleEnd ||
+         (Array.isArray(activePreset.scheduleDays) && activePreset.scheduleDays.length > 0);
+
+      setQuietHoursEnabled(enabled);
+      setQuietHours({
+         start: activePreset.scheduleStart ?? '23:00',
+         end: activePreset.scheduleEnd ?? '05:00',
+      });
+      setQuietHoursError('');
+   }, [activePreset]);
 
    const activateDisplayMutation = useMutation({
       mutationFn: async (display: DeviceDisplay) => {
@@ -265,12 +287,66 @@ export default function DashboardOverviewScreen() {
    });
    const activating = activateDisplayMutation.isPending;
 
+   const quietHoursMutation = useMutation({
+      mutationFn: async ({
+         display,
+         enabled,
+         schedule,
+      }: {
+         display: DeviceDisplay;
+         enabled: boolean;
+         schedule: {start: string; end: string};
+      }) => {
+         if (!selectedDevice.id) return;
+         const payload: DisplaySavePayload = {
+            name: display.name,
+            paused: display.paused,
+            priority: display.priority,
+            sortOrder: display.sortOrder,
+            scheduleStart: enabled ? schedule.start : null,
+            scheduleEnd: enabled ? schedule.end : null,
+            scheduleDays: enabled
+               ? Array.isArray(display.scheduleDays) && display.scheduleDays.length > 0
+                  ? display.scheduleDays
+                  : DISPLAY_WEEKDAYS
+               : [],
+            config: display.config,
+         };
+         await updateDisplay(selectedDevice.id, display.displayId, payload);
+         await apiFetch(`/refresh/device/${selectedDevice.id}`, {method: 'POST'});
+      },
+      onSuccess: () => {
+         setQuietHoursError('');
+         if (!selectedDevice.id) return;
+         void queryClient.invalidateQueries({queryKey: queryKeys.displays(selectedDevice.id)});
+         void queryClient.invalidateQueries({queryKey: queryKeys.lastCommand(selectedDevice.id)});
+      },
+      onError: (error) => {
+         setQuietHoursError(error instanceof Error ? error.message : 'Unable to update quiet hours.');
+      },
+   });
+   const quietHoursSaving = quietHoursMutation.isPending;
+
    const activateDisplayOnDevice = async (display: DeviceDisplay) => {
       if (!selectedDevice.id || activating) return;
       try {
          await activateDisplayMutation.mutateAsync(display);
       } catch (err) {
          console.error('[Carousel] activateDisplayOnDevice error:', err);
+      }
+   };
+
+   const persistQuietHours = async (
+      display: DeviceDisplay,
+      enabled: boolean,
+      schedule: {start: string; end: string},
+   ) => {
+      if (!selectedDevice.id || quietHoursSaving) return;
+      setQuietHoursError('');
+      try {
+         await quietHoursMutation.mutateAsync({display, enabled, schedule});
+      } catch {
+         // handled in mutation callbacks
       }
    };
 
@@ -466,10 +542,18 @@ export default function DashboardOverviewScreen() {
                            styles.toggleChip,
                            quietHoursEnabled ? styles.toggleChipOn : styles.toggleChipOff,
                         ]}
-                        onPress={() => setQuietHoursEnabled((prev) => !prev)}
+                        disabled={!activePreset || quietHoursSaving}
+                        onPress={() => {
+                           if (!activePreset) return;
+                           const nextEnabled = !quietHoursEnabled;
+                           setQuietHoursEnabled(nextEnabled);
+                           void persistQuietHours(activePreset, nextEnabled, quietHours);
+                        }}
                      >
                         <View style={[styles.toggleDot, quietHoursEnabled ? styles.toggleDotOn : styles.toggleDotOff]} />
-                        <Text style={styles.toggleChipText}>{quietHoursEnabled ? 'On' : 'Off'}</Text>
+                        <Text style={styles.toggleChipText}>
+                           {quietHoursSaving ? 'Saving…' : quietHoursEnabled ? 'On' : 'Off'}
+                        </Text>
                      </Pressable>
                   </View>
 
@@ -477,36 +561,33 @@ export default function DashboardOverviewScreen() {
                         <TimeAdjustField
                            label="Sleep From"
                            value={quietHours.start}
-                           onPrev={() =>
-                              setQuietHours((prev) => ({
-                                 ...prev,
-                                 start: cycleTimeOption(prev.start, -1),
-                              }))
-                           }
-                           onNext={() =>
-                              setQuietHours((prev) => ({
-                                 ...prev,
-                                 start: cycleTimeOption(prev.start, 1),
-                              }))
-                           }
+                           onPrev={() => {
+                              const next = {...quietHours, start: cycleTimeOption(quietHours.start, -1)};
+                              setQuietHours(next);
+                              if (activePreset && quietHoursEnabled) void persistQuietHours(activePreset, true, next);
+                           }}
+                           onNext={() => {
+                              const next = {...quietHours, start: cycleTimeOption(quietHours.start, 1)};
+                              setQuietHours(next);
+                              if (activePreset && quietHoursEnabled) void persistQuietHours(activePreset, true, next);
+                           }}
                         />
                         <TimeAdjustField
                            label="Wake At"
                            value={quietHours.end}
-                           onPrev={() =>
-                              setQuietHours((prev) => ({
-                                 ...prev,
-                                 end: cycleTimeOption(prev.end, -1),
-                              }))
-                           }
-                           onNext={() =>
-                              setQuietHours((prev) => ({
-                                 ...prev,
-                                 end: cycleTimeOption(prev.end, 1),
-                              }))
-                           }
+                           onPrev={() => {
+                              const next = {...quietHours, end: cycleTimeOption(quietHours.end, -1)};
+                              setQuietHours(next);
+                              if (activePreset && quietHoursEnabled) void persistQuietHours(activePreset, true, next);
+                           }}
+                           onNext={() => {
+                              const next = {...quietHours, end: cycleTimeOption(quietHours.end, 1)};
+                              setQuietHours(next);
+                              if (activePreset && quietHoursEnabled) void persistQuietHours(activePreset, true, next);
+                           }}
                         />
                      </View>
+                  {quietHoursError ? <Text style={styles.commandError}>{quietHoursError}</Text> : null}
 
                </View>
             )}
