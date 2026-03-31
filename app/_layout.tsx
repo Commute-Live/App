@@ -82,6 +82,7 @@ export default function RootLayout() {
     Geist_700Bold,
     Geist_800ExtraBold,
     Geist_900Black,
+    LedPreviewMono: require('../assets/fonts/SpaceMono-Regular.ttf'),
   });
 
   if (!fontsLoaded) return null;

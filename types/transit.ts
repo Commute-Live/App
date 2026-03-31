@@ -8,7 +8,7 @@ export type DisplayFormat =
 export type DisplayContent = 'destination' | 'direction' | 'custom';
 export type SupportedTransitCity = 'new-york' | 'philadelphia' | 'boston' | 'chicago';
 
-export type TransitUiMode = 'train' | 'bus' | 'lirr' | 'commuter-rail' | 'trolley' | 'ferry';
+export type TransitUiMode = 'train' | 'bus' | 'lirr' | 'mnr' | 'commuter-rail' | 'trolley' | 'ferry';
 
 export type TransitProvider = 'mta' | 'septa' | 'cta' | 'mbta';
 export type TransitBackendMode = 'subway' | 'bus' | 'lirr' | 'mnr' | 'rail' | 'trolley' | 'ferry';

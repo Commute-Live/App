@@ -7,8 +7,8 @@ export const styles = StyleSheet.create({
   scroll: {
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.lg,
-    paddingBottom: 120,
-    gap: spacing.xl,
+    paddingBottom: 128,
+    gap: spacing.lg,
   },
   loadingContainer: {flex: 1, alignItems: 'center', justifyContent: 'center', gap: spacing.sm},
   loadingText: {color: colors.textMuted, fontSize: 13},
@@ -38,7 +38,7 @@ export const styles = StyleSheet.create({
   wordmarkLockup: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 7,
+    gap: spacing.xs,
   },
   wordmark: {
     color: colors.text,
@@ -65,8 +65,8 @@ export const styles = StyleSheet.create({
   // ─── Page Header (device linked — not a card) ────────────────────────────
   pageHeader: {
     paddingTop: 0,
-    paddingBottom: spacing.xs,
-    gap: spacing.sm,
+    paddingBottom: spacing.sm,
+    gap: spacing.md,
   },
   pageOverline: {
     color: colors.textMuted,
@@ -81,7 +81,7 @@ export const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: spacing.sm,
   },
-  pageHeaderLeft: {gap: 3},
+  pageHeaderLeft: {gap: spacing.xxs},
   pageStatusText: {
     color: colors.text,
     fontSize: 28,
@@ -99,11 +99,11 @@ export const styles = StyleSheet.create({
   statusPill: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: spacing.xs,
     borderRadius: radii.md,
     borderWidth: 1,
     paddingHorizontal: spacing.sm,
-    paddingVertical: 7,
+    paddingVertical: spacing.xs,
   },
   statusPillOn: {backgroundColor: '#0E2B21', borderColor: '#1B5E4A'},
   statusPillOff: {backgroundColor: colors.surface, borderColor: colors.border},
@@ -113,7 +113,7 @@ export const styles = StyleSheet.create({
   statusPillText: {color: colors.text, fontSize: 13, fontWeight: '700'},
 
   // ─── Device Switcher (inside page header) ────────────────────────────────
-  deviceSwitcherRow: {gap: spacing.xs, paddingTop: spacing.xs},
+  deviceSwitcherRow: {gap: spacing.xs, paddingTop: spacing.sm},
   switcherLabel: {
     color: colors.textMuted,
     fontSize: 11,
@@ -143,7 +143,7 @@ export const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
     padding: spacing.lg,
-    gap: spacing.md,
+    gap: spacing.lg,
   },
   noDeviceCard: {borderColor: colors.warning, borderStyle: 'dashed'},
 
@@ -154,14 +154,12 @@ export const styles = StyleSheet.create({
     alignItems: 'center',
     gap: spacing.sm,
   },
-  deviceHeaderText: {flex: 1, gap: 4},
+  deviceHeaderText: {flex: 1, gap: spacing.xxs},
   sectionLabel: {color: colors.text, fontSize: 15, fontWeight: '800'},
   deviceSubMeta: {color: colors.textMuted, fontSize: 13},
 
   // ─── Borderless Section ───────────────────────────────────────────────────
-  sectionBlock: {
-    gap: spacing.sm,
-  },
+  sectionBlock: {gap: spacing.md},
   sectionBlockLabel: {
     color: colors.text,
     fontSize: 13,
@@ -184,7 +182,7 @@ export const styles = StyleSheet.create({
     paddingHorizontal: 6,
   },
   mtaBadgeText: {fontSize: 10, fontWeight: '900'},
-  heroHeader: {gap: 4},
+  heroHeader: {gap: spacing.xxs},
   heroBrandLabel: {
     color: colors.textMuted,
     fontSize: 11,
@@ -203,7 +201,7 @@ export const styles = StyleSheet.create({
   carouselControls: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: spacing.xs,
     flexShrink: 0,
   },
   slideshowControls: {
@@ -225,7 +223,7 @@ export const styles = StyleSheet.create({
   },
   dotRow: {
     flexDirection: 'row',
-    gap: 5,
+    gap: spacing.xxs,
     alignItems: 'center',
   },
   dot: {
@@ -273,7 +271,7 @@ export const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   cardTitle: {color: colors.text, fontSize: 15, fontWeight: '800'},
-  cardSubtitle: {color: colors.textMuted, fontSize: 13, marginTop: 2},
+  cardSubtitle: {color: colors.textMuted, fontSize: 13, marginTop: spacing.xxs},
 
   // ─── Quiet Hours Header ───────────────────────────────────────────────────
   quietHeaderRow: {
@@ -293,10 +291,10 @@ export const styles = StyleSheet.create({
   toggleChip: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: spacing.xs,
     borderRadius: radii.md,
     paddingHorizontal: spacing.sm,
-    paddingVertical: 7,
+    paddingVertical: spacing.xs,
     borderWidth: 1,
     flexShrink: 0,
   },
@@ -316,7 +314,7 @@ export const styles = StyleSheet.create({
     borderColor: colors.border,
     backgroundColor: colors.surface,
     padding: spacing.sm,
-    gap: 8,
+    gap: spacing.xs,
   },
   timeFieldLabel: {
     color: colors.textMuted,

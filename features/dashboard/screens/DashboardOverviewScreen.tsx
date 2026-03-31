@@ -421,6 +421,7 @@ export default function DashboardOverviewScreen() {
                               showDirectionFallback: false,
                            })}
                            displayType={activePreset.config.displayType ?? Number(activePreset.config.lines?.[0]?.displayType) ?? 1}
+                           ledTypography
                            onSelectSlot={() =>
                               router.push({
                                  pathname: '/preset-editor',

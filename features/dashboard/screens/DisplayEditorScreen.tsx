@@ -59,7 +59,7 @@ import {
 } from './DashboardEditor.helpers';
 import {styles} from './DisplayEditor.styles';
 
-type ModeId = 'train' | 'bus' | 'trolley' | 'lirr' | 'commuter-rail' | 'ferry';
+type ModeId = 'train' | 'bus' | 'trolley' | 'lirr' | 'mnr' | 'commuter-rail' | 'ferry';
 type Direction = 'uptown' | 'downtown';
 type Station = {id: string; name: string; area: string; lines: string[]};
 type Route = {id: string; label: string; color: string; textColor?: string};
@@ -180,6 +180,48 @@ const inferDisplayPreset = (
   }
   if (line.primaryContent === 'direction') return 2;
   return fallbackPreset;
+};
+
+const isLirrMode = (mode: ModeId) => mode === 'lirr';
+
+const isNycRailMode = (mode: ModeId) => mode === 'lirr' || mode === 'mnr';
+
+const getDirectionLabel = (mode: ModeId, direction: Direction) => {
+  if (mode === 'mnr') {
+    return direction === 'uptown' ? 'Outbound' : 'Inbound';
+  }
+  return direction === 'downtown' ? 'Downtown' : 'Uptown';
+};
+
+const getDirectionSummaryLabel = (mode: ModeId, direction: Direction) => {
+  if (mode === 'mnr') {
+    return direction === 'uptown' ? 'Outbound' : 'Inbound';
+  }
+  return direction === 'downtown' ? 'Downtown / South' : 'Uptown / North';
+};
+
+const getRailPreviewRouteLabel = (mode: ModeId, routeLabel: string) => {
+  const trimmed = routeLabel.trim();
+  if (!trimmed) return 'Route';
+  if (mode === 'lirr') return stripBranchSuffix(trimmed);
+  return trimmed;
+};
+
+const getPreviewSecondaryLabel = (mode: ModeId, routeLabel: string, direction: Direction) => {
+  if (isNycRailMode(mode)) {
+    return getRailPreviewRouteLabel(mode, routeLabel);
+  }
+  return getDirectionLabel(mode, direction);
+};
+
+const getPresetLabelForMode = (mode: ModeId, presetId: number, defaultLabel: string) => {
+  if (mode === 'lirr') {
+    return {2: 'Branch', 3: 'Destination + Branch', 5: 'Branch + Upcoming Trains'}[presetId] ?? defaultLabel;
+  }
+  if (mode === 'mnr') {
+    return {2: 'Line', 3: 'Destination + Line', 5: 'Line + Upcoming Trains'}[presetId] ?? defaultLabel;
+  }
+  return defaultLabel;
 };
 
 export default function DisplayEditorScreen() {
@@ -966,6 +1008,14 @@ export default function DisplayEditorScreen() {
     router.replace(fallbackRoute);
   };
 
+  const handleTopBarBackPress = () => {
+    if (isDirty) {
+      setShowDiscardConfirm(true);
+      return;
+    }
+    handleBackPress();
+  };
+
   const applyLayout = (slots: number) => {
     animateSectionLayout();
     const safeSlots = slots === 1 ? 1 : 2;
@@ -1160,13 +1210,13 @@ export default function DisplayEditorScreen() {
         const etaMinutes = arrival?.minutes != null ? Math.max(0, Math.round(arrival.minutes)) : null;
         // Use mock values when in format step so all styles are visible
         const mockEta = editorStep === 'format' && isSelectedLine;
-        const etaText = mockEta ? '4m' : etaMinutes != null ? `${etaMinutes}m` : '--';
+        const hideEtaDuringSetup = editorStep === 'lines' || editorStep === 'stops';
+        const etaText = mockEta ? '3m' : hideEtaDuringSetup ? '--' : etaMinutes != null ? `${etaMinutes}m` : '--';
         const etaListText = mockEta
-          ? buildNextArrivalTimes(4, line.nextStops).join(', ')
+          ? buildNextArrivalTimes(3, line.nextStops).join(', ')
           : buildNextArrivalTimes(etaMinutes ?? 2, line.nextStops).join(', ');
-        const directionLabel = safeMode === 'lirr'
-          ? stripBranchSuffix(route?.label ?? line.routeId ?? '')
-          : (line.direction === 'downtown' ? 'Downtown' : 'Uptown');
+        const routePreviewLabel = route?.label ?? line.routeId ?? '';
+        const directionLabel = getPreviewSecondaryLabel(safeMode, routePreviewLabel, line.direction);
         const stopName = station?.name ?? (mockEta ? 'Times Sq–42 St' : '');
         const primaryPreviewText = resolveDisplayContent(line.primaryContent, stopName, directionLabel, line.label);
         const secondaryPreviewText = resolveDisplayContent(line.secondaryContent, stopName, directionLabel, line.secondaryLabel || (mockEta ? directionLabel : ''));
@@ -1182,10 +1232,10 @@ export default function DisplayEditorScreen() {
         const previewSubLineColor = displayPreset === 4 || displayPreset === 5 ? '#E5C15A' : undefined;
 
         const isBusBadge = city === 'new-york' && safeMode === 'bus';
-        const isLirrBadge = safeMode === 'lirr';
+        const isRailLineBadge = isNycRailMode(safeMode);
         const isCommuterRailBadge = safeMode === 'commuter-rail';
 
-        const badgeShape: Display3DSlot['badgeShape'] = (isBusBadge || isLirrBadge)
+        const badgeShape: Display3DSlot['badgeShape'] = (isBusBadge || isRailLineBadge)
           ? 'pill'
           : isCommuterRailBadge
             ? 'rail'
@@ -1195,7 +1245,7 @@ export default function DisplayEditorScreen() {
           id: line.id,
           color: route?.color ?? '#3A3A3A',
           textColor: line.textColor || route?.textColor || '#FFFFFF',
-          routeLabel: isLirrBadge ? (route ? '' : '?') : (route?.label ?? '?'),
+          routeLabel: isRailLineBadge ? (route ? '' : '?') : (route?.label ?? '?'),
           badgeShape,
           selected: line.id === selectedLineId,
           stopName: previewTitle,
@@ -1306,10 +1356,9 @@ export default function DisplayEditorScreen() {
       state: selectedLinePresetConfirmed ? 'complete' : editorStep === 'format' ? 'active' : 'upcoming',
       value: selectedLinePresetConfirmed
         ? (() => {
-            const isLirrLine = selectedLine != null && normalizeMode(city, selectedLine.mode) === 'lirr';
+            const selectedMode = selectedLine != null ? normalizeMode(city, selectedLine.mode) : 'train';
             const defaultLabel = DISPLAY_PRESET_OPTIONS.find(option => option.id === selectedDisplayPreset)?.label ?? 'Choose style';
-            if (!isLirrLine) return defaultLabel;
-            return {2: 'Branch', 3: 'Destination + Branch', 5: 'Branch + Upcoming Trains'}[selectedDisplayPreset] ?? defaultLabel;
+            return getPresetLabelForMode(selectedMode, selectedDisplayPreset, defaultLabel);
           })()
         : 'Choose style',
       onPress: selectedLine?.routeId && selectedLine?.stationId ? () => setEditorStep('format') : undefined,
@@ -1330,7 +1379,7 @@ export default function DisplayEditorScreen() {
             presetName={presetName}
             onPresetNameChange={setPresetName}
             onLayoutOpen={() => setShowLayoutSelector(true)}
-            onBackPress={handleBackPress}
+            onBackPress={handleTopBarBackPress}
           />
           <WizardStepBar
             step={editorStep}
@@ -1358,6 +1407,7 @@ export default function DisplayEditorScreen() {
             onDragStateChange={setPreviewDragging}
             showHint={false}
             mini={layoutSlots === 1}
+            ledTypography
           />
         </Animated.View>
 
@@ -1380,7 +1430,6 @@ export default function DisplayEditorScreen() {
                 updateLine(selectedLine.id, {stationId: id});
                 setEditorStep(selectedLinePresetConfirmed ? 'done' : 'format');
               }}
-              onBack={() => setEditorStep('lines')}
             />
           </Animated.View>
         ) : null}
@@ -1401,7 +1450,6 @@ export default function DisplayEditorScreen() {
                 setEditorStep('stops');
               }}
               onAddDevice={() => router.push('/register-device')}
-              onBack={handleBackPress}
             />
           </Animated.View>
         ) : null}
@@ -1438,6 +1486,7 @@ export default function DisplayEditorScreen() {
                   displayType={selectedDisplayPreset}
                   line={selectedLine}
                   selectedRoute={selectedRouteForEditor}
+                  selectedStation={selectedStationForEditor}
                   onChangeLine={next => updateLine(selectedLine.id, next)}
                   onPreview={setLiveStylePreview}
                   onSelect={preset => {
@@ -1568,7 +1617,7 @@ function TopBar({
       <View style={styles.topBar}>
         <View style={styles.topBarSideLeft}>
           <Pressable style={styles.backButton} onPress={onBackPress}>
-            <Text style={styles.backButtonText}>‹ Back</Text>
+            <Text style={styles.topBarBackText}>Back</Text>
           </Pressable>
         </View>
 
@@ -1760,7 +1809,7 @@ function LayoutSelectorModal({
 }) {
   return (
     <Modal transparent visible={visible} animationType="fade" onRequestClose={onClose}>
-      <View style={styles.modalOverlay}>
+      <View style={styles.layoutSelectorOverlay}>
         <Pressable style={styles.modalBackdrop} onPress={onClose} />
         <View style={styles.modalSheet}>
           <View style={styles.modalHeader}>
@@ -2068,14 +2117,16 @@ function DisplayPresetPickerStep({
 }) {
   const carouselRef = useRef<ScrollView | null>(null);
   const [visiblePresetId, setVisiblePresetId] = useState<number>(selectedPreset ?? DISPLAY_PRESET_OPTIONS[0].id);
-  const directionLabel = line.direction === 'downtown' ? 'Downtown' : 'Uptown';
   const routeLabel = selectedRoute?.label ?? line.routeId ?? '?';
+  const directionLabel = getPreviewSecondaryLabel(line.mode, routeLabel, line.direction);
   const routeColor = selectedRoute?.color ?? '#0C7A59';
   const routeTextColor = selectedRoute?.textColor ?? '#E8FFF8';
   const stopLabel = selectedStation?.name?.trim() || 'Selected stop';
-  const secondaryStopLabel = selectedStation?.area?.trim() || selectedStation?.name?.trim() || routeLabel || 'Route';
-  const etaText = arrival ? `${Math.max(0, Math.round(arrival.minutes))}m` : '2m';
-  const etaListText = buildNextArrivalTimes(arrival?.minutes ?? 2, line.nextStops).join(', ');
+  const secondaryStopLabel = isNycRailMode(line.mode)
+    ? getRailPreviewRouteLabel(line.mode, routeLabel)
+    : selectedStation?.area?.trim() || selectedStation?.name?.trim() || routeLabel || 'Route';
+  const etaText = arrival ? `${Math.max(0, Math.round(arrival.minutes))}m` : '3m';
+  const etaListText = buildNextArrivalTimes(arrival?.minutes ?? 3, line.nextStops).join(', ');
   useEffect(() => {
     const index = Math.max(0, DISPLAY_PRESET_OPTIONS.findIndex(option => option.id === selectedPreset));
     const presetId = DISPLAY_PRESET_OPTIONS[index]?.id ?? DISPLAY_PRESET_OPTIONS[0].id;
@@ -2101,6 +2152,7 @@ function DisplayPresetPickerStep({
         contentContainerStyle={styles.presetCarousel}>
         {DISPLAY_PRESET_OPTIONS.map((option, index) => {
           const behavior = getPresetBehavior(option.id);
+          const optionLabel = getPresetLabelForMode(line.mode, option.id, option.label);
           const primaryText =
             resolveDisplayContent(
               line.label.trim().length > 0 ? 'custom' : behavior.primaryContent,
@@ -2120,6 +2172,7 @@ function DisplayPresetPickerStep({
             <PresetChoiceCard
               key={option.id}
               option={option}
+              optionLabel={optionLabel}
               index={index}
               active={option.id === selectedPreset}
               routeLabel={routeLabel}
@@ -2219,6 +2272,7 @@ function BuilderProgress({
 
 function PresetChoiceCard({
   option,
+  optionLabel,
   index,
   active,
   routeLabel,
@@ -2231,6 +2285,7 @@ function PresetChoiceCard({
   onPress,
 }: {
   option: (typeof DISPLAY_PRESET_OPTIONS)[number];
+  optionLabel: string;
   index: number;
   active: boolean;
   routeLabel: string;
@@ -2305,7 +2360,7 @@ function PresetChoiceCard({
           }).start();
         }}>
         <View style={styles.presetChoiceHeader}>
-          <Text style={[styles.presetChoiceLabel, active && styles.presetChoiceLabelActive]}>{option.label}</Text>
+          <Text style={[styles.presetChoiceLabel, active && styles.presetChoiceLabelActive]}>{optionLabel}</Text>
           <View style={[styles.choiceRowCheck, active && styles.choiceRowCheckActive]}>
             {active ? <Text style={styles.choiceRowCheckText}>✓</Text> : null}
           </View>
@@ -2333,8 +2388,8 @@ function PresetDiagram({
   routeTextColor = '#E8FFF8',
   primaryText = 'Woodlawn',
   secondaryText = 'Uptown',
-  etaText = '2m',
-  etaListText = '5m, 10m',
+  etaText = '3m',
+  etaListText = '3m, 5m, 8m',
 }: {
   presetId: number;
   routeLabel?: string;
@@ -2567,6 +2622,7 @@ const NYC_MODE_COLORS: Partial<Record<ModeId, string>> = {
   train: '#0039A6',
   bus: '#17844B',
   lirr: '#6D3FA9',
+  mnr: '#00A1DE',
 };
 
 
@@ -2581,7 +2637,6 @@ function LinePickerStep({
   onModeChange,
   onSelectLine,
   onAddDevice,
-  onBack,
 }: {
   city: CityId;
   selectedMode: ModeId;
@@ -2593,7 +2648,6 @@ function LinePickerStep({
   onModeChange: (mode: ModeId) => void;
   onSelectLine: (routeId: string) => void;
   onAddDevice: () => void;
-  onBack: () => void;
 }) {
   const modeOptions = getAvailableModes(city);
   const allRoutes = linesByMode[selectedMode] ?? [];
@@ -2735,7 +2789,7 @@ function LinePickerStep({
                   )
                 ) : null}
                 {!isCollapsed ? (
-                selectedMode === 'lirr' ? (
+                selectedMode === 'lirr' || selectedMode === 'mnr' ? (
                   <View style={styles.lirrBranchList}>
                     {group.routes.map(route => {
                       const isSelected = route.routes.some(item => item.id === selectedRouteId);
@@ -2833,7 +2887,6 @@ function StopPickerStep({
   onSearch,
   onSelectDirection,
   onSelectStation,
-  onBack,
 }: {
   city: CityId;
   selectedMode: ModeId;
@@ -2847,7 +2900,6 @@ function StopPickerStep({
   onSearch: (text: string) => void;
   onSelectDirection: (direction: Direction) => void;
   onSelectStation: (id: string) => void;
-  onBack: () => void;
 }) {
   const checkAnims = useRef<Record<string, Animated.Value>>({}).current;
   const showBusBadge = isNycBusBadge(city, selectedMode);
@@ -2903,14 +2955,11 @@ function StopPickerStep({
   return (
     <View style={[styles.stepContainer, styles.stopPickerStepFull]}>
       <View style={styles.stopPickerHeader}>
-        <Pressable style={styles.stopPickerBack} onPress={onBack}>
-          <Text style={styles.stopPickerBackText}>← Back</Text>
-        </Pressable>
         <View style={{flex: 1}} />
         <View style={styles.stopPickerDirRow}>
           {(['uptown', 'downtown'] as Direction[]).map(dir => {
             const active = selectedDirection === dir;
-            const label = selectedMode === 'lirr'
+            const label = selectedMode === 'lirr' || selectedMode === 'mnr'
               ? (dir === 'uptown' ? 'Outbound' : 'Inbound')
               : (dir === 'uptown' ? '↑ North' : '↓ South');
             return (
@@ -3047,7 +3096,8 @@ function DoneStep({
   const onChangeDisplayType = onClearDisplayType;
   const liveStatusText = '';
   const presetOption = DISPLAY_PRESET_OPTIONS.find(option => option.id === displayPreset);
-  const directionLabel = line.direction === 'downtown' ? 'Downtown / South' : 'Uptown / North';
+  const presetLabel = getPresetLabelForMode(line.mode, displayPreset, presetOption?.label ?? `Display Type ${displayPreset}`);
+  const directionLabel = getDirectionSummaryLabel(line.mode, line.direction);
 
   return (
     <View style={styles.doneStepContainer}>
@@ -3085,7 +3135,7 @@ function DoneStep({
         )}
         <Pressable style={styles.contextChip} onPress={onChangeDisplayType}>
           <Text style={styles.contextChipLabel} numberOfLines={1}>
-            {presetConfirmed ? presetOption?.label ?? `Display Type ${displayPreset}` : 'Choose display type'}
+            {presetConfirmed ? presetLabel : 'Choose display type'}
           </Text>
           <Text style={styles.contextChipX}>{presetConfirmed ? 'x' : '>'}</Text>
         </Pressable>
@@ -3097,7 +3147,7 @@ function DoneStep({
         <View style={styles.sectionBlock}>
           <Text style={styles.sectionLabel}>Device Preset</Text>
           <Text style={styles.sectionHint}>
-            {presetConfirmed ? presetOption?.label ?? `Display Type ${displayPreset}` : 'Not selected yet'}
+            {presetConfirmed ? presetLabel : 'Not selected yet'}
           </Text>
           {presetConfirmed && presetOption?.description ? <Text style={styles.sectionHint}>{presetOption.description}</Text> : null}
           <PresetDiagram presetId={displayPreset} />
@@ -3133,18 +3183,23 @@ function ReviewDoneStep({
   onClearDisplayType: () => void;
 }) {
   const presetOption = DISPLAY_PRESET_OPTIONS.find(option => option.id === displayPreset);
-  const directionLabel = line.direction === 'downtown' ? 'Downtown / South' : 'Uptown / North';
+  const presetLabel = getPresetLabelForMode(line.mode, displayPreset, presetOption?.label ?? `Display Type ${displayPreset}`);
+  const directionLabel = getDirectionSummaryLabel(line.mode, line.direction);
   const activePresetBehavior = getPresetBehavior(displayPreset);
+  const routeLabel = selectedRoute?.label ?? line.routeId ?? 'Route';
+  const previewDirectionLabel = getPreviewSecondaryLabel(line.mode, routeLabel, line.direction);
   const topPlaceholder = resolveDisplayContent(
     activePresetBehavior.primaryContent,
     selectedStation?.name?.trim() || 'Selected stop',
-    line.direction === 'downtown' ? 'Downtown' : 'Uptown',
+    previewDirectionLabel,
     '',
   );
   const bottomPlaceholder = resolveDisplayContent(
     activePresetBehavior.secondaryContent,
-    selectedStation?.area?.trim() || selectedStation?.name?.trim() || selectedRoute?.label || 'Route',
-    line.direction === 'downtown' ? 'Downtown' : 'Uptown',
+    isNycRailMode(line.mode)
+      ? getRailPreviewRouteLabel(line.mode, routeLabel)
+      : selectedStation?.area?.trim() || selectedStation?.name?.trim() || routeLabel || 'Route',
+    previewDirectionLabel,
     '',
   );
 
@@ -3193,7 +3248,7 @@ function ReviewDoneStep({
         <ReviewRow label="Direction" value={directionLabel} onClear={onClearStop} />
         <ReviewRow
           label="Display Type"
-          value={presetConfirmed ? presetOption?.label ?? `Display Type ${displayPreset}` : 'Not selected'}
+          value={presetConfirmed ? presetLabel : 'Not selected'}
           onClear={onClearDisplayType}
         />
       </View>
@@ -3217,22 +3272,41 @@ function ReviewRow({label, value, onClear}: {label: string; value: string; onCle
 }
 
 // ─── Mini LED mockup inside each style row ────────────────────────────────────
-function StyleMockLed({preset, routeColor, routeLabel, active, direction, nextStops = 2, branchLabel}: {
+function StyleMockLed({preset, routeColor, routeLabel, destinationLabel, active, mode, direction, nextStops = 2, branchLabel, badgeShape = 'circle', hideBadgeLabel = false}: {
   preset: number;
   routeColor: string;
   routeLabel: string;
+  destinationLabel: string;
   active: boolean;
+  mode: ModeId;
   direction: Direction;
   nextStops?: number;
   branchLabel?: string;
+  badgeShape?: 'circle' | 'pill' | 'rail';
+  hideBadgeLabel?: boolean;
 }) {
   const textOpacity = active ? 1 : 0.55;
-  const dirLabel = branchLabel ?? (direction === 'downtown' ? 'Downtown' : 'Uptown');
-  const destLabel = 'World Trade Ctr';
+  const dirLabel = branchLabel ?? getDirectionLabel(mode, direction);
+  const destLabel = destinationLabel.trim().length > 0 ? destinationLabel : 'Selected stop';
 
   const badge = (
-    <View style={[styles.mockBadge, {backgroundColor: routeColor, opacity: active ? 1 : 0.65}]}>
-      <Text style={styles.mockBadgeText} numberOfLines={1}>{routeLabel}</Text>
+    <View
+      style={[
+        styles.mockBadge,
+        badgeShape === 'pill' && styles.mockBadgePill,
+        badgeShape === 'rail' && styles.mockBadgeRail,
+        {backgroundColor: routeColor, opacity: active ? 1 : 0.65},
+      ]}>
+      {!hideBadgeLabel ? (
+        <Text
+          style={[
+            styles.mockBadgeText,
+            badgeShape !== 'circle' && styles.mockBadgeTextCompact,
+          ]}
+          numberOfLines={badgeShape === 'circle' ? 1 : 2}>
+          {routeLabel}
+        </Text>
+      ) : null}
     </View>
   );
   const destText = (
@@ -3274,8 +3348,8 @@ function StyleMockLed({preset, routeColor, routeLabel, active, direction, nextSt
           {destText}
           <View style={styles.mockMiniTags}>
             {arrivalChip('3m')}
-            {arrivalChip('8m')}
-            {nextStops >= 3 ? arrivalChip('13m') : null}
+            {arrivalChip('5m')}
+            {nextStops >= 3 ? arrivalChip('8m') : null}
           </View>
         </View>
         {timeText}
@@ -3289,8 +3363,8 @@ function StyleMockLed({preset, routeColor, routeLabel, active, direction, nextSt
           {dirText}
           <View style={styles.mockMiniTags}>
             {arrivalChip('3m')}
-            {arrivalChip('8m')}
-            {nextStops >= 3 ? arrivalChip('13m') : null}
+            {arrivalChip('5m')}
+            {nextStops >= 3 ? arrivalChip('8m') : null}
           </View>
         </View>
         {timeText}
@@ -3311,6 +3385,7 @@ function LedStylePickerStep({
   displayType,
   line,
   selectedRoute,
+  selectedStation,
   onChangeLine,
   onPreview,
   onSelect,
@@ -3318,6 +3393,7 @@ function LedStylePickerStep({
   displayType: number;
   line: LinePick;
   selectedRoute: Route | undefined;
+  selectedStation: Station | undefined;
   onChangeLine: (next: Partial<LinePick>) => void;
   onPreview: (preset: number) => void;
   onSelect: (preset: number) => void;
@@ -3346,15 +3422,12 @@ function LedStylePickerStep({
 
   const routeLabel = selectedRoute?.label ?? line.routeId.replace(/^[a-z]+-/, '').toUpperCase().slice(0, 3);
   const routeColor = selectedRoute?.color ?? '#1C3A2A';
+  const selectedStopLabel = selectedStation?.name?.trim() || 'Selected stop';
   const activeNextStops = line.nextStops >= 2 ? line.nextStops : 2;
-  const isLirr = line.mode === 'lirr';
-  const lirrPresetLabels: Partial<Record<number, string>> = {
-    2: 'Branch',
-    3: 'Destination + Branch',
-    5: 'Branch + Upcoming Trains',
-  };
+  const isNycRail = isNycRailMode(line.mode);
+  const isCommuterRail = line.mode === 'commuter-rail';
   const getOptionLabel = (id: number, defaultLabel: string) =>
-    isLirr ? (lirrPresetLabels[id] ?? defaultLabel) : defaultLabel;
+    getPresetLabelForMode(line.mode, id, defaultLabel);
 
   return (
     <View style={styles.stepSection}>
@@ -3377,10 +3450,14 @@ function LedStylePickerStep({
                   preset={option.id}
                   routeColor={routeColor}
                   routeLabel={routeLabel}
+                  destinationLabel={selectedStopLabel}
                   active={isActive}
+                  mode={line.mode}
                   direction={line.direction}
                   nextStops={isActive ? activeNextStops : 2}
-                  branchLabel={isLirr ? stripBranchSuffix(routeLabel) : undefined}
+                  branchLabel={isNycRail ? getRailPreviewRouteLabel(line.mode, routeLabel) : undefined}
+                  badgeShape={isNycRail ? 'pill' : isCommuterRail ? 'rail' : 'circle'}
+                  hideBadgeLabel={isNycRail}
                 />
                 {showCountPicker ? (
                   <View style={styles.inlineCountPicker}>
@@ -3470,7 +3547,7 @@ function WizardReviewStep({
   onRemoveStop: () => void;
 }) {
   const presetOption = DISPLAY_PRESET_OPTIONS.find(o => o.id === displayPreset);
-  const directionLabel = line.direction === 'downtown' ? 'Downtown / South' : 'Uptown / North';
+  const directionLabel = getDirectionSummaryLabel(line.mode, line.direction);
   const activePresetBehavior = getPresetBehavior(displayPreset);
 
   return (

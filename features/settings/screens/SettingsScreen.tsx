@@ -331,7 +331,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.lg,
     paddingBottom: 120,
-    gap: spacing.sm,
+    gap: spacing.lg,
   },
   scrollContent: {
     flexGrow: 1,
@@ -376,7 +376,7 @@ const styles = StyleSheet.create({
   // ─── Page Title ───────────────────────────────────────────────────────────
   pageHeader: {
     paddingTop: 0,
-    paddingBottom: spacing.xs,
+    paddingBottom: spacing.sm,
   },
   pageTitle: {
     color: colors.text,
@@ -388,11 +388,17 @@ const styles = StyleSheet.create({
 
   // ─── Settings List ────────────────────────────────────────────────────────
   listGroup: {
-    gap: 0,
+    borderRadius: radii.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.card,
+    overflow: 'hidden',
   },
   listRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    minHeight: 56,
+    paddingHorizontal: spacing.md,
     paddingVertical: spacing.md,
     gap: spacing.sm,
   },
@@ -422,9 +428,11 @@ const styles = StyleSheet.create({
 
   // ─── Expanded Content ─────────────────────────────────────────────────────
   expandedContent: {
-    paddingLeft: 44,
+    paddingLeft: 58,
+    paddingRight: spacing.md,
     paddingBottom: spacing.md,
-    gap: spacing.sm,
+    gap: spacing.md,
+    backgroundColor: colors.card,
   },
 
   // ─── Detail Rows ──────────────────────────────────────────────────────────
@@ -432,15 +440,16 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: spacing.xs,
+    gap: spacing.md,
+    paddingVertical: spacing.sm,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
   },
   detailLabel: {color: colors.textMuted, fontSize: 13},
-  detailValue: {color: colors.text, fontSize: 13, fontWeight: '600'},
+  detailValue: {color: colors.text, fontSize: 13, fontWeight: '600', flexShrink: 1, textAlign: 'right'},
 
   // ─── Pills ────────────────────────────────────────────────────────────────
-  pillRow: {flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs, paddingTop: spacing.xs},
+  pillRow: {flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs},
   pill: {
     borderRadius: radii.md,
     borderWidth: 1,
@@ -454,14 +463,14 @@ const styles = StyleSheet.create({
   pillTextActive: {color: colors.accent},
 
   // ─── City Cards ───────────────────────────────────────────────────────────
-  cityGrid: {gap: spacing.xs},
+  cityGrid: {gap: spacing.sm},
   cityCard: {
     borderRadius: radii.md,
     borderWidth: 1,
     borderColor: colors.border,
     backgroundColor: colors.background,
-    padding: spacing.sm,
-    gap: 6,
+    padding: spacing.md,
+    gap: spacing.xs,
     position: 'relative',
     overflow: 'hidden',
   },
@@ -486,7 +495,6 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
     borderRadius: radii.md,
     alignItems: 'center',
-    marginTop: spacing.xs,
   },
   destructiveButtonText: {color: '#FCA5A5', fontWeight: '700', fontSize: 13},
   ghostButton: {paddingVertical: spacing.xs, alignItems: 'center'},

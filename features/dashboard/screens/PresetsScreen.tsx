@@ -619,6 +619,7 @@ export default function PresetsScreen() {
                       },
                     )}
                     displayType={currentDisplay.config.displayType ?? Number(currentDisplay.config.lines?.[0]?.displayType) ?? 1}
+                    ledTypography
                     onSelectSlot={() =>
                       router.push({
                         pathname: '/preset-editor',
@@ -1198,7 +1199,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.lg,
     paddingBottom: 120,
-    gap: spacing.md,
+    gap: spacing.lg,
   },
 
   // ─── Brand Header ─────────────────────────────────────────────────────────
@@ -1223,7 +1224,7 @@ const styles = StyleSheet.create({
     width: 26,
     height: 26,
   },
-  wordmarkLockup: {flexDirection: 'row', alignItems: 'center', gap: 7},
+  wordmarkLockup: {flexDirection: 'row', alignItems: 'center', gap: spacing.xs},
   wordmark: {color: colors.text, fontSize: 20, fontWeight: '900', letterSpacing: -0.5},
   avatarCircle: {
     position: 'absolute',
@@ -1240,18 +1241,19 @@ const styles = StyleSheet.create({
   // ─── Page Header ──────────────────────────────────────────────────────────
   pageHeader: {
     paddingTop: 0,
-    paddingBottom: spacing.xs,
+    paddingBottom: spacing.sm,
   },
   pageHeaderRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    gap: spacing.sm,
   },
   pageHeaderLeft: {flex: 1},
-  pageHeaderRight: {flexDirection: 'row', alignItems: 'center', gap: spacing.xs},
+  pageHeaderRight: {flexDirection: 'row', alignItems: 'center', gap: spacing.sm},
   addBtn: {
-    width: 34,
-    height: 34,
+    width: 36,
+    height: 36,
     borderRadius: 10,
     borderWidth: 1,
     borderColor: colors.border,
@@ -1273,7 +1275,7 @@ const styles = StyleSheet.create({
   emptyState: {
     paddingVertical: spacing.xl,
     alignItems: 'center',
-    gap: spacing.xs,
+    gap: spacing.sm,
   },
   emptyTitle: {color: colors.text, fontSize: 16, fontWeight: '800'},
   emptyBody: {color: colors.textMuted, fontSize: 13, lineHeight: 18, textAlign: 'center'},
@@ -1297,7 +1299,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: spacing.md,
     paddingTop: spacing.md,
-    paddingBottom: spacing.sm,
+    paddingBottom: spacing.md,
     gap: spacing.sm,
   },
   cardDisplayName: {
@@ -1329,7 +1331,7 @@ const styles = StyleSheet.create({
 
   // LED preview area — extra padding lets the glow breathe
   cardPreviewContainer: {
-    paddingBottom: spacing.sm,
+    paddingBottom: spacing.md,
     position: 'relative',
   },
   activeOverlayBadge: {
@@ -1357,8 +1359,8 @@ const styles = StyleSheet.create({
   navActionsRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: spacing.xs,
-    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
   },
   navLeft: {
     flex: 1,
@@ -1418,10 +1420,11 @@ const styles = StyleSheet.create({
   dotActive: {width: 14, height: 5, borderRadius: 3, backgroundColor: colors.accent},
 
   cardSettings: {
-    paddingTop: spacing.lg,
+    paddingTop: spacing.md,
+    gap: spacing.sm,
   },
   settingItem: {
-    paddingVertical: spacing.sm,
+    paddingVertical: spacing.md,
     gap: spacing.sm,
   },
   settingItemBorder: {},
@@ -1431,7 +1434,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: spacing.sm,
   },
-  settingItemLabelGroup: {gap: 2},
+  settingItemLabelGroup: {gap: spacing.xxs},
   settingItemLabel: {
     color: colors.textMuted,
     fontSize: 11,
@@ -1620,8 +1623,8 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
     backgroundColor: colors.surface,
-    padding: spacing.md,
-    gap: spacing.sm,
+    padding: spacing.lg,
+    gap: spacing.md,
   },
   reorderHeader: {
     flexDirection: 'row',
@@ -1631,7 +1634,7 @@ const styles = StyleSheet.create({
   },
   reorderHeaderCopy: {
     flex: 1,
-    gap: 2,
+    gap: spacing.xxs,
   },
   reorderTitle: {
     color: colors.text,
@@ -1682,7 +1685,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
-    paddingHorizontal: spacing.sm,
+    paddingHorizontal: spacing.md,
   },
   reorderBadgeRow: {
     width: 72,
@@ -1733,10 +1736,7 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '700',
   },
-  reorderTextBlock: {
-    flex: 1,
-    gap: 3,
-  },
+  reorderTextBlock: {flex: 1, gap: spacing.xxs},
   reorderDisplayName: {
     color: colors.text,
     fontSize: 14,

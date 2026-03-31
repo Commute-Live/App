@@ -577,6 +577,7 @@ const styles = StyleSheet.create({
   wordmarkLockup: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: spacing.xxs,
   },
   wordmark: {
     color: colors.text,
@@ -593,12 +594,12 @@ const styles = StyleSheet.create({
   content: {
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.lg,
-    paddingBottom: spacing.xl,
+    paddingBottom: spacing.xxl,
     flexGrow: 1,
+    gap: spacing.md,
   },
   heroBlock: {
     gap: spacing.xs,
-    marginBottom: spacing.md,
     alignItems: 'center',
   },
   heading: {
@@ -608,7 +609,7 @@ const styles = StyleSheet.create({
     letterSpacing: -0.8,
     textAlign: 'center',
   },
-  section: {marginTop: spacing.sm},
+  section: {gap: spacing.md},
   sectionTitle: {color: colors.text, fontSize: 13, fontWeight: '700', marginBottom: spacing.sm},
   errorCard: {
     backgroundColor: colors.surface,
@@ -616,7 +617,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderRadius: radii.md,
     padding: spacing.md,
-    marginBottom: spacing.sm,
   },
   errorText: {color: colors.warning, fontSize: 13},
   scanCard: {
@@ -636,22 +636,20 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderRadius: radii.lg,
     padding: spacing.md,
-    marginBottom: spacing.md,
+    gap: spacing.xxs,
   },
   deviceCardLabel: {color: colors.textMuted, fontSize: 12},
-  deviceCardName: {color: colors.text, fontWeight: '800', fontSize: 18, marginTop: 4},
   deviceVerifyText: {
     color: colors.text,
     fontSize: 14,
     lineHeight: 20,
-    marginTop: 6,
+    marginTop: spacing.xxs,
   },
   deviceList: {
     borderRadius: radii.lg,
     overflow: 'hidden',
     borderWidth: 1,
     borderColor: colors.border,
-    marginBottom: spacing.md,
   },
   deviceRow: {
     flexDirection: 'row',
@@ -756,9 +754,9 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderRadius: radii.md,
     padding: spacing.md,
-    marginTop: spacing.md,
+    gap: spacing.xs,
   },
-  statusRow: {flexDirection: 'row', alignItems: 'center', gap: spacing.xs, marginBottom: 6},
+  statusRow: {flexDirection: 'row', alignItems: 'center', gap: spacing.xs},
   statusLabel: {color: colors.text, fontSize: 13},
   dot: {width: 8, height: 8, borderRadius: 4},
   dotIdle: {backgroundColor: colors.textMuted},
@@ -769,7 +767,6 @@ const styles = StyleSheet.create({
     borderRadius: radii.md,
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: spacing.md,
   },
   primaryButtonDisabled: {
     opacity: 0.45,
@@ -782,7 +779,6 @@ const styles = StyleSheet.create({
     borderRadius: radii.md,
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: spacing.sm,
   },
   secondaryText: {color: colors.textMuted, fontWeight: '700', fontSize: 14},
   successText: {color: colors.success, fontWeight: '700', textAlign: 'center', fontSize: 15},
@@ -794,7 +790,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
     backgroundColor: colors.surface,
-    marginTop: spacing.lg,
   },
   skipText: {color: colors.textMuted, fontWeight: '700', fontSize: 13},
 });
@@ -840,6 +835,7 @@ const modal = StyleSheet.create({
   body: {
     padding: spacing.lg,
     paddingTop: spacing.xl,
+    gap: spacing.md,
   },
   fieldGroup: {
     backgroundColor: colors.card,
@@ -884,7 +880,6 @@ const modal = StyleSheet.create({
   errorText: {
     color: colors.warning,
     fontSize: 13,
-    marginTop: spacing.md,
     textAlign: 'center',
   },
 });

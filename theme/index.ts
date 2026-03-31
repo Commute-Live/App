@@ -12,11 +12,13 @@ export const colors = {
 };
 
 export const spacing = {
+  xxs: 4,
   xs: 6,
   sm: 10,
   md: 16,
   lg: 22,
   xl: 30,
+  xxl: 38,
 };
 
 export const radii = {
@@ -32,4 +34,3 @@ export const fonts = {
   extraBold: 'Geist_800ExtraBold',
   black: 'Geist_900Black',
 };
-

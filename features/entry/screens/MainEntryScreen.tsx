@@ -2,7 +2,7 @@ import React, {useEffect, useState} from 'react';
 import {Image, StyleSheet} from 'react-native';
 import {SafeAreaView} from 'react-native-safe-area-context';
 import {useRouter} from 'expo-router';
-import {colors} from '../../../theme';
+import {colors, spacing} from '../../../theme';
 import AuthScreen from '../../auth/screens/AuthScreen';
 import {useAuth} from '../../../state/authProvider';
 
@@ -42,6 +42,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
     alignItems: 'center',
     justifyContent: 'center',
+    paddingHorizontal: spacing.lg,
   },
-  logo: {width: 160, height: 160},
+  logo: {width: 160, height: 160, marginTop: -spacing.sm},
 });

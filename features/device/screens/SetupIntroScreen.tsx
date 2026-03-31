@@ -301,9 +301,9 @@ export default function SetupIntroScreen() {
                 </Text>
               )}
             </Pressable>
-            {connectStatus === 'error' && <Text style={{ color: 'red', marginTop: 8 }}>{errorMsg}</Text>}
+            {connectStatus === 'error' && <Text style={[styles.statusMessage, styles.statusMessageError]}>{errorMsg}</Text>}
             {connectStatus === 'success' && (
-              <Text style={{ color: 'green', marginTop: 8 }}>
+              <Text style={[styles.statusMessage, styles.statusMessageSuccess]}>
                 {needsHomeWifiForLink ? 'Connected to device Wi-Fi.' : 'Connected!'}
               </Text>
             )}
@@ -314,7 +314,7 @@ export default function SetupIntroScreen() {
                   Connect your phone to home Wi-Fi (or cellular), then continue.
                 </Text>
                 <Pressable
-                  style={[styles.secondaryButton, {marginTop: spacing.sm}]}
+                  style={[styles.secondaryButton, styles.pauseActionButton]}
                   disabled={isLinking}
                   onPress={handleRetryLink}>
                   <Text style={styles.secondaryText}>
@@ -324,7 +324,7 @@ export default function SetupIntroScreen() {
               </View>
             ) : null}
             {apiResponse && (
-              <Text style={{ color: colors.textMuted, marginTop: 8, fontSize: 12 }} selectable>
+              <Text style={styles.apiResponseText} selectable>
                 API Response: {apiResponse}
               </Text>
             )}
@@ -347,7 +347,7 @@ export default function SetupIntroScreen() {
 const styles = StyleSheet.create({
   container: {flex: 1, backgroundColor: colors.background},
   body: {flex: 1},
-  content: {padding: spacing.lg, paddingBottom: spacing.xl},
+  content: {padding: spacing.lg, paddingBottom: spacing.xxl, gap: spacing.md},
   heading: {
     color: colors.text,
     fontSize: 20,
@@ -358,7 +358,8 @@ const styles = StyleSheet.create({
   subheading: {
     color: colors.textMuted,
     fontSize: 13,
-    marginBottom: spacing.lg,
+    lineHeight: 19,
+    marginBottom: spacing.md,
     textAlign: 'center',
   },
   card: {
@@ -368,7 +369,7 @@ const styles = StyleSheet.create({
     borderRadius: radii.lg,
     paddingVertical: spacing.sm,
     paddingHorizontal: spacing.md,
-    marginBottom: spacing.sm,
+    gap: spacing.sm,
   },
   row: {flexDirection: 'row', alignItems: 'center', gap: spacing.sm},
   textWrap: {flex: 1},
@@ -407,7 +408,7 @@ const styles = StyleSheet.create({
   portalUrl: {color: colors.textMuted, fontSize: 12, marginTop: 2},
   webView: {height: 380, backgroundColor: colors.surface},
   portalError: {color: colors.warning, fontSize: 12, padding: spacing.md},
-  section: {marginTop: spacing.sm},
+  section: {marginTop: spacing.md, gap: spacing.sm},
   sectionHeaderRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -463,6 +464,7 @@ const styles = StyleSheet.create({
     borderRadius: radii.md,
     padding: spacing.md,
     backgroundColor: colors.card,
+    gap: spacing.xxs,
     marginBottom: spacing.md,
   },
   selectedLabel: {color: colors.textMuted, fontSize: 12},
@@ -482,6 +484,7 @@ const styles = StyleSheet.create({
     borderRadius: radii.md,
     padding: spacing.md,
     backgroundColor: colors.card,
+    gap: spacing.xs,
     marginBottom: spacing.md,
   },
   deviceIdLabel: {color: colors.textMuted, fontSize: 12, fontWeight: '700'},
@@ -511,9 +514,15 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
     padding: spacing.md,
     marginTop: spacing.sm,
+    gap: spacing.xs,
   },
   pauseTitle: {color: colors.text, fontSize: 13, fontWeight: '800'},
-  pauseText: {color: colors.textMuted, fontSize: 12, marginTop: 4},
+  pauseText: {color: colors.textMuted, fontSize: 12, lineHeight: 18},
+  pauseActionButton: {marginTop: spacing.xs},
+  statusMessage: {fontSize: 12, marginTop: spacing.xs},
+  statusMessageError: {color: '#FCA5A5'},
+  statusMessageSuccess: {color: colors.success},
+  apiResponseText: {color: colors.textMuted, marginTop: spacing.xs, fontSize: 12},
   pressed: {opacity: 0.85},
   footer: {
     paddingHorizontal: spacing.lg,

@@ -70,12 +70,15 @@ export default function RegisterDeviceScreen() {
     <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
       <ScreenHeader title="Connect your device" />
       <View style={styles.content}>
-        <Image source={require('../../../app-logo.png')} style={styles.logo} resizeMode="contain" />
-
-        <Text style={styles.title}>Connect your device</Text>
-        <Text style={styles.subtitle}>
-          Power on the device, connect to its Wi‑Fi, then register it below.
-        </Text>
+        <View style={styles.heroSection}>
+          <Image source={require('../../../app-logo.png')} style={styles.logo} resizeMode="contain" />
+          <View style={styles.heroCopy}>
+            <Text style={styles.title}>Connect your device</Text>
+            <Text style={styles.subtitle}>
+              Power on the device, connect to its Wi‑Fi, then register it below.
+            </Text>
+          </View>
+        </View>
 
         <View style={styles.card}>
           <View style={styles.stepRow}>
@@ -128,27 +131,29 @@ export default function RegisterDeviceScreen() {
           </Text>
         </View>
 
-        <Pressable
-          style={[
-            styles.primaryButton,
-            status !== 'connected' && styles.primaryButtonDisabled,
-          ]}
-          disabled={status !== 'connected'}
-          onPress={() => router.push('/setup-intro')}
-        >
-          <Text
+        <View style={styles.actionGroup}>
+          <Pressable
             style={[
-              styles.primaryText,
-              status !== 'connected' && styles.primaryTextDisabled,
+              styles.primaryButton,
+              status !== 'connected' && styles.primaryButtonDisabled,
             ]}
+            disabled={status !== 'connected'}
+            onPress={() => router.push('/setup-intro')}
           >
-            Register your device
-          </Text>
-        </Pressable>
+            <Text
+              style={[
+                styles.primaryText,
+                status !== 'connected' && styles.primaryTextDisabled,
+              ]}
+            >
+              Register your device
+            </Text>
+          </Pressable>
 
-        <Pressable style={styles.secondaryButton} onPress={() => router.back()}>
-          <Text style={styles.secondaryText}>Back</Text>
-        </Pressable>
+          <Pressable style={styles.secondaryButton} onPress={() => router.back()}>
+            <Text style={styles.secondaryText}>Back</Text>
+          </Pressable>
+        </View>
       </View>
     </SafeAreaView>
   );
@@ -156,15 +161,17 @@ export default function RegisterDeviceScreen() {
 
 const styles = StyleSheet.create({
   container: {flex: 1, backgroundColor: colors.background},
-  content: {flex: 1, padding: spacing.lg, alignItems: 'center'},
-  logo: {width: 210, height: 210, marginTop: spacing.sm, marginBottom: spacing.xs},
+  content: {flex: 1, padding: spacing.lg, alignItems: 'stretch', gap: spacing.lg},
+  heroSection: {alignItems: 'center', gap: spacing.sm},
+  heroCopy: {alignItems: 'center', gap: spacing.xs},
+  logo: {width: 196, height: 196, marginTop: spacing.xs},
   title: {color: colors.text, fontSize: 22, fontWeight: '800', textAlign: 'center'},
   subtitle: {
     color: colors.textMuted,
     fontSize: 13,
     textAlign: 'center',
-    marginTop: spacing.xs,
-    marginBottom: spacing.lg,
+    lineHeight: 19,
+    maxWidth: 280,
   },
   card: {
     width: '100%',
@@ -172,8 +179,8 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     borderWidth: 1,
     borderRadius: radii.lg,
-    padding: spacing.md,
-    marginBottom: spacing.lg,
+    padding: spacing.lg,
+    gap: spacing.md,
   },
   statusCard: {
     width: '100%',
@@ -181,8 +188,8 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     borderWidth: 1,
     borderRadius: radii.lg,
-    padding: spacing.md,
-    marginBottom: spacing.md,
+    padding: spacing.lg,
+    gap: spacing.sm,
   },
   statusCardConnected: {borderColor: colors.accent},
   statusHeader: {flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center'},
@@ -196,9 +203,8 @@ const styles = StyleSheet.create({
   statusDotChecking: {backgroundColor: colors.textMuted},
   stepRow: {
     flexDirection: 'row',
-    gap: spacing.sm,
-    alignItems: 'center',
-    marginBottom: spacing.sm,
+    gap: spacing.md,
+    alignItems: 'flex-start',
   },
   stepIndex: {
     width: 28,
@@ -210,9 +216,10 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
   },
   stepIndexText: {color: colors.text, fontWeight: '700', fontSize: 12},
-  stepTextWrap: {flex: 1, alignItems: 'flex-start'},
+  stepTextWrap: {flex: 1, alignItems: 'flex-start', gap: spacing.xxs},
   stepTitle: {color: colors.text, fontWeight: '700'},
-  stepSubtitle: {color: colors.textMuted, fontSize: 12, marginTop: 2},
+  stepSubtitle: {color: colors.textMuted, fontSize: 12, lineHeight: 17},
+  actionGroup: {gap: spacing.sm},
   primaryButton: {
     backgroundColor: colors.accent,
     paddingVertical: spacing.md,
@@ -230,7 +237,6 @@ const styles = StyleSheet.create({
     borderRadius: radii.md,
     alignItems: 'center',
     width: '100%',
-    marginTop: spacing.sm,
   },
   secondaryText: {color: colors.textMuted, fontWeight: '700', fontSize: 14},
 });

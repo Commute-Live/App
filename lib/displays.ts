@@ -86,6 +86,7 @@ export const PROVIDER_TO_CITY: Record<string, CityId> = {
   'mta-subway': 'new-york',
   'mta-bus': 'new-york',
   'mta-lirr': 'new-york',
+  'mta-mnr': 'new-york',
   'mbta': 'boston',
   'cta-subway': 'chicago',
   'cta-bus': 'chicago',
@@ -209,6 +210,24 @@ const buildPreviewEtaList = (firstMinutes: number, count: number) => {
     current += idx % 2 === 0 ? 2 : 3;
   }
   return times.join(', ');
+};
+
+const MTA_MNR_LINE_LABELS: Record<string, string> = {
+  '1': 'Hudson',
+  '2': 'Harlem',
+  '3': 'New Haven',
+  '4': 'New Canaan',
+  '5': 'Danbury',
+  '6': 'Waterbury',
+};
+
+const resolvePreviewRouteLabel = (provider: string | undefined, rawLineId: string) => {
+  const lineId = rawLineId.trim();
+  if (!lineId) return '--';
+  if ((provider ?? '').trim().toLowerCase() === 'mta-mnr') {
+    return MTA_MNR_LINE_LABELS[lineId.toUpperCase()] ?? MTA_MNR_LINE_LABELS[lineId] ?? lineId;
+  }
+  return lineId.toUpperCase().slice(0, 4);
 };
 
 export const buildPreviewLineKey = (line: Pick<LineConfig, 'provider' | 'line' | 'stop' | 'direction'>) => {
@@ -408,7 +427,10 @@ export const toPreviewSlots = (
     const city = PROVIDER_TO_CITY[line.provider ?? ''] ?? null;
     const lineColors = city ? (CITY_LINE_COLORS[city] ?? {}) : {};
     const lineId = (line.line ?? '').toUpperCase();
-    const {color, textColor: lineTextColor} = lineColors[lineId] ?? hashLineColor(lineId);
+    const {color, textColor: lineTextColor} =
+      line.provider === 'mta-bus'
+        ? {color: '#0039A6', textColor: '#FFFFFF'}
+        : lineColors[lineId] ?? hashLineColor(lineId);
     const directionLabel = resolvePreviewDirectionLabel(line.direction);
     const destinationLabel = stopNames[`${line.provider}:${line.stop}`] || line.stop || 'Select stop';
     const displayType = Number.isFinite(Number(line.displayType))
@@ -442,7 +464,7 @@ export const toPreviewSlots = (
     const badgeShape: PreviewSlot['badgeShape'] =
       city === 'new-york' && line.provider === 'mta-bus'
         ? 'pill'
-        : line.provider === 'mta-lirr' || line.provider === 'mbta'
+        : line.provider === 'mta-lirr' || line.provider === 'mta-mnr' || line.provider === 'mbta'
           ? 'rail'
           : 'circle';
 
@@ -450,7 +472,7 @@ export const toPreviewSlots = (
       id: `${display.displayId}-${index}`,
       color,
       textColor: line.textColor || lineTextColor,
-      routeLabel: lineId.slice(0, 4) || '--',
+      routeLabel: resolvePreviewRouteLabel(line.provider, line.line ?? ''),
       badgeShape,
       selected: false,
       stopName: previewTitle,

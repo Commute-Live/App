@@ -54,13 +54,15 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
     borderTopWidth: 1,
     borderTopColor: colors.border,
-    paddingTop: spacing.md,
+    paddingTop: spacing.sm,
+    paddingHorizontal: spacing.sm,
   },
   item: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 4,
+    gap: spacing.xxs,
+    minHeight: 52,
     paddingVertical: spacing.xs,
   },
   indicator: {
@@ -78,7 +80,7 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     fontSize: 11,
     fontWeight: '700',
-    letterSpacing: 0.3,
+    letterSpacing: 0.2,
   },
   labelActive: {
     color: colors.accent,

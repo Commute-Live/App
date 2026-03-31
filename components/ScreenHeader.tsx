@@ -21,12 +21,13 @@ const styles = StyleSheet.create({
   container: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: spacing.md,
+    minHeight: 48,
+    paddingVertical: spacing.sm,
   },
   back: {
-    paddingHorizontal: spacing.sm,
+    paddingHorizontal: spacing.xs,
     paddingVertical: spacing.xs,
   },
   title: {flex: 1, textAlign: 'center', color: colors.text, fontSize: 17, fontWeight: '700'},
-  spacer: {width: 32},
+  spacer: {width: 36},
 });

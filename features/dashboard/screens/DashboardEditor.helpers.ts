@@ -3,7 +3,7 @@ import {CITY_LINE_COLORS, FALLBACK_ROUTE_COLORS} from '../../../lib/lineColors';
 import {getGlobalTransitLines, getTransitArrivals, getTransitLines, getTransitStations, getTransitStopsForLine} from '../../../lib/transitApi';
 import type {DisplayContent, DisplayFormat, TransitArrival, TransitUiMode} from '../../../types/transit';
 
-type ModeId = 'train' | 'bus' | 'trolley' | 'lirr' | 'commuter-rail' | 'ferry';
+type ModeId = 'train' | 'bus' | 'trolley' | 'lirr' | 'mnr' | 'commuter-rail' | 'ferry';
 type Direction = 'uptown' | 'downtown';
 type Station = {id: string; name: string; area: string; lines: string[]};
 type Route = {id: string; label: string; color: string; textColor?: string};
@@ -32,10 +32,10 @@ const DEFAULT_NEXT_STOPS = 3;
 const MIN_NEXT_STOPS = 1;
 const MAX_NEXT_STOPS = 5;
 const TIME_OPTIONS = ['00:00', '05:00', '06:00', '07:00', '08:00', '09:00', '10:00', '17:00', '18:00', '20:00', '22:00', '23:00'];
-const MODE_ORDER: ModeId[] = ['train', 'bus', 'trolley', 'lirr', 'commuter-rail', 'ferry'];
+const MODE_ORDER: ModeId[] = ['train', 'bus', 'trolley', 'lirr', 'mnr', 'commuter-rail', 'ferry'];
 const LIVE_SUPPORTED_CITIES: CityId[] = ['new-york', 'philadelphia', 'boston', 'chicago'];
 const CITY_MODE_ORDER: Record<CityId, ModeId[]> = {
-  'new-york': ['train', 'bus', 'lirr'],
+  'new-york': ['train', 'bus', 'lirr', 'mnr'],
   philadelphia: ['train', 'trolley', 'bus'],
   boston: ['train', 'bus', 'commuter-rail', 'ferry'],
   chicago: ['train', 'bus'],
@@ -45,6 +45,7 @@ export function resolveBackendProvider(c: CityId, mode: ModeId): string {
   if (c === 'new-york') {
     if (mode === 'bus') return 'mta-bus';
     if (mode === 'lirr') return 'mta-lirr';
+    if (mode === 'mnr') return 'mta-mnr';
     return 'mta-subway';
   }
   if (c === 'philadelphia') {
@@ -64,6 +65,7 @@ export function cityModeFromProvider(provider: string): {city: CityId; mode: Mod
     'mta-subway': {city: 'new-york', mode: 'train'},
     'mta-bus': {city: 'new-york', mode: 'bus'},
     'mta-lirr': {city: 'new-york', mode: 'lirr'},
+    'mta-mnr': {city: 'new-york', mode: 'mnr'},
     'septa-rail': {city: 'philadelphia', mode: 'train'},
     'septa-bus': {city: 'philadelphia', mode: 'bus'},
     'septa-trolley': {city: 'philadelphia', mode: 'trolley'},
@@ -93,6 +95,7 @@ export function getModeLabel(city: CityId, mode: ModeId) {
   if (mode === 'trolley') return 'Trolley';
   if (mode === 'ferry') return 'Ferry';
   if (mode === 'lirr') return 'LIRR';
+  if (mode === 'mnr') return 'Metro-North';
   if (mode === 'commuter-rail') return 'Commuter Rail';
   return 'Commuter Rail';
 }
@@ -879,4 +882,3 @@ export function buildNextArrivalTimes(firstMinutes: number, count: number): stri
   }
   return times;
 }
-

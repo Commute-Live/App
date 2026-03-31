@@ -147,7 +147,7 @@ async function fetchLiveStations(city: CityId, query: string): Promise<StationSe
 }
 
 function getModesForCity(city: CityId): TransitUiMode[] {
-  if (city === 'new-york') return ['train', 'bus', 'lirr'];
+  if (city === 'new-york') return ['train', 'bus', 'lirr', 'mnr'];
   if (city === 'philadelphia') return ['train', 'bus', 'trolley'];
   if (city === 'boston') return ['train', 'bus', 'commuter-rail', 'ferry'];
   if (city === 'chicago') return ['train', 'bus'];
@@ -161,9 +161,9 @@ function normalizeStation(row: {id: string; name: string; area: string | null}):
 
 const styles = StyleSheet.create({
   container: {flex: 1, backgroundColor: colors.background},
-  content: {padding: spacing.lg},
-  section: {marginBottom: spacing.lg},
-  label: {color: colors.textMuted, fontSize: 13, marginBottom: spacing.sm},
+  content: {padding: spacing.lg, paddingBottom: spacing.xxl, gap: spacing.lg},
+  section: {gap: spacing.sm},
+  label: {color: colors.textMuted, fontSize: 13},
   value: {color: colors.text, fontSize: 15, fontWeight: '600'},
   selectedRow: {
     backgroundColor: colors.card,
@@ -173,7 +173,7 @@ const styles = StyleSheet.create({
     padding: spacing.md,
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: spacing.sm,
+    gap: spacing.sm,
   },
   selectedText: {color: colors.text, flex: 1, fontWeight: '700'},
   removeBtn: {paddingHorizontal: spacing.sm, paddingVertical: spacing.xs},
@@ -186,7 +186,6 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     padding: spacing.md,
     color: colors.text,
-    marginBottom: spacing.sm,
   },
   unsupportedCard: {
     borderRadius: radii.md,
@@ -203,12 +202,11 @@ const styles = StyleSheet.create({
     padding: spacing.md,
     borderWidth: 1,
     borderColor: colors.border,
-    marginBottom: spacing.sm,
     gap: spacing.sm,
   },
-  resultTextWrap: {flex: 1},
+  resultTextWrap: {flex: 1, gap: spacing.xxs},
   resultText: {color: colors.text, fontWeight: '700'},
-  resultMeta: {color: colors.textMuted, fontSize: 12, marginTop: 2},
+  resultMeta: {color: colors.textMuted, fontSize: 12},
   addText: {color: colors.accent, fontWeight: '700'},
   errorText: {color: '#FCA5A5', fontSize: 13},
 });

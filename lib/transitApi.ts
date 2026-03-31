@@ -366,6 +366,7 @@ const PROVIDER_TO_TRANSIT_CONTEXT: Record<string, {provider: string; mode: strin
   'mta-subway':    {provider: 'mta',   mode: 'subway'},
   'mta-bus':       {provider: 'mta',   mode: 'bus'},
   'mta-lirr':      {provider: 'mta',   mode: 'lirr'},
+  'mta-mnr':       {provider: 'mta',   mode: 'mnr'},
   'septa-rail':    {provider: 'septa', mode: 'rail'},
   'septa-bus':     {provider: 'septa', mode: 'bus'},
   'septa-trolley': {provider: 'septa', mode: 'trolley'},
