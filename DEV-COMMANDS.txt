@@ -1,30 +1,11 @@
-== MAC DEV 1 & 2 ==
+npx expo start
+npx expo run:ios
 
-One-time setup:
-  eas build --profile staging --platform ios
-
-Daily:
-  npx expo start
-
-
-== WINDOWS DEV (iPhone) ==
-
-One-time setup (Mac dev runs this, shares install link with Windows dev):
-  eas build --profile staging --platform ios
-
-Daily:
-  git pull
-  npx expo start
-  Scan QR code with iPhone
+Staging: (update will only work if there are minor js changes)
+- New staging TestFlight build: npm run build:staging:ios
+- OTA JS update to staging: npm run update:staging -- --message "your message"
 
 
-== TESTFLIGHT & APP STORE ==
-
-  eas build --profile production --platform ios
-  eas submit --platform ios
-
-
-== GOOGLE PLAY ==
-
-  eas build --profile production --platform android
-  eas submit --platform android
+Production:
+- New production App Store build: npm run build:production:ios
+- OTA JS update to production: npm run update:production -- --message "your message"
