@@ -150,9 +150,21 @@ const getDisplayProviders = (display: DeviceDisplay) =>
   );
 
 const getReorderLineBadgeColors = (display: DeviceDisplay, label: string) => {
-  const city = providerToCity(display.config.lines?.[0]?.provider ?? null);
+  const matchedLine = (display.config.lines ?? []).find(
+    l => typeof l.line === 'string' && l.line.trim().toUpperCase() === label,
+  );
+  const provider = matchedLine?.provider ?? display.config.lines?.[0]?.provider ?? null;
+  const city = providerToCity(provider);
   const lineColors = city ? (CITY_LINE_COLORS[city] ?? {}) : {};
   return lineColors[label] ?? hashLineColor(label);
+};
+
+const isReorderLineBus = (display: DeviceDisplay, label: string) => {
+  const matchedLine = (display.config.lines ?? []).find(
+    l => typeof l.line === 'string' && l.line.trim().toUpperCase() === label,
+  );
+  const provider = matchedLine?.provider ?? display.config.lines?.[0]?.provider ?? '';
+  return provider === 'mta-bus';
 };
 
 const sortDisplaysForCarousel = (items: DeviceDisplay[], activeDisplayId: string | null) =>
@@ -1133,17 +1145,19 @@ function ReorderListRow({
           {lineLabels.length > 0 ? (
             lineLabels.map(label => {
               const badgeColors = getReorderLineBadgeColors(display, label);
+              const isBus = isReorderLineBus(display, label);
               return (
                 <View
                   key={`${display.displayId}-${label}`}
                   style={[
                     styles.reorderLineBadge,
+                    isBus && styles.reorderLineBadgeBusPill,
                     {
                       backgroundColor: badgeColors.color,
                       borderColor: badgeColors.color,
                     },
                   ]}>
-                  <Text style={[styles.reorderLineBadgeText, {color: badgeColors.textColor}]}>{label}</Text>
+                  <Text style={[styles.reorderLineBadgeText, isBus && styles.reorderLineBadgeBusText, {color: badgeColors.textColor}]}>{label}</Text>
                 </View>
               );
             })
@@ -1688,10 +1702,20 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
   },
+  reorderLineBadgeBusPill: {
+    height: 22,
+    borderRadius: 7,
+    minWidth: 38,
+    paddingHorizontal: 5,
+  },
   reorderLineBadgeText: {
     color: colors.text,
     fontSize: 11,
     fontWeight: '800',
+  },
+  reorderLineBadgeBusText: {
+    fontSize: 10,
+    lineHeight: 13,
   },
   reorderLineBadgeMuted: {
     minWidth: 30,
