@@ -28,9 +28,9 @@ export const radii = {
 };
 
 export const fonts = {
-  sans: 'Geist_400Regular',
-  semiBold: 'Geist_600SemiBold',
-  bold: 'Geist_700Bold',
-  extraBold: 'Geist_800ExtraBold',
-  black: 'Geist_900Black',
+  sans: 'Inter_400Regular',
+  medium: 'Inter_500Medium',
+  semiBold: 'Inter_600SemiBold',
+  bold: 'Inter_700Bold',
+  extraBold: 'Inter_700Bold',
 };

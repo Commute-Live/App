@@ -619,7 +619,6 @@ export default function PresetsScreen() {
                       },
                     )}
                     displayType={currentDisplay.config.displayType ?? Number(currentDisplay.config.lines?.[0]?.displayType) ?? 1}
-                    ledTypography
                     onSelectSlot={() =>
                       router.push({
                         pathname: '/preset-editor',

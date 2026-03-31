@@ -145,7 +145,6 @@ const styles = StyleSheet.create({
     lineHeight: 19,
     textAlign: 'center',
     maxWidth: 260,
-    fontFamily: 'Geist_400Regular',
   },
   actionsCard: {
     borderRadius: radii.lg,

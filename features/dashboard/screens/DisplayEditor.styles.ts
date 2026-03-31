@@ -1529,8 +1529,7 @@ export const styles = StyleSheet.create({
   mockBadgeText: {
     color: '#fff',
     fontSize: 10,
-    fontFamily: 'LedPreviewMono',
-    letterSpacing: -0.2,
+    fontWeight: '900',
   },
   mockBadgeTextCompact: {
     fontSize: 8,
@@ -1566,7 +1565,7 @@ export const styles = StyleSheet.create({
   mockMiniTagText: {
     color: '#E5C15A',
     fontSize: 8,
-    fontFamily: 'LedPreviewMono',
+    fontWeight: '800',
     letterSpacing: 0.2,
   },
   mockMiniTags: {
@@ -1575,10 +1574,9 @@ export const styles = StyleSheet.create({
   },
   mockText: {
     fontSize: 10,
-    fontFamily: 'LedPreviewMono',
+    fontWeight: '700',
     color: '#C8D8E4',
     flexShrink: 1,
-    letterSpacing: -0.15,
   },
   mockFlex: {
     flex: 1,
@@ -1586,12 +1584,11 @@ export const styles = StyleSheet.create({
   },
   mockTimeText: {
     fontSize: 12,
-    fontFamily: 'LedPreviewMono',
+    fontWeight: '800',
     color: '#22C55E',
     flexShrink: 0,
     minWidth: 22,
     textAlign: 'right',
-    letterSpacing: -0.2,
   },
   mockTags: {
     flexDirection: 'row',

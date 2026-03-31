@@ -1407,7 +1407,6 @@ export default function DisplayEditorScreen() {
             onDragStateChange={setPreviewDragging}
             showHint={false}
             mini={layoutSlots === 1}
-            ledTypography
           />
         </Animated.View>
 

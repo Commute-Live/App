@@ -25,7 +25,6 @@ type Props = {
   showHint?: boolean;
   brightness?: number;
   mini?: boolean;
-  ledTypography?: boolean;
 };
 
 export default function Display3DPreview({
@@ -37,7 +36,6 @@ export default function Display3DPreview({
   showHint = true,
   brightness = 100,
   mini = false,
-  ledTypography = false,
 }: Props) {
   const compact = slots.length > 1 || displayType >= 3;
   const safeBrightness = Math.max(0, Math.min(100, brightness));
@@ -120,7 +118,6 @@ export default function Display3DPreview({
                 <Text
                   style={[
                     styles.routeBadgeText,
-                    ledTypography && styles.routeBadgeTextLed,
                     compact && styles.routeBadgeTextCompact,
                     slot.badgeShape === 'rail' && styles.routeBadgeTextRail,
                     compact && slot.badgeShape === 'rail' && styles.routeBadgeTextRailCompact,
@@ -131,7 +128,12 @@ export default function Display3DPreview({
               </View>
               <View style={styles.slotBody}>
                 {slot.stopName ? (
-                  <Text style={[styles.slotTitle, ledTypography && styles.slotTitleLed, compact && styles.slotTitleCompact]} numberOfLines={1}>
+                  <Text
+                    style={[
+                      styles.slotTitle,
+                      compact && styles.slotTitleCompact,
+                    ]}
+                    numberOfLines={1}>
                     {slot.stopName}
                   </Text>
                 ) : (
@@ -141,7 +143,6 @@ export default function Display3DPreview({
                   <Text
                     style={[
                       styles.slotSubLine,
-                      ledTypography && styles.slotSubLineLed,
                       compact && styles.slotSubLineCompact,
                       slot.subLineColor ? {color: slot.subLineColor} : null,
                     ]}
@@ -153,7 +154,6 @@ export default function Display3DPreview({
               <Text
                 style={[
                   styles.slotTimes,
-                  ledTypography && styles.slotTimesLed,
                   compact && styles.slotTimesCompact,
                   slot.timesColor ? {color: slot.timesColor} : null,
                 ]}
@@ -285,13 +285,11 @@ const styles = StyleSheet.create({
   routeBadgeRail: {width: 58, height: 48, borderRadius: 12, paddingHorizontal: 5},
   routeBadgeRailCompact: {width: 40, height: 30, borderRadius: 8, paddingHorizontal: 3},
   routeBadgeText: {fontSize: 20, fontWeight: '900'},
-  routeBadgeTextLed: {fontFamily: 'LedPreviewMono', letterSpacing: -0.4},
   routeBadgeTextCompact: {fontSize: 13},
   routeBadgeTextRail: {fontSize: 12, lineHeight: 14, textAlign: 'center', includeFontPadding: false},
   routeBadgeTextRailCompact: {fontSize: 9, lineHeight: 10},
   slotBody: {flex: 1, paddingLeft: 2},
   slotTitle: {color: '#E4EDF6', fontSize: 20, fontWeight: '800'},
-  slotTitleLed: {fontFamily: 'LedPreviewMono', letterSpacing: -0.4},
   slotTitleCompact: {fontSize: 15},
   slotTitlePlaceholder: {
     height: 16,
@@ -307,10 +305,8 @@ const styles = StyleSheet.create({
     marginVertical: 2,
   },
   slotSubLine: {color: '#8B9EAD', fontSize: 12, marginTop: 1},
-  slotSubLineLed: {fontFamily: 'LedPreviewMono'},
   slotSubLineCompact: {fontSize: 11},
   slotTimes: {color: '#D7E3EF', fontSize: 18, fontWeight: '700', minWidth: 60, textAlign: 'right'},
-  slotTimesLed: {fontFamily: 'LedPreviewMono', letterSpacing: -0.3},
   slotTimesCompact: {fontSize: 14, minWidth: 48},
   brightnessOverlay: {
     ...StyleSheet.absoluteFillObject,

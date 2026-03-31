@@ -1,24 +1,22 @@
-import '../lib/fontPatch'; // MUST be first — patches StyleSheet.create before expo-router loads routes
 import React, {useEffect} from 'react';
 import {Stack, useRouter} from 'expo-router';
 import {StatusBar} from 'expo-status-bar';
 import {SafeAreaProvider} from 'react-native-safe-area-context';
 import {QueryClientProvider} from '@tanstack/react-query';
 import {
+  Inter_400Regular,
+  Inter_500Medium,
+  Inter_600SemiBold,
+  Inter_700Bold,
   useFonts,
-  Geist_400Regular,
-  Geist_500Medium,
-  Geist_600SemiBold,
-  Geist_700Bold,
-  Geist_800ExtraBold,
-  Geist_900Black,
-} from '@expo-google-fonts/geist';
+} from '@expo-google-fonts/inter';
 import {GoogleSignin} from '../lib/googleSignIn';
 import {AppStateProvider} from '../state/appState';
 import {colors} from '../theme';
 import {setSessionInvalidHandler} from '../lib/api';
 import {queryClient} from '../lib/queryClient';
 import {AuthProvider, useAuth} from '../state/authProvider';
+import '../lib/fontPatch';
 import 'react-native-reanimated';
 
 GoogleSignin.configure({
@@ -76,16 +74,15 @@ function AppNavigator() {
 
 export default function RootLayout() {
   const [fontsLoaded] = useFonts({
-    Geist_400Regular,
-    Geist_500Medium,
-    Geist_600SemiBold,
-    Geist_700Bold,
-    Geist_800ExtraBold,
-    Geist_900Black,
-    LedPreviewMono: require('../assets/fonts/SpaceMono-Regular.ttf'),
+    Inter_400Regular,
+    Inter_500Medium,
+    Inter_600SemiBold,
+    Inter_700Bold,
   });
 
-  if (!fontsLoaded) return null;
+  if (!fontsLoaded) {
+    return null;
+  }
 
   return (
     <QueryClientProvider client={queryClient}>

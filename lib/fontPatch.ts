@@ -1,19 +1,41 @@
 import {StyleSheet} from 'react-native';
 
-// Patch StyleSheet.create to inject Geist as the default font.
-// This file MUST be imported before expo-router (which eagerly loads all
-// route files and their StyleSheet.create calls).
-const FONT = 'Geist_400Regular';
-const _origCreate = StyleSheet.create.bind(StyleSheet);
-(StyleSheet as any).create = function <T extends Record<string, any>>(styles: T): T {
-  const patched: any = {};
-  for (const key of Object.keys(styles)) {
-    const val = styles[key];
-    if (val && typeof val === 'object' && !Array.isArray(val)) {
-      patched[key] = val.fontFamily ? val : {fontFamily: FONT, ...val};
-    } else {
-      patched[key] = val;
-    }
+const FONT_FAMILY = 'Inter_400Regular';
+
+const shouldPatchTextStyle = (style: unknown) => {
+  if (!style || Array.isArray(style) || typeof style !== 'object') {
+    return false;
   }
-  return _origCreate(patched);
+
+  const textStyle = style as {fontFamily?: string; fontSize?: number; lineHeight?: number};
+  return (
+    !textStyle.fontFamily &&
+    typeof textStyle.fontSize === 'number' &&
+    textStyle.fontSize >= 11 &&
+    textStyle.lineHeight !== 0
+  );
+};
+
+const patchStyleValue = (value: unknown): unknown => {
+  if (Array.isArray(value)) {
+    return value.map(patchStyleValue);
+  }
+
+  if (!shouldPatchTextStyle(value)) {
+    return value;
+  }
+
+  return {
+    ...(value as object),
+    fontFamily: FONT_FAMILY,
+  };
+};
+
+const originalCreate = StyleSheet.create;
+
+StyleSheet.create = function patchedCreate<T extends StyleSheet.NamedStyles<T> | StyleSheet.NamedStyles<any>>(
+  styles: T,
+): T {
+  const patchedEntries = Object.entries(styles).map(([key, value]) => [key, patchStyleValue(value)]);
+  return originalCreate(Object.fromEntries(patchedEntries) as T);
 };
