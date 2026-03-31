@@ -44,8 +44,10 @@
       "output": "static",
       "favicon": "./assets/images/favicon.png"
     },
+    "runtimeVersion": "1.0.0",
     "updates": {
-      "enabled": false
+      "enabled": true,
+      "url": "https://u.expo.dev/9629e945-ce7d-42a8-b1e8-661b9565ce17"
     },
     "plugins": [
       "expo-router",
