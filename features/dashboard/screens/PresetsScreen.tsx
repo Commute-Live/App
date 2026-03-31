@@ -1,9 +1,11 @@
 import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react';
-import {Alert, Image, PanResponder, Pressable, ScrollView, StyleSheet, Text, View} from 'react-native';
+import {Alert, Image, Modal, PanResponder, Pressable, ScrollView, StyleSheet, Text, View} from 'react-native';
+import Animated, {useSharedValue, useAnimatedStyle, withSpring} from 'react-native-reanimated';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
 import {Ionicons} from '@expo/vector-icons';
 import {useRouter} from 'expo-router';
 import {useFocusEffect} from 'expo-router';
+import {useLocalSearchParams} from 'expo-router';
 import {useMutation, useQueries, useQuery, useQueryClient} from '@tanstack/react-query';
 import {colors, radii, spacing} from '../../../theme';
 import {BottomNav, type BottomNavItem} from '../../../components/BottomNav';
@@ -22,6 +24,7 @@ import {
   deleteDisplay,
   DISPLAY_WEEKDAYS,
   fetchDisplays,
+  getLiveArrivalLookup,
   providerToCity,
   toPreviewSlots,
   toDisplayScheduleText,
@@ -30,6 +33,7 @@ import {
   type DisplaySavePayload,
   type DeviceDisplay,
 } from '../../../lib/displays';
+import {CITY_LINE_COLORS, hashLineColor} from '../../../lib/lineColors';
 import {getTransitStationName} from '../../../lib/transitApi';
 import {queryKeys} from '../../../lib/queryKeys';
 import {cycleTimeOption} from './DashboardOverview.time';
@@ -38,6 +42,7 @@ const stopNameCache: Record<string, string> = {};
 const MIN_BRIGHTNESS = 10;
 const MAX_BRIGHTNESS = 100;
 const BRIGHTNESS_COMMIT_DELAY_MS = 2000;
+const REORDER_ROW_HEIGHT = 76;
 const DAY_OPTIONS: Array<{id: DisplayWeekday; label: string}> = [
   {id: 'sun', label: 'S'},
   {id: 'mon', label: 'M'},
@@ -53,6 +58,13 @@ type ScheduleDraft = {
   start: string;
   end: string;
   days: DisplayWeekday[];
+};
+
+type ReorderDragState = {
+  id: string;
+  startIndex: number;
+  currentIndex: number;
+  dy: number;
 };
 
 const formatScheduleSummary = (display: DeviceDisplay) => {
@@ -109,16 +121,64 @@ const buildDisplayPayload = (
   };
 };
 
+const moveItem = <T,>(items: T[], fromIndex: number, toIndex: number) => {
+  if (fromIndex === toIndex) return items;
+  const next = [...items];
+  const [moved] = next.splice(fromIndex, 1);
+  next.splice(toIndex, 0, moved);
+  return next;
+};
+
+const clampIndex = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
+
+const getDisplayLineLabels = (display: DeviceDisplay) =>
+  Array.from(
+    new Set(
+      (display.config.lines ?? [])
+        .map(line => (typeof line.line === 'string' ? line.line.trim().toUpperCase() : ''))
+        .filter(Boolean),
+    ),
+  ).slice(0, 3);
+
+const getDisplayProviders = (display: DeviceDisplay) =>
+  Array.from(
+    new Set(
+      (display.config.lines ?? [])
+        .map(line => (typeof line.provider === 'string' ? line.provider.trim() : ''))
+        .filter(Boolean),
+    ),
+  );
+
+const getReorderLineBadgeColors = (display: DeviceDisplay, label: string) => {
+  const city = providerToCity(display.config.lines?.[0]?.provider ?? null);
+  const lineColors = city ? (CITY_LINE_COLORS[city] ?? {}) : {};
+  return lineColors[label] ?? hashLineColor(label);
+};
+
+const sortDisplaysForCarousel = (items: DeviceDisplay[], activeDisplayId: string | null) =>
+  [...items].sort((a, b) => {
+    if (a.displayId === activeDisplayId) return -1;
+    if (b.displayId === activeDisplayId) return 1;
+    if (a.sortOrder !== b.sortOrder) return a.sortOrder - b.sortOrder;
+    return a.name.localeCompare(b.name);
+  });
+
 export default function PresetsScreen() {
   const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
   const router = useRouter();
+  const params = useLocalSearchParams<{focusDisplayId?: string}>();
   const {state: appState} = useAppState();
   const {deviceId, status, user} = useAuth();
   const selectedCity = appState.selectedCity;
   const [carouselIndex, setCarouselIndex] = useState(0);
   const [brightnessOverrides, setBrightnessOverrides] = useState<Record<string, number>>({});
   const [scheduleOverrides, setScheduleOverrides] = useState<Record<string, ScheduleDraft>>({});
+  const [isScreenFocused, setIsScreenFocused] = useState(false);
+  const [reorderVisible, setReorderVisible] = useState(false);
+  const [pendingFocusDisplayId, setPendingFocusDisplayId] = useState<string | null>(
+    typeof params.focusDisplayId === 'string' ? params.focusDisplayId : null,
+  );
   const brightnessCommitTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
 
@@ -136,6 +196,27 @@ export default function PresetsScreen() {
   const activeDisplayId = displaysQuery.data?.activeDisplayId ?? null;
   const loading = displaysQuery.isPending;
   const errorText = displaysQuery.error instanceof Error ? displaysQuery.error.message : '';
+
+  const lastCommandQuery = useQuery({
+    queryKey: queryKeys.lastCommand(deviceId || 'none'),
+    queryFn: async () => {
+      if (!deviceId) return null;
+      const response = await apiFetch(`/device/${deviceId}/last-command`);
+      const data = await response.json().catch(() => null);
+      if (!response.ok) return null;
+      const event = data?.event;
+      if (!event) return null;
+      return event.payload ?? null;
+    },
+    enabled: isScreenFocused && !!deviceId && status === 'authenticated',
+    refetchInterval: 5000,
+    retry: false,
+    refetchOnWindowFocus: false,
+  });
+  const liveArrivalLookup = useMemo(
+    () => getLiveArrivalLookup(lastCommandQuery.data ?? null),
+    [lastCommandQuery.data],
+  );
 
   const stopPairs = useMemo(() => {
     const pairs: {key: string; provider: string; stop: string}[] = [];
@@ -186,9 +267,21 @@ export default function PresetsScreen() {
       });
       await apiFetch(`/refresh/device/${deviceId}`, {method: 'POST'});
     },
-    onSuccess: () => {
+    onSuccess: (_data, display) => {
       if (!deviceId) return;
+      queryClient.setQueryData(
+        queryKeys.displays(deviceId),
+        (current: {displays: DeviceDisplay[]; activeDisplayId: string | null} | undefined) =>
+          current
+            ? {
+                ...current,
+                activeDisplayId: display.displayId,
+              }
+            : current,
+      );
+      setCarouselIndex(0);
       void queryClient.invalidateQueries({queryKey: queryKeys.displays(deviceId)});
+      void queryClient.invalidateQueries({queryKey: queryKeys.lastCommand(deviceId)});
     },
   });
 
@@ -200,6 +293,64 @@ export default function PresetsScreen() {
     onSuccess: () => {
       if (!deviceId) return;
       void queryClient.invalidateQueries({queryKey: queryKeys.displays(deviceId)});
+    },
+  });
+
+  const reorderDisplaysMutation = useMutation({
+    mutationFn: async (orderedIds: string[]) => {
+      if (!deviceId) return orderedIds;
+      const displayMap = new Map(displays.map(display => [display.displayId, display]));
+      const nextActiveDisplayId = orderedIds[0] ?? null;
+      const maxPriority = Math.max(0, ...displays.map(display => display.priority));
+      const updates = orderedIds
+        .map((displayId, index) => {
+          const display = displayMap.get(displayId);
+          if (!display) return null;
+          const nextPriority =
+            displayId === nextActiveDisplayId && display.priority !== maxPriority + 1
+              ? maxPriority + 1
+              : display.priority;
+          if (display.sortOrder === index && display.priority === nextPriority) return null;
+          return updateDisplay(deviceId, displayId, {
+            ...buildDisplayPayload(display, {}),
+            sortOrder: index,
+            priority: nextPriority,
+          });
+        })
+        .filter((update): update is Promise<unknown> => update !== null);
+
+      if (updates.length > 0) {
+        await Promise.all(updates);
+      }
+
+      if (nextActiveDisplayId) {
+        await apiFetch(`/refresh/device/${deviceId}`, {method: 'POST'});
+      }
+
+      return orderedIds;
+    },
+    onSuccess: orderedIds => {
+      if (!deviceId) return;
+      const orderLookup = Object.fromEntries(orderedIds.map((displayId, index) => [displayId, index]));
+      const nextActiveDisplayId = orderedIds[0] ?? null;
+      queryClient.setQueryData(
+        queryKeys.displays(deviceId),
+        (current: {displays: DeviceDisplay[]; activeDisplayId: string | null} | undefined) =>
+          current
+            ? {
+                ...current,
+                activeDisplayId: nextActiveDisplayId,
+                displays: current.displays.map(display =>
+                  typeof orderLookup[display.displayId] === 'number'
+                    ? {...display, sortOrder: orderLookup[display.displayId]}
+                    : display,
+                ),
+              }
+            : current,
+      );
+      setCarouselIndex(0);
+      void queryClient.invalidateQueries({queryKey: queryKeys.displays(deviceId)});
+      void queryClient.invalidateQueries({queryKey: queryKeys.lastCommand(deviceId)});
     },
   });
 
@@ -231,8 +382,16 @@ export default function PresetsScreen() {
 
   useFocusEffect(
     useCallback(() => {
+      setIsScreenFocused(true);
+      return () => setIsScreenFocused(false);
+    }, []),
+  );
+
+  useFocusEffect(
+    useCallback(() => {
       if (!deviceId || status !== 'authenticated') return;
       void queryClient.invalidateQueries({queryKey: queryKeys.displays(deviceId)});
+      void queryClient.invalidateQueries({queryKey: queryKeys.lastCommand(deviceId)});
     }, [deviceId, queryClient, status]),
   );
 
@@ -241,11 +400,7 @@ export default function PresetsScreen() {
       const city = providerToCity(display.config.lines?.[0]?.provider ?? null);
       return city === selectedCity;
     });
-    return filtered.sort((a, b) => {
-      if (a.displayId === activeDisplayId) return -1;
-      if (b.displayId === activeDisplayId) return 1;
-      return 0;
-    });
+    return sortDisplaysForCarousel(filtered, activeDisplayId);
   }, [activeDisplayId, displays, selectedCity]);
   const safeIndex = visibleDisplays.length > 0 ? Math.min(carouselIndex, visibleDisplays.length - 1) : 0;
   const currentDisplay = visibleDisplays[safeIndex] ?? null;
@@ -260,6 +415,20 @@ export default function PresetsScreen() {
   const currentScheduleText = currentDisplay
     ? formatScheduleDraftSummary(currentScheduleDraft)
     : 'Always on';
+
+  useEffect(() => {
+    if (typeof params.focusDisplayId === 'string' && params.focusDisplayId.length > 0) {
+      setPendingFocusDisplayId(params.focusDisplayId);
+    }
+  }, [params.focusDisplayId]);
+
+  useEffect(() => {
+    if (!pendingFocusDisplayId || visibleDisplays.length === 0) return;
+    const targetIndex = visibleDisplays.findIndex(display => display.displayId === pendingFocusDisplayId);
+    if (targetIndex === -1) return;
+    setCarouselIndex(targetIndex);
+    setPendingFocusDisplayId(null);
+  }, [pendingFocusDisplayId, visibleDisplays]);
 
 
   const confirmDelete = useCallback(
@@ -348,6 +517,18 @@ export default function PresetsScreen() {
     [updateDisplaySettingsMutation],
   );
 
+  const handleSaveReorder = useCallback(
+    async (orderedIds: string[]) => {
+      try {
+        await reorderDisplaysMutation.mutateAsync(orderedIds);
+        setCarouselIndex(0);
+      } catch (err) {
+        Alert.alert('Reorder failed', err instanceof Error ? err.message : 'Could not save display order');
+      }
+    },
+    [reorderDisplaysMutation],
+  );
+
   useEffect(() => {
     return () => {
       if (brightnessCommitTimeoutRef.current) {
@@ -386,6 +567,16 @@ export default function PresetsScreen() {
             <View style={styles.pageHeaderRight}>
               <Pressable
                 style={styles.addBtn}
+                onPress={() => setReorderVisible(true)}
+                disabled={visibleDisplays.length < 2}>
+                <Ionicons
+                  name="reorder-three-outline"
+                  size={18}
+                  color={visibleDisplays.length < 2 ? colors.textMuted : colors.text}
+                />
+              </Pressable>
+              <Pressable
+                style={styles.addBtn}
                 onPress={() => router.push({pathname: '/preset-editor', params: {city: selectedCity, from: 'presets', mode: 'new'}})}>
                 <Ionicons name="add" size={18} color={colors.accent} />
               </Pressable>
@@ -404,9 +595,17 @@ export default function PresetsScreen() {
               <View style={styles.displayCard}>
 
                 {/* LED preview — no header, name lives in nav row */}
-                <View style={styles.cardPreview}>
+                <View style={styles.cardPreviewContainer}>
                   <DashboardPreviewSection
-                    slots={toPreviewSlots(currentDisplay, brand.accent, stopNames)}
+                    slots={toPreviewSlots(
+                      currentDisplay,
+                      brand.accent,
+                      stopNames,
+                      currentDisplay.displayId === activeDisplayId ? liveArrivalLookup : null,
+                      {
+                      showDirectionFallback: false,
+                      },
+                    )}
                     displayType={currentDisplay.config.displayType ?? Number(currentDisplay.config.lines?.[0]?.displayType) ?? 1}
                     onSelectSlot={() =>
                       router.push({
@@ -421,21 +620,29 @@ export default function PresetsScreen() {
                   />
                 </View>
 
-                {/* Edit | ‹ Name › | Delete */}
+                {/* [Edit + Active] | ‹ Name › | [Delete] */}
                 <View style={styles.navActionsRow}>
-                  {/* Left anchor: Edit */}
-                  <Pressable
-                    style={styles.editBtn}
-                    onPress={() =>
-                      router.push({
-                        pathname: '/preset-editor',
-                        params: {city: selectedCity, from: 'presets', mode: 'edit', displayId: currentDisplay.displayId},
-                      })
-                    }>
-                    <Ionicons name="pencil-outline" size={14} color={colors.text} />
-                  </Pressable>
+                  {/* Left: Edit + Active badge */}
+                  <View style={styles.navLeft}>
+                    <Pressable
+                      style={styles.editBtn}
+                      onPress={() =>
+                        router.push({
+                          pathname: '/preset-editor',
+                          params: {city: selectedCity, from: 'presets', mode: 'edit', displayId: currentDisplay.displayId},
+                        })
+                      }>
+                      <Ionicons name="pencil-outline" size={14} color={colors.text} />
+                    </Pressable>
+                    {currentDisplay.displayId === activeDisplayId ? (
+                      <View style={styles.navActiveLabel}>
+                        <View style={styles.navActiveDot} />
+                        <Text style={styles.navActiveLabelText}>Active</Text>
+                      </View>
+                    ) : null}
+                  </View>
 
-                  {/* Center: ‹ Name › */}
+                  {/* Center: ‹ Name › — truly centered */}
                   <View style={styles.navCenter}>
                     {visibleDisplays.length > 1 ? (
                       <Pressable
@@ -456,10 +663,12 @@ export default function PresetsScreen() {
                     ) : null}
                   </View>
 
-                  {/* Right anchor: Delete */}
-                  <Pressable style={styles.deleteBtn} onPress={() => confirmDelete(currentDisplay)}>
-                    <Ionicons name="trash-outline" size={14} color="#F87171" />
-                  </Pressable>
+                  {/* Right: Delete */}
+                  <View style={styles.navRight}>
+                    <Pressable style={styles.deleteBtn} onPress={() => confirmDelete(currentDisplay)}>
+                      <Ionicons name="trash-outline" size={14} color="#F87171" />
+                    </Pressable>
+                  </View>
                 </View>
 
                 {/* Settings: brightness + schedule */}
@@ -498,8 +707,8 @@ export default function PresetsScreen() {
                         </View>
                       </Pressable>
                     </View>
-                    {/* Day circles */}
-                    <View style={[styles.daysRow, !currentScheduleDraft.enabled && styles.daysRowDisabled]}>
+                    {/* Day circles — only shown when schedule is enabled */}
+                    {currentScheduleDraft.enabled ? <View style={styles.daysRow}>
                       {DAY_OPTIONS.map(day => {
                         const active = currentScheduleDraft.enabled && currentScheduleDraft.days.includes(day.id);
                         return (
@@ -519,7 +728,7 @@ export default function PresetsScreen() {
                           </Pressable>
                         );
                       })}
-                    </View>
+                    </View> : null}
 
                     {currentScheduleDraft.enabled ? (
                       <>
@@ -570,13 +779,8 @@ export default function PresetsScreen() {
                   </View>
 
                   {/* Set Active */}
-                  <View style={[styles.settingItem, styles.settingItemBorder]}>
-                    {currentDisplay.displayId === activeDisplayId ? (
-                      <View style={styles.activeStatusRow}>
-                        <View style={styles.activeDot} />
-                        <Text style={styles.activeStatusText}>Currently active</Text>
-                      </View>
-                    ) : (
+                  {currentDisplay.displayId !== activeDisplayId ? (
+                    <View style={[styles.settingItem, styles.settingItemBorder]}>
                       <Pressable
                         style={[styles.setActiveBtn, activateDisplayMutation.isPending && styles.setActiveBtnDisabled]}
                         disabled={activateDisplayMutation.isPending}
@@ -585,8 +789,8 @@ export default function PresetsScreen() {
                           {activateDisplayMutation.isPending ? 'Activating…' : 'Set as Active'}
                         </Text>
                       </Pressable>
-                    )}
-                  </View>
+                    </View>
+                  ) : null}
 
                 </View>
               </View>
@@ -603,6 +807,17 @@ export default function PresetsScreen() {
       </ScrollView>
 
       <BottomNav items={NAV_ITEMS} />
+      <ReorderDisplaysModal
+        visible={reorderVisible}
+        displays={visibleDisplays}
+        saving={reorderDisplaysMutation.isPending}
+        onClose={() => {
+          if (reorderDisplaysMutation.isPending) return;
+          setCarouselIndex(0);
+          setReorderVisible(false);
+        }}
+        onSave={handleSaveReorder}
+      />
     </View>
   );
 }
@@ -650,16 +865,23 @@ function BrightnessSlider({
   const trackWidthRef = useRef(0);
   const [trackWidth, setTrackWidth] = useState(0);
 
-  const valueFromLocation = useCallback(
-    (locationX: number) => {
-      const trackWidth = trackWidthRef.current;
-      if (trackWidth <= 0) return value;
-      const ratio = Math.max(0, Math.min(1, locationX / trackWidth));
-      const raw = min + ratio * (max - min);
-      return Math.max(min, Math.min(max, Math.round(raw)));
-    },
-    [max, min, value],
-  );
+  // Keep refs so panResponder never needs to be recreated mid-drag
+  const minRef = useRef(min);
+  const maxRef = useRef(max);
+  const onChangeRef = useRef(onChange);
+  const onCommitRef = useRef(onCommit);
+  minRef.current = min;
+  maxRef.current = max;
+  onChangeRef.current = onChange;
+  onCommitRef.current = onCommit;
+
+  const valueFromLocation = useCallback((locationX: number) => {
+    const w = trackWidthRef.current;
+    if (w <= 0) return null;
+    const ratio = Math.max(0, Math.min(1, locationX / w));
+    const raw = minRef.current + ratio * (maxRef.current - minRef.current);
+    return Math.max(minRef.current, Math.min(maxRef.current, Math.round(raw)));
+  }, []);
 
   const panResponder = useMemo(
     () =>
@@ -667,16 +889,19 @@ function BrightnessSlider({
         onStartShouldSetPanResponder: () => true,
         onMoveShouldSetPanResponder: () => true,
         onPanResponderGrant: event => {
-          onChange(valueFromLocation(event.nativeEvent.locationX));
+          const v = valueFromLocation(event.nativeEvent.locationX);
+          if (v !== null) onChangeRef.current(v);
         },
         onPanResponderMove: event => {
-          onChange(valueFromLocation(event.nativeEvent.locationX));
+          const v = valueFromLocation(event.nativeEvent.locationX);
+          if (v !== null) onChangeRef.current(v);
         },
         onPanResponderRelease: event => {
-          onCommit(valueFromLocation(event.nativeEvent.locationX));
+          const v = valueFromLocation(event.nativeEvent.locationX);
+          if (v !== null) onCommitRef.current(v);
         },
       }),
-    [onChange, onCommit, valueFromLocation],
+    [valueFromLocation],
   );
 
   const ratio = (value - min) / (max - min);
@@ -694,6 +919,261 @@ function BrightnessSlider({
       <View style={[styles.sliderFill, {width: fillWidth}]} />
       <View style={[styles.sliderThumb, {left: thumbLeft}]} />
     </View>
+  );
+}
+
+function ReorderDisplaysModal({
+  visible,
+  displays,
+  saving,
+  onClose,
+  onSave,
+}: {
+  visible: boolean;
+  displays: DeviceDisplay[];
+  saving: boolean;
+  onClose: () => void;
+  onSave: (orderedIds: string[]) => void;
+}) {
+  const [draftIds, setDraftIds] = useState<string[]>([]);
+  const [dragState, setDragState] = useState<ReorderDragState | null>(null);
+  const draftIdsRef = useRef<string[]>([]);
+  const dragStateRef = useRef<ReorderDragState | null>(null);
+
+  useEffect(() => {
+    if (!visible) return;
+    setDraftIds(displays.map(display => display.displayId));
+    setDragState(null);
+  }, [visible, displays]);
+
+  useEffect(() => {
+    draftIdsRef.current = draftIds;
+  }, [draftIds]);
+
+  useEffect(() => {
+    dragStateRef.current = dragState;
+  }, [dragState]);
+
+  const displayMap = useMemo(
+    () => Object.fromEntries(displays.map(display => [display.displayId, display])),
+    [displays],
+  );
+  const orderedDisplays = draftIds.map(displayId => displayMap[displayId]).filter(Boolean);
+  const initialIds = useMemo(() => displays.map(display => display.displayId), [displays]);
+  const listHeight = orderedDisplays.length * REORDER_ROW_HEIGHT;
+
+  const handleDragStart = useCallback(
+    (displayId: string, index: number) => {
+      if (saving) return;
+      setDragState({id: displayId, startIndex: index, currentIndex: index, dy: 0});
+    },
+    [saving],
+  );
+
+  const handleDragMove = useCallback(
+    (dy: number) => {
+      const currentDrag = dragStateRef.current;
+      if (!currentDrag) return;
+      const minIndex = 0;
+      const maxIndex = Math.max(minIndex, draftIdsRef.current.length - 1);
+      const rawTop = currentDrag.startIndex * REORDER_ROW_HEIGHT + dy;
+      const clampedTop = clampIndex(rawTop, minIndex * REORDER_ROW_HEIGHT, maxIndex * REORDER_ROW_HEIGHT);
+      const nextIndex = clampIndex(Math.round(clampedTop / REORDER_ROW_HEIGHT), minIndex, maxIndex);
+
+      setDragState({
+        ...currentDrag,
+        currentIndex: nextIndex,
+        dy: clampedTop - currentDrag.startIndex * REORDER_ROW_HEIGHT,
+      });
+    },
+    [],
+  );
+
+  const handleDragEnd = useCallback(() => {
+    const currentDrag = dragStateRef.current;
+    if (!currentDrag) return;
+    const nextIds = moveItem(draftIdsRef.current, currentDrag.startIndex, currentDrag.currentIndex);
+    const changed =
+      nextIds.length === initialIds.length &&
+      nextIds.some((displayId, index) => displayId !== initialIds[index]);
+    setDraftIds(nextIds);
+    setDragState(null);
+    if (changed && !saving) {
+      onSave(nextIds);
+    }
+  }, [initialIds, onSave, saving]);
+
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      <View style={styles.reorderBackdrop}>
+        <View style={styles.reorderModal}>
+          <View style={styles.reorderHeader}>
+            <View style={styles.reorderHeaderCopy}>
+              <Text style={styles.reorderTitle}>Reorder</Text>
+              <Text style={styles.reorderBody}>
+                Drag to reorder. First becomes active.
+              </Text>
+            </View>
+            <Pressable style={styles.reorderCloseBtn} onPress={onClose} disabled={saving}>
+              <Ionicons name="close" size={16} color={colors.text} />
+            </Pressable>
+          </View>
+
+          <View style={[styles.reorderList, {height: listHeight}]}>
+            {orderedDisplays.map((display, index) => {
+              const isActive = index === 0;
+              const isDragging = dragState?.id === display.displayId;
+              let top = index * REORDER_ROW_HEIGHT;
+              if (dragState) {
+                if (isDragging) {
+                  top = dragState.startIndex * REORDER_ROW_HEIGHT + dragState.dy;
+                } else if (
+                  dragState.currentIndex > dragState.startIndex &&
+                  index > dragState.startIndex &&
+                  index <= dragState.currentIndex
+                ) {
+                  top -= REORDER_ROW_HEIGHT;
+                } else if (
+                  dragState.currentIndex < dragState.startIndex &&
+                  index >= dragState.currentIndex &&
+                  index < dragState.startIndex
+                ) {
+                  top += REORDER_ROW_HEIGHT;
+                }
+              }
+              const lineLabels = getDisplayLineLabels(display);
+              const providers = getDisplayProviders(display);
+
+              return (
+                <ReorderListRow
+                  key={display.displayId}
+                  display={display}
+                  lineLabels={lineLabels}
+                  providers={providers}
+                  isActive={isActive}
+                  isDragging={isDragging}
+                  top={top}
+                  saving={saving}
+                  onDragStart={() => handleDragStart(display.displayId, index)}
+                  onDragMove={handleDragMove}
+                  onDragEnd={handleDragEnd}
+                />
+              );
+            })}
+          </View>
+
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+function ReorderListRow({
+  display,
+  lineLabels,
+  providers,
+  isActive,
+  isDragging,
+  top,
+  saving,
+  onDragStart,
+  onDragMove,
+  onDragEnd,
+}: {
+  display: DeviceDisplay;
+  lineLabels: string[];
+  providers: string[];
+  isActive: boolean;
+  isDragging: boolean;
+  top: number;
+  saving: boolean;
+  onDragStart: () => void;
+  onDragMove: (dy: number) => void;
+  onDragEnd: () => void;
+}) {
+  const rowTop = useSharedValue(top);
+
+  useEffect(() => {
+    if (isDragging) {
+      rowTop.value = top;
+    } else {
+      rowTop.value = withSpring(top, {damping: 20, stiffness: 300});
+    }
+  }, [top, isDragging]);
+
+  const animStyle = useAnimatedStyle(() => ({top: rowTop.value}));
+
+  const panResponder = useMemo(
+    () =>
+      PanResponder.create({
+        onStartShouldSetPanResponder: () => !saving,
+        onMoveShouldSetPanResponder: (_event, gestureState) => !saving && Math.abs(gestureState.dy) > 2,
+        onPanResponderGrant: () => {
+          onDragStart();
+        },
+        onPanResponderMove: (_event, gestureState) => {
+          onDragMove(gestureState.dy);
+        },
+        onPanResponderRelease: () => {
+          onDragEnd();
+        },
+        onPanResponderTerminate: () => {
+          onDragEnd();
+        },
+      }),
+    [onDragEnd, onDragMove, onDragStart, saving],
+  );
+
+  return (
+    <Animated.View
+      {...panResponder.panHandlers}
+      style={[styles.reorderRow, animStyle, isDragging && styles.reorderRowDragging]}>
+      <View style={styles.reorderRowMain}>
+        <View style={styles.reorderBadgeRow}>
+          {lineLabels.length > 0 ? (
+            lineLabels.map(label => {
+              const badgeColors = getReorderLineBadgeColors(display, label);
+              return (
+                <View
+                  key={`${display.displayId}-${label}`}
+                  style={[
+                    styles.reorderLineBadge,
+                    {
+                      backgroundColor: badgeColors.color,
+                      borderColor: badgeColors.color,
+                    },
+                  ]}>
+                  <Text style={[styles.reorderLineBadgeText, {color: badgeColors.textColor}]}>{label}</Text>
+                </View>
+              );
+            })
+          ) : (
+            <View style={styles.reorderLineBadgeMuted}>
+              <Text style={styles.reorderLineBadgeMutedText}>--</Text>
+            </View>
+          )}
+        </View>
+
+        <View style={styles.reorderTextBlock}>
+          <Text style={styles.reorderDisplayName} numberOfLines={1}>
+            {display.name}
+          </Text>
+          <Text style={styles.reorderDisplayMeta} numberOfLines={1}>
+            {providers.length > 0 ? providers.join(', ') : 'No provider selected'}
+          </Text>
+        </View>
+
+        {isActive ? (
+          <View style={styles.reorderActivePill}>
+            <Text style={styles.reorderActivePillText}>Active</Text>
+          </View>
+        ) : (
+          <View style={styles.reorderHandle}>
+            <Ionicons name="reorder-three-outline" size={18} color={colors.textMuted} />
+          </View>
+        )}
+      </View>
+    </Animated.View>
   );
 }
 
@@ -786,6 +1266,15 @@ const styles = StyleSheet.create({
 
   // ─── Display Card ─────────────────────────────────────────────────────────
   displayCard: {},
+  displayCardActive: {
+    borderWidth: 1.5,
+    borderColor: '#34D399',
+    borderRadius: 16,
+    shadowColor: '#34D399',
+    shadowOffset: {width: 0, height: 0},
+    shadowOpacity: 0.25,
+    shadowRadius: 12,
+  },
 
   // Card header: name + badges
   cardHeader: {
@@ -825,8 +1314,29 @@ const styles = StyleSheet.create({
   badgeText: {color: colors.text, fontSize: 11, fontWeight: '700'},
 
   // LED preview area — extra padding lets the glow breathe
-  cardPreview: {
+  cardPreviewContainer: {
     paddingBottom: spacing.sm,
+    position: 'relative',
+  },
+  activeOverlayBadge: {
+    position: 'absolute',
+    top: 10,
+    right: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    paddingHorizontal: 9,
+    paddingVertical: 5,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#34D399',
+  },
+  activeOverlayText: {
+    color: '#34D399',
+    fontSize: 11,
+    fontWeight: '600',
+    letterSpacing: 0.4,
   },
 
   // Nav + actions row (edit | ‹ name › | delete)
@@ -834,9 +1344,42 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingVertical: spacing.xs,
+    paddingHorizontal: spacing.sm,
+  },
+  navLeft: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+  },
+  navRight: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+  },
+  navActiveLabel: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    borderWidth: 1,
+    borderColor: '#34D399',
+    borderRadius: 20,
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+  },
+  navActiveDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+    backgroundColor: '#34D399',
+  },
+  navActiveLabelText: {
+    color: '#34D399',
+    fontSize: 12,
+    fontWeight: '600',
   },
   navCenter: {
-    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -860,7 +1403,9 @@ const styles = StyleSheet.create({
   dot: {width: 5, height: 5, borderRadius: 3, backgroundColor: colors.border},
   dotActive: {width: 14, height: 5, borderRadius: 3, backgroundColor: colors.accent},
 
-  cardSettings: {},
+  cardSettings: {
+    paddingTop: spacing.lg,
+  },
   settingItem: {
     paddingVertical: spacing.sm,
     gap: spacing.sm,
@@ -1047,6 +1592,195 @@ const styles = StyleSheet.create({
     backgroundColor: '#160A0A',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+
+  // ─── Reorder Modal ───────────────────────────────────────────────────────
+  reorderBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.62)',
+    justifyContent: 'center',
+    paddingHorizontal: spacing.lg,
+  },
+  reorderModal: {
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    padding: spacing.md,
+    gap: spacing.sm,
+  },
+  reorderHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: spacing.sm,
+  },
+  reorderHeaderCopy: {
+    flex: 1,
+    gap: 2,
+  },
+  reorderTitle: {
+    color: colors.text,
+    fontSize: 16,
+    fontWeight: '800',
+    letterSpacing: -0.2,
+  },
+  reorderBody: {
+    color: colors.textMuted,
+    fontSize: 12,
+    lineHeight: 16,
+  },
+  reorderCloseBtn: {
+    width: 30,
+    height: 30,
+    borderRadius: radii.sm,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  reorderList: {
+    position: 'relative',
+  },
+  reorderRow: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    height: REORDER_ROW_HEIGHT - 8,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.card,
+  },
+  reorderRowDragging: {
+    borderColor: colors.accent,
+    backgroundColor: colors.surface,
+    shadowColor: '#000',
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    shadowOffset: {width: 0, height: 4},
+    elevation: 4,
+    zIndex: 10,
+  },
+  reorderRowMain: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingHorizontal: spacing.sm,
+  },
+  reorderBadgeRow: {
+    width: 72,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    flexWrap: 'wrap',
+  },
+  reorderLineBadge: {
+    minWidth: 24,
+    height: 24,
+    borderRadius: 12,
+    paddingHorizontal: 7,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.background,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  reorderLineBadgeText: {
+    color: colors.text,
+    fontSize: 11,
+    fontWeight: '800',
+  },
+  reorderLineBadgeMuted: {
+    minWidth: 30,
+    height: 24,
+    borderRadius: 12,
+    paddingHorizontal: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.background,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  reorderLineBadgeMutedText: {
+    color: colors.textMuted,
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  reorderTextBlock: {
+    flex: 1,
+    gap: 3,
+  },
+  reorderDisplayName: {
+    color: colors.text,
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  reorderDisplayMeta: {
+    color: colors.textMuted,
+    fontSize: 12,
+  },
+  reorderHandle: {
+    width: 34,
+    height: 34,
+    borderRadius: radii.sm,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  reorderActivePill: {
+    height: 26,
+    borderRadius: 13,
+    borderWidth: 1,
+    borderColor: '#1B5E4A',
+    backgroundColor: '#0A2218',
+    paddingHorizontal: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  reorderActivePillText: {
+    color: '#7CE4BF',
+    fontSize: 11,
+    fontWeight: '800',
+  },
+  reorderFooter: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: spacing.sm,
+  },
+  reorderSecondaryBtn: {
+    minWidth: 96,
+    borderRadius: radii.sm,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.card,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  reorderSecondaryBtnText: {
+    color: colors.text,
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  reorderPrimaryBtn: {
+    minWidth: 120,
+    borderRadius: radii.sm,
+    backgroundColor: colors.accent,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  reorderPrimaryBtnDisabled: {
+    opacity: 0.45,
+  },
+  reorderPrimaryBtnText: {
+    color: colors.background,
+    fontSize: 13,
+    fontWeight: '800',
   },
 
   // ─── Set Active ───────────────────────────────────────────────────────────

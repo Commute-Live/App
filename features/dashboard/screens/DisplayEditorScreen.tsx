@@ -11,7 +11,15 @@ import type {DisplayContent, DisplayFormat} from '../../../types/transit';
 import type {Display3DSlot} from '../components/Display3DPreview';
 import {apiFetch} from '../../../lib/api';
 import {queryKeys} from '../../../lib/queryKeys';
-import {createDisplay, fetchDisplay, fetchDisplays, updateDisplay, validateDisplayDraft, type DisplaySavePayload} from '../../../lib/displays';
+import {
+  createDisplay,
+  fetchDisplay,
+  fetchDisplays,
+  updateDisplay,
+  validateDisplayDraft,
+  type DeviceDisplay,
+  type DisplaySavePayload,
+} from '../../../lib/displays';
 import {useAuth} from '../../../state/authProvider';
 import {useSelectedDevice} from '../../../hooks/useSelectedDevice';
 import {
@@ -101,6 +109,8 @@ const LAYOUT_OPTIONS = [
   {id: 'layout-1', slots: 1, label: '1 line'},
   {id: 'layout-2', slots: 2, label: '2 lines'},
 ];
+const stripBranchSuffix = (label: string) => label.replace(/\s+Branch$/i, '').trim();
+
 const DISPLAY_PRESET_OPTIONS = [
   {id: 1, label: 'Destination', description: 'Stop name on the left, next arrival on the right.'},
   {id: 2, label: 'Direction', description: 'Travel direction on the left, next arrival on the right.'},
@@ -838,6 +848,7 @@ export default function DisplayEditorScreen() {
     if (!isDirty || saving) return;
     setSaving(true);
     setSaveDone(false);
+    let savedDisplayId: string | null = null;
 
     try {
       if (!selectedDevice.id || !hasLinkedDevice) {
@@ -860,12 +871,28 @@ export default function DisplayEditorScreen() {
         if (saveDisplayPresetsByLine !== displayPresetsByLine) {
           setDisplayPresetsByLine(saveDisplayPresetsByLine);
         }
+        let payloadToSave = saveDraftPayload;
+        if (!editingDisplayId) {
+          const cachedDisplays =
+            queryClient.getQueryData<{displays: DeviceDisplay[]; activeDisplayId: string | null}>(
+              queryKeys.displays(selectedDevice.id),
+            ) ?? (await fetchDisplays(selectedDevice.id));
+          const nextSortOrder =
+            cachedDisplays.displays.length > 0
+              ? Math.max(...cachedDisplays.displays.map(display => display.sortOrder)) + 1
+              : 0;
+          payloadToSave = {
+            ...saveDraftPayload,
+            sortOrder: nextSortOrder,
+          };
+        }
         const result = await saveDisplayMutation.mutateAsync({
           nextDeviceId: selectedDevice.id,
           nextEditingDisplayId: editingDisplayId,
-          payload: saveDraftPayload,
+          payload: payloadToSave,
         });
         const nextDisplayId = result.nextDisplayId;
+        savedDisplayId = nextDisplayId;
         if (nextDisplayId) {
           setEditingDisplayId(nextDisplayId);
         }
@@ -915,6 +942,13 @@ export default function DisplayEditorScreen() {
       void Haptics.notificationAsync?.('success');
       setTimeout(() => {
         setSaveDone(false);
+        if (savedDisplayId) {
+          router.replace({
+            pathname: '/presets',
+            params: {focusDisplayId: savedDisplayId},
+          });
+          return;
+        }
         router.replace('/presets');
       }, 1200);
     } catch {
@@ -1052,32 +1086,22 @@ export default function DisplayEditorScreen() {
   };
 
   const resolveEditorStepForLine = (line: LinePick | null): EditorStep => {
-    const isLirr = line?.mode === 'lirr';
-    if (isLirr) {
-      if (!line?.stationId) return 'stops';
-      if (!line.routeId) return 'lines';
-    } else {
-      if (!line?.routeId) return 'lines';
-      if (!line.stationId) return 'stops';
-    }
+    if (!line?.routeId) return 'lines';
+    if (!line.stationId) return 'stops';
     if (!(line.id in displayPresetsByLine)) return 'format';
     return 'done';
   };
 
   const clearLineSelection = (id: string) => {
     animateSectionLayout();
-    const line = lines.find(l => l.id === id);
-    const isLirr = line?.mode === 'lirr';
-    updateLine(id, isLirr ? {routeId: ''} : {routeId: '', stationId: ''});
+    updateLine(id, {routeId: '', stationId: ''});
     setSelectedLineId(id);
     setEditorStep('lines');
   };
 
   const clearStopSelection = (id: string) => {
     animateSectionLayout();
-    const line = lines.find(l => l.id === id);
-    const isLirr = line?.mode === 'lirr';
-    updateLine(id, isLirr ? {stationId: '', routeId: ''} : {stationId: ''});
+    updateLine(id, {stationId: ''});
     setSelectedLineId(id);
     setEditorStep('stops');
   };
@@ -1140,7 +1164,9 @@ export default function DisplayEditorScreen() {
         const etaListText = mockEta
           ? buildNextArrivalTimes(4, line.nextStops).join(', ')
           : buildNextArrivalTimes(etaMinutes ?? 2, line.nextStops).join(', ');
-        const directionLabel = line.direction === 'downtown' ? 'Downtown' : 'Uptown';
+        const directionLabel = safeMode === 'lirr'
+          ? stripBranchSuffix(route?.label ?? line.routeId ?? '')
+          : (line.direction === 'downtown' ? 'Downtown' : 'Uptown');
         const stopName = station?.name ?? (mockEta ? 'Times Sq–42 St' : '');
         const primaryPreviewText = resolveDisplayContent(line.primaryContent, stopName, directionLabel, line.label);
         const secondaryPreviewText = resolveDisplayContent(line.secondaryContent, stopName, directionLabel, line.secondaryLabel || (mockEta ? directionLabel : ''));
@@ -1156,9 +1182,10 @@ export default function DisplayEditorScreen() {
         const previewSubLineColor = displayPreset === 4 || displayPreset === 5 ? '#E5C15A' : undefined;
 
         const isBusBadge = city === 'new-york' && safeMode === 'bus';
-        const isCommuterRailBadge = safeMode === 'lirr' || safeMode === 'commuter-rail';
+        const isLirrBadge = safeMode === 'lirr';
+        const isCommuterRailBadge = safeMode === 'commuter-rail';
 
-        const badgeShape: Display3DSlot['badgeShape'] = isBusBadge
+        const badgeShape: Display3DSlot['badgeShape'] = (isBusBadge || isLirrBadge)
           ? 'pill'
           : isCommuterRailBadge
             ? 'rail'
@@ -1168,7 +1195,7 @@ export default function DisplayEditorScreen() {
           id: line.id,
           color: route?.color ?? '#3A3A3A',
           textColor: line.textColor || route?.textColor || '#FFFFFF',
-          routeLabel: route?.label ?? '?',
+          routeLabel: isLirrBadge ? (route ? '' : '?') : (route?.label ?? '?'),
           badgeShape,
           selected: line.id === selectedLineId,
           stopName: previewTitle,
@@ -1278,7 +1305,12 @@ export default function DisplayEditorScreen() {
       label: 'Display Type',
       state: selectedLinePresetConfirmed ? 'complete' : editorStep === 'format' ? 'active' : 'upcoming',
       value: selectedLinePresetConfirmed
-        ? DISPLAY_PRESET_OPTIONS.find(option => option.id === selectedDisplayPreset)?.label ?? 'Choose style'
+        ? (() => {
+            const isLirrLine = selectedLine != null && normalizeMode(city, selectedLine.mode) === 'lirr';
+            const defaultLabel = DISPLAY_PRESET_OPTIONS.find(option => option.id === selectedDisplayPreset)?.label ?? 'Choose style';
+            if (!isLirrLine) return defaultLabel;
+            return {2: 'Branch', 3: 'Destination + Branch', 5: 'Branch + Upcoming Trains'}[selectedDisplayPreset] ?? defaultLabel;
+          })()
         : 'Choose style',
       onPress: selectedLine?.routeId && selectedLine?.stationId ? () => setEditorStep('format') : undefined,
     },
@@ -1308,14 +1340,8 @@ export default function DisplayEditorScreen() {
             isLirr={selectedLine != null && normalizeMode(city, selectedLine.mode) === 'lirr'}
             onGoTo={targetStep => {
               if (!selectedLine) return;
-              const isLirr = normalizeMode(city, selectedLine.mode) === 'lirr';
-              if (isLirr) {
-                if (targetStep === 'stops') { setEditorStep('stops'); return; }
-                if (targetStep === 'lines' && selectedLine.stationId) { setEditorStep('lines'); return; }
-              } else {
-                if (targetStep === 'lines') { setEditorStep('lines'); return; }
-                if (targetStep === 'stops' && selectedLine.routeId) { setEditorStep('stops'); return; }
-              }
+              if (targetStep === 'lines') { setEditorStep('lines'); return; }
+              if (targetStep === 'stops' && selectedLine.routeId) { setEditorStep('stops'); return; }
               if (targetStep === 'format' && selectedLine.routeId && selectedLine.stationId) { setEditorStep('format'); return; }
               if (targetStep === 'done' && selectedLine.routeId && selectedLine.stationId && selectedLinePresetConfirmed) { setEditorStep('done'); return; }
             }}
@@ -1338,84 +1364,45 @@ export default function DisplayEditorScreen() {
         {/* ── Stop picker — fixed layout, lives outside the scroll view ── */}
         {editorStep === 'stops' && selectedLine ? (
           <Animated.View style={[stepAnimatedStyle, styles.stopPickerFullScreen]}>
-            {(() => {
-              const isLirr = normalizeMode(city, selectedLine.mode) === 'lirr';
-              return (
-                <StopPickerStep
-                  city={city}
-                  selectedMode={normalizeMode(city, selectedLine.mode)}
-                  selectedRoute={selectedRouteForEditor}
-                  stations={
-                    isLirr
-                      ? (stationsByMode['lirr'] ?? [])
-                      : (stationsByLine[selectedLine.routeId] ?? [])
-                  }
-                  loading={
-                    isLirr
-                      ? !!stationsLoadingByMode['lirr']
-                      : !!stationsLoadingByLine[selectedLine.routeId]
-                  }
-                  selectedStationId={selectedLine.stationId}
-                  selectedRouteId={selectedLine.routeId}
-                  selectedDirection={selectedLine.direction}
-                  search={stationSearch[selectedLine.id] ?? ''}
-                  onSearch={text => setStationSearch(prev => ({...prev, [selectedLine.id]: text}))}
-                  onSelectDirection={direction => updateLine(selectedLine.id, {direction})}
-                  onSelectStation={id => {
-                    updateLine(selectedLine.id, {stationId: id, routeId: ''});
-                    setEditorStep(isLirr ? 'lines' : selectedLinePresetConfirmed ? 'done' : 'format');
-                  }}
-                  onBack={() => { if (isLirr) handleBackPress(); else setEditorStep('lines'); }}
-                />
-              );
-            })()}
+            <StopPickerStep
+              city={city}
+              selectedMode={normalizeMode(city, selectedLine.mode)}
+              selectedRoute={selectedRouteForEditor}
+              stations={stationsByLine[selectedLine.routeId] ?? []}
+              loading={!!stationsLoadingByLine[selectedLine.routeId]}
+              selectedStationId={selectedLine.stationId}
+              selectedRouteId={selectedLine.routeId}
+              selectedDirection={selectedLine.direction}
+              search={stationSearch[selectedLine.id] ?? ''}
+              onSearch={text => setStationSearch(prev => ({...prev, [selectedLine.id]: text}))}
+              onSelectDirection={direction => updateLine(selectedLine.id, {direction})}
+              onSelectStation={id => {
+                updateLine(selectedLine.id, {stationId: id});
+                setEditorStep(selectedLinePresetConfirmed ? 'done' : 'format');
+              }}
+              onBack={() => setEditorStep('lines')}
+            />
           </Animated.View>
         ) : null}
 
         {editorStep === 'lines' && selectedLine ? (
           <Animated.View style={[stepAnimatedStyle, styles.linePickerFullScreen]}>
-            {(() => {
-              const isLirr = normalizeMode(city, selectedLine.mode) === 'lirr';
-              const lirrStationKey = isLirr && selectedLine.stationId
-                ? routeLookupKey('lirr', selectedLine.stationId)
-                : null;
-              const lirrBranches = lirrStationKey ? (routesByStation[lirrStationKey] ?? []) : [];
-              const lirrLoading = lirrStationKey ? !!routesLoadingByStation[lirrStationKey] : false;
-              const linesByModeForPicker = isLirr && selectedLine.stationId
-                ? {...linesByMode, lirr: lirrBranches}
-                : linesByMode;
-              const loadingForPicker = isLirr && selectedLine.stationId
-                ? {...linesLoadingByMode, lirr: lirrLoading}
-                : linesLoadingByMode;
-              const lirrStation = isLirr ? selectedStationForEditor : undefined;
-              return (
-                <LinePickerStep
-                  city={city}
-                  selectedMode={normalizeMode(city, selectedLine.mode)}
-                  linesByMode={linesByModeForPicker}
-                  linesLoadingByMode={loadingForPicker}
-                  selectedRouteId={selectedLine.routeId}
-                  hasLinkedDevice={hasLinkedDevice}
-                  liveSupported={liveSupported}
-                  stationName={lirrStation?.name}
-                  onModeChange={mode => {
-                    updateLine(selectedLine.id, {mode, stationId: '', routeId: ''});
-                    if (mode === 'lirr') setEditorStep('stops');
-                  }}
-                  onSelectLine={routeId => {
-                    if (isLirr) {
-                      updateLine(selectedLine.id, {routeId});
-                      setEditorStep(selectedLinePresetConfirmed ? 'done' : 'format');
-                    } else {
-                      updateLine(selectedLine.id, {routeId, stationId: ''});
-                      setEditorStep('stops');
-                    }
-                  }}
-                  onAddDevice={() => router.push('/register-device')}
-                  onBack={isLirr ? () => setEditorStep('stops') : handleBackPress}
-                />
-              );
-            })()}
+            <LinePickerStep
+              city={city}
+              selectedMode={normalizeMode(city, selectedLine.mode)}
+              linesByMode={linesByMode}
+              linesLoadingByMode={linesLoadingByMode}
+              selectedRouteId={selectedLine.routeId}
+              hasLinkedDevice={hasLinkedDevice}
+              liveSupported={liveSupported}
+              onModeChange={mode => updateLine(selectedLine.id, {mode, stationId: '', routeId: ''})}
+              onSelectLine={routeId => {
+                updateLine(selectedLine.id, {routeId, stationId: ''});
+                setEditorStep('stops');
+              }}
+              onAddDevice={() => router.push('/register-device')}
+              onBack={handleBackPress}
+            />
           </Animated.View>
         ) : null}
 
@@ -1642,48 +1629,121 @@ function WizardStepBar({
   isLirr: boolean;
   onGoTo: (step: EditorStep) => void;
 }) {
-  const stepDefs: Array<{id: EditorStep; label: string; complete: boolean; reachable: boolean}> = isLirr
-    ? [
-        {id: 'stops', label: 'Station', complete: hasStop, reachable: true},
-        {id: 'lines', label: 'Branch', complete: hasLine, reachable: hasStop},
-        {id: 'format', label: 'Style', complete: hasPreset, reachable: hasLine && hasStop},
-        {id: 'done', label: 'Save', complete: false, reachable: hasLine && hasStop && hasPreset},
-      ]
-    : [
-        {id: 'lines', label: 'Line', complete: hasLine, reachable: true},
-        {id: 'stops', label: 'Stop', complete: hasStop, reachable: hasLine},
-        {id: 'format', label: 'Style', complete: hasPreset, reachable: hasLine && hasStop},
-        {id: 'done', label: 'Save', complete: false, reachable: hasLine && hasStop && hasPreset},
-      ];
+  const stepDefs: Array<{id: EditorStep; label: string; complete: boolean; reachable: boolean}> = [
+    {id: 'lines', label: isLirr ? 'Branch' : 'Line', complete: hasLine, reachable: true},
+    {id: 'stops', label: isLirr ? 'Station' : 'Stop', complete: hasStop, reachable: hasLine},
+    {id: 'format', label: 'Style', complete: hasPreset, reachable: hasLine && hasStop},
+    {id: 'done', label: 'Save', complete: false, reachable: hasLine && hasStop && hasPreset},
+  ];
+
+  // Connector fill anims (3 connectors between 4 steps)
+  const connectorAnims = useRef([
+    new Animated.Value(hasLine ? 1 : 0),
+    new Animated.Value(hasStop ? 1 : 0),
+    new Animated.Value(hasPreset ? 1 : 0),
+  ]).current;
+
+  useEffect(() => {
+    [hasLine, hasStop, hasPreset].forEach((complete, i) => {
+      Animated.spring(connectorAnims[i], {
+        toValue: complete ? 1 : 0,
+        useNativeDriver: false,
+        speed: 14,
+        bounciness: 0,
+      }).start();
+    });
+  }, [hasLine, hasStop, hasPreset, connectorAnims]);
 
   return (
     <View style={styles.wizardStepBar}>
-      {stepDefs.map(s => {
-        const isActive = s.id === step;
-        const isComplete = s.complete;
-        return (
-          <Pressable
-            key={s.id}
-            style={[
-              styles.wizardStepItem,
-              isActive && styles.wizardStepItemActive,
-              isComplete && !isActive && styles.wizardStepItemComplete,
-            ]}
-            onPress={() => { if (s.reachable) onGoTo(s.id); }}
-            disabled={!s.reachable}>
-            <Text
-              style={[
-                styles.wizardStepLabel,
-                isActive && styles.wizardStepLabelActive,
-                isComplete && !isActive && styles.wizardStepLabelComplete,
-              ]}>
-              {s.label}
-            </Text>
-            {isComplete && !isActive ? <Text style={styles.wizardStepCheck}>✓</Text> : null}
-          </Pressable>
-        );
-      })}
+      <View style={styles.stepIndicatorRow}>
+        {stepDefs.map((s, i) => (
+          <React.Fragment key={s.id}>
+            <WizardDot
+              num={i + 1}
+              label={s.label}
+              isActive={s.id === step}
+              isComplete={s.complete}
+              reachable={s.reachable}
+              onPress={() => onGoTo(s.id)}
+            />
+            {i < stepDefs.length - 1 && (
+              <View style={styles.stepConnectorTrack}>
+                <Animated.View
+                  style={[
+                    styles.stepConnectorFill,
+                    {
+                      width: connectorAnims[i].interpolate({
+                        inputRange: [0, 1],
+                        outputRange: ['0%', '100%'],
+                      }),
+                    },
+                  ]}
+                />
+              </View>
+            )}
+          </React.Fragment>
+        ))}
+      </View>
     </View>
+  );
+}
+
+function WizardDot({
+  num,
+  label,
+  isActive,
+  isComplete,
+  reachable,
+  onPress,
+}: {
+  num: number;
+  label: string;
+  isActive: boolean;
+  isComplete: boolean;
+  reachable: boolean;
+  onPress: () => void;
+}) {
+  const scaleAnim = useRef(new Animated.Value(1)).current;
+  const wasActive = useRef(isActive);
+
+  useEffect(() => {
+    if (isActive && !wasActive.current) {
+      Animated.sequence([
+        Animated.spring(scaleAnim, {toValue: 1.25, useNativeDriver: true, speed: 40, bounciness: 14}),
+        Animated.spring(scaleAnim, {toValue: 1, useNativeDriver: true, speed: 20, bounciness: 0}),
+      ]).start();
+    }
+    wasActive.current = isActive;
+  }, [isActive, scaleAnim]);
+
+  return (
+    <Pressable
+      style={styles.stepDotWrapper}
+      onPress={reachable ? onPress : undefined}
+      disabled={!reachable}>
+      <Animated.View
+        style={[
+          styles.stepDotCircle,
+          isActive && styles.stepDotCircleActive,
+          isComplete && styles.stepDotCircleComplete,
+          {transform: [{scale: scaleAnim}]},
+        ]}>
+        {isComplete ? (
+          <Text style={styles.stepDotCheckmark}>✓</Text>
+        ) : (
+          <Text style={[styles.stepDotNumber, isActive && styles.stepDotNumberActive]}>{num}</Text>
+        )}
+      </Animated.View>
+      <Text
+        style={[
+          styles.stepDotLabel,
+          isActive && styles.stepDotLabelActive,
+          isComplete && styles.stepDotLabelComplete,
+        ]}>
+        {label}
+      </Text>
+    </Pressable>
   );
 }
 
@@ -2518,7 +2578,6 @@ function LinePickerStep({
   selectedRouteId,
   hasLinkedDevice,
   liveSupported,
-  stationName,
   onModeChange,
   onSelectLine,
   onAddDevice,
@@ -2531,7 +2590,6 @@ function LinePickerStep({
   selectedRouteId: string;
   hasLinkedDevice: boolean;
   liveSupported: boolean;
-  stationName?: string;
   onModeChange: (mode: ModeId) => void;
   onSelectLine: (routeId: string) => void;
   onAddDevice: () => void;
@@ -2626,14 +2684,11 @@ function LinePickerStep({
           );
         })}
       </View>
-      {stationName ? (
-        <Text style={styles.lirrStationHeader}>Branches at {stationName}</Text>
-      ) : null}
       {showSearch && !isLoading ? (
         <TextInput
           value={lineSearch}
           onChangeText={setLineSearch}
-          placeholder="Filter lines…"
+          placeholder="Search lines…"
           placeholderTextColor={colors.textMuted}
           style={styles.stepSearchInput}
           autoCorrect={false}
@@ -2680,11 +2735,30 @@ function LinePickerStep({
                   )
                 ) : null}
                 {!isCollapsed ? (
+                selectedMode === 'lirr' ? (
+                  <View style={styles.lirrBranchList}>
+                    {group.routes.map(route => {
+                      const isSelected = route.routes.some(item => item.id === selectedRouteId);
+                      return (
+                        <Pressable
+                          key={route.id}
+                          style={[styles.lirrBranchRow, isSelected && styles.lirrBranchRowSelected]}
+                          onPress={() => handleSelectLine(route)}>
+                          <View style={[styles.lirrBranchAccent, {backgroundColor: route.color}]} />
+                          <Text style={[styles.lirrBranchName, isSelected && styles.lirrBranchNameSelected]}>
+                            {route.displayLabel}
+                          </Text>
+                          {isSelected && <Text style={[styles.lirrBranchCheck, {color: route.color}]}>✓</Text>}
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                ) : (
                 <View style={styles.lineGrid}>
                   {group.routes.map(route => {
                       const isSelected = route.routes.some(item => item.id === selectedRouteId);
                       const isBusBadge = city === 'new-york' && selectedMode === 'bus';
-                      const isCommuterRailBadge = selectedMode === 'lirr' || selectedMode === 'commuter-rail';
+                      const isCommuterRailBadge = selectedMode === 'commuter-rail';
                       const isExpress = !isBusBadge && isExpressRouteBadge(city, selectedMode, route);
                       const useCompactBadgeText = isBusBadge && route.displayLabel.length >= 5;
                       const shouldAutoFitBadgeText = isBusBadge || isCommuterRailBadge || isExpress;
@@ -2722,7 +2796,7 @@ function LinePickerStep({
                     );
                   })}
                 </View>
-                ) : null}
+                )) : null}
               </View>
               );
             })}
@@ -2833,23 +2907,24 @@ function StopPickerStep({
           <Text style={styles.stopPickerBackText}>← Back</Text>
         </Pressable>
         <View style={{flex: 1}} />
-        {selectedMode !== 'lirr' && selectedMode !== 'commuter-rail' ? (
-          <View style={styles.stopPickerDirRow}>
-            {(['uptown', 'downtown'] as Direction[]).map(dir => {
-              const active = selectedDirection === dir;
-              return (
-                <Pressable
-                  key={dir}
-                  style={[styles.stopPickerDirPill, active && styles.stopPickerDirPillActive]}
-                  onPress={() => onSelectDirection(dir)}>
-                  <Text style={[styles.stopPickerDirText, active && styles.stopPickerDirTextActive]}>
-                    {dir === 'uptown' ? '↑ North' : '↓ South'}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
-        ) : null}
+        <View style={styles.stopPickerDirRow}>
+          {(['uptown', 'downtown'] as Direction[]).map(dir => {
+            const active = selectedDirection === dir;
+            const label = selectedMode === 'lirr'
+              ? (dir === 'uptown' ? 'Outbound' : 'Inbound')
+              : (dir === 'uptown' ? '↑ North' : '↓ South');
+            return (
+              <Pressable
+                key={dir}
+                style={[styles.stopPickerDirPill, active && styles.stopPickerDirPillActive]}
+                onPress={() => onSelectDirection(dir)}>
+                <Text style={[styles.stopPickerDirText, active && styles.stopPickerDirTextActive]}>
+                  {label}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
       </View>
 
       <TextInput
@@ -2870,12 +2945,14 @@ function StopPickerStep({
               const hasSelected = group.stations.some(s => s.id === selectedStationId);
               return (
                 <View key={group.area}>
-                  <Pressable style={[styles.boroughHeader, hasSelected && styles.boroughHeaderSelected]} onPress={() => toggleBorough(group.area)}>
-                    <Text style={[styles.boroughHeaderText, hasSelected && styles.boroughHeaderTextSelected]}>{group.area}</Text>
-                    <Text style={styles.boroughHeaderMeta}>{group.stations.length} stops</Text>
-                    <Text style={styles.boroughChevron}>{isExpanded ? '↑' : '↓'}</Text>
-                  </Pressable>
-                  {isExpanded ? group.stations.map(station => (
+                  {group.area !== 'Other' ? (
+                    <Pressable style={[styles.boroughHeader, hasSelected && styles.boroughHeaderSelected]} onPress={() => toggleBorough(group.area)}>
+                      <Text style={[styles.boroughHeaderText, hasSelected && styles.boroughHeaderTextSelected]}>{group.area}</Text>
+                      <Text style={styles.boroughHeaderMeta}>{group.stations.length} stops</Text>
+                      <Text style={styles.boroughChevron}>{isExpanded ? '↑' : '↓'}</Text>
+                    </Pressable>
+                  ) : null}
+                  {(group.area === 'Other' || isExpanded) ? group.stations.map(station => (
                     <StopRow
                       key={station.id}
                       station={station}
@@ -3140,16 +3217,17 @@ function ReviewRow({label, value, onClear}: {label: string; value: string; onCle
 }
 
 // ─── Mini LED mockup inside each style row ────────────────────────────────────
-function StyleMockLed({preset, routeColor, routeLabel, active, direction, nextStops = 2}: {
+function StyleMockLed({preset, routeColor, routeLabel, active, direction, nextStops = 2, branchLabel}: {
   preset: number;
   routeColor: string;
   routeLabel: string;
   active: boolean;
   direction: Direction;
   nextStops?: number;
+  branchLabel?: string;
 }) {
   const textOpacity = active ? 1 : 0.55;
-  const dirLabel = direction === 'downtown' ? 'Downtown' : 'Uptown';
+  const dirLabel = branchLabel ?? (direction === 'downtown' ? 'Downtown' : 'Uptown');
   const destLabel = 'World Trade Ctr';
 
   const badge = (
@@ -3269,6 +3347,14 @@ function LedStylePickerStep({
   const routeLabel = selectedRoute?.label ?? line.routeId.replace(/^[a-z]+-/, '').toUpperCase().slice(0, 3);
   const routeColor = selectedRoute?.color ?? '#1C3A2A';
   const activeNextStops = line.nextStops >= 2 ? line.nextStops : 2;
+  const isLirr = line.mode === 'lirr';
+  const lirrPresetLabels: Partial<Record<number, string>> = {
+    2: 'Branch',
+    3: 'Destination + Branch',
+    5: 'Branch + Upcoming Trains',
+  };
+  const getOptionLabel = (id: number, defaultLabel: string) =>
+    isLirr ? (lirrPresetLabels[id] ?? defaultLabel) : defaultLabel;
 
   return (
     <View style={styles.stepSection}>
@@ -3285,7 +3371,7 @@ function LedStylePickerStep({
               <View style={[styles.styleRowBar, isActive && styles.styleRowBarActive]} />
               <View style={styles.styleRowBody}>
                 <Text style={[styles.styleRowLabel, isActive && styles.styleRowLabelActive]}>
-                  {option.label}
+                  {getOptionLabel(option.id, option.label)}
                 </Text>
                 <StyleMockLed
                   preset={option.id}
@@ -3294,6 +3380,7 @@ function LedStylePickerStep({
                   active={isActive}
                   direction={line.direction}
                   nextStops={isActive ? activeNextStops : 2}
+                  branchLabel={isLirr ? stripBranchSuffix(routeLabel) : undefined}
                 />
                 {showCountPicker ? (
                   <View style={styles.inlineCountPicker}>

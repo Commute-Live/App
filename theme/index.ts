@@ -24,3 +24,12 @@ export const radii = {
   md: 12,
   lg: 18,
 };
+
+export const fonts = {
+  sans: 'Geist_400Regular',
+  semiBold: 'Geist_600SemiBold',
+  bold: 'Geist_700Bold',
+  extraBold: 'Geist_800ExtraBold',
+  black: 'Geist_900Black',
+};
+

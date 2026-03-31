@@ -1,8 +1,18 @@
+import '../lib/fontPatch'; // MUST be first — patches StyleSheet.create before expo-router loads routes
 import React, {useEffect} from 'react';
 import {Stack, useRouter} from 'expo-router';
 import {StatusBar} from 'expo-status-bar';
 import {SafeAreaProvider} from 'react-native-safe-area-context';
 import {QueryClientProvider} from '@tanstack/react-query';
+import {
+  useFonts,
+  Geist_400Regular,
+  Geist_500Medium,
+  Geist_600SemiBold,
+  Geist_700Bold,
+  Geist_800ExtraBold,
+  Geist_900Black,
+} from '@expo-google-fonts/geist';
 import {GoogleSignin} from '../lib/googleSignIn';
 import {AppStateProvider} from '../state/appState';
 import {colors} from '../theme';
@@ -65,6 +75,17 @@ function AppNavigator() {
 }
 
 export default function RootLayout() {
+  const [fontsLoaded] = useFonts({
+    Geist_400Regular,
+    Geist_500Medium,
+    Geist_600SemiBold,
+    Geist_700Bold,
+    Geist_800ExtraBold,
+    Geist_900Black,
+  });
+
+  if (!fontsLoaded) return null;
+
   return (
     <QueryClientProvider client={queryClient}>
       <SafeAreaProvider>

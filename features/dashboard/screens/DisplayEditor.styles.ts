@@ -995,8 +995,8 @@ export const styles = StyleSheet.create({
   lineGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    columnGap: spacing.xs,
-    rowGap: spacing.sm,
+    columnGap: spacing.sm,
+    rowGap: spacing.lg,
     justifyContent: 'flex-start',
   },
   lineGridSkeleton: {
@@ -1005,10 +1005,10 @@ export const styles = StyleSheet.create({
     columnGap: spacing.xs,
     rowGap: 2,
   },
-  lineGridSkeletonTile: {width: 64, height: 54, borderRadius: radii.md, backgroundColor: colors.surface},
+  lineGridSkeletonTile: {width: 68, height: 68, borderRadius: radii.md, backgroundColor: colors.surface},
   lineBadgeTile: {
-    width: 64,
-    height: 54,
+    width: 68,
+    height: 68,
     borderRadius: radii.md,
     borderWidth: 0,
     borderColor: 'transparent',
@@ -1017,7 +1017,7 @@ export const styles = StyleSheet.create({
     backgroundColor: 'transparent',
   },
   lineBadgeTileActive: {borderColor: colors.accent, backgroundColor: 'transparent'},
-  lineBadgeCircle: {width: 52, height: 52, borderRadius: 26, alignItems: 'center', justifyContent: 'center'},
+  lineBadgeCircle: {width: 58, height: 58, borderRadius: 29, alignItems: 'center', justifyContent: 'center'},
   lineBadgeBusPill: {width: 54, height: 34, borderRadius: 10, paddingHorizontal: 6},
   lineBadgeCommuterRail: {width: 58, height: 52, borderRadius: 12, paddingHorizontal: 5},
   lineBadgeDiamond: {width: 44, height: 44, borderRadius: 8, transform: [{rotate: '45deg'}]},
@@ -1026,6 +1026,24 @@ export const styles = StyleSheet.create({
   lineBadgeBusText: {fontSize: 15, lineHeight: 18, textAlign: 'center', includeFontPadding: false},
   lineBadgeCommuterRailText: {fontSize: 11, lineHeight: 12, textAlign: 'center', includeFontPadding: false, paddingHorizontal: 2, fontWeight: '900'},
   lineBadgeTextDiamond: {transform: [{rotate: '-45deg'}]},
+  lirrBranchList: {gap: spacing.sm, width: '100%'},
+  lirrBranchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.card,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    overflow: 'hidden',
+    paddingVertical: spacing.md,
+    paddingRight: spacing.md,
+    gap: spacing.md,
+  },
+  lirrBranchRowSelected: {borderColor: colors.accent},
+  lirrBranchAccent: {width: 4, alignSelf: 'stretch'},
+  lirrBranchName: {flex: 1, color: colors.text, fontSize: 15, fontWeight: '600'},
+  lirrBranchNameSelected: {color: '#fff', fontWeight: '700'},
+  lirrBranchCheck: {fontSize: 16, fontWeight: '700'},
   stepSearchInput: {
     backgroundColor: colors.card,
     borderRadius: radii.lg,
@@ -1043,8 +1061,10 @@ export const styles = StyleSheet.create({
   linePickerStepFull: {flex: 1},
   linePickerFullScreen: {flex: 1, paddingHorizontal: spacing.lg, paddingTop: spacing.sm},
   linePickerListScroll: {flex: 1},
-  linePickerListContent: {paddingTop: spacing.xs, paddingBottom: spacing.xl},
+  linePickerListContent: {paddingTop: spacing.md, paddingBottom: spacing.xl},
   lirrStationHeader: {fontSize: 13, fontWeight: '600', color: colors.textMuted, paddingBottom: spacing.xs},
+  lirrStationBackRow: {flexDirection: 'row', alignItems: 'center', paddingVertical: spacing.sm},
+  lirrStationBackText: {fontSize: 14, fontWeight: '600', color: colors.accent},
   stopPickerStepFull: {flex: 1},
   stopPickerFullScreen: {flex: 1, paddingHorizontal: spacing.lg, paddingTop: spacing.sm},
   stopSectionHeader: {color: colors.textMuted, fontSize: 11, fontWeight: '800', textTransform: 'uppercase', paddingVertical: spacing.xs, letterSpacing: 0.5},
@@ -1294,52 +1314,76 @@ export const styles = StyleSheet.create({
 
   // ─── Wizard Step Bar ───────────────────────────────────────────────────────
   wizardStepBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs,
     paddingHorizontal: spacing.lg,
-    paddingTop: spacing.sm,
-    paddingBottom: spacing.xs,
+    paddingTop: spacing.md,
+    paddingBottom: spacing.sm,
     borderTopWidth: 1,
     borderTopColor: colors.border,
   },
-  wizardStepItem: {
-    flex: 1,
-    minHeight: 34,
-    borderRadius: radii.md,
-    borderWidth: 1,
+  stepIndicatorRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+  },
+  stepDotWrapper: {
+    alignItems: 'center',
+    width: 56,
+  },
+  stepDotCircle: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    borderWidth: 2,
     borderColor: colors.border,
     backgroundColor: colors.surface,
-    paddingHorizontal: spacing.sm,
-    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 6,
   },
-  wizardStepItemActive: {
+  stepDotCircleActive: {
     borderColor: colors.accent,
     backgroundColor: colors.accentMuted,
   },
-  wizardStepItemComplete: {
+  stepDotCircleComplete: {
     borderColor: colors.accent,
-    backgroundColor: '#09120F',
+    backgroundColor: colors.accent,
   },
-  wizardStepLabel: {
+  stepDotNumber: {
     color: colors.textMuted,
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '700',
-    textAlign: 'center',
   },
-  wizardStepLabelActive: {
+  stepDotNumberActive: {
     color: colors.accent,
   },
-  wizardStepLabelComplete: {
-    color: colors.text,
-  },
-  wizardStepCheck: {
-    color: colors.accent,
+  stepDotCheckmark: {
+    color: colors.background,
     fontSize: 12,
     fontWeight: '900',
+  },
+  stepDotLabel: {
+    color: colors.textMuted,
+    fontSize: 10,
+    fontWeight: '600',
+    marginTop: 5,
+    textAlign: 'center',
+  },
+  stepDotLabelActive: {
+    color: colors.accent,
+  },
+  stepDotLabelComplete: {
+    color: colors.text,
+  },
+  stepConnectorTrack: {
+    flex: 1,
+    height: 2,
+    marginTop: 13,
+    backgroundColor: colors.border,
+    overflow: 'hidden',
+    borderRadius: 1,
+  },
+  stepConnectorFill: {
+    height: '100%',
+    backgroundColor: colors.accent,
+    borderRadius: 1,
   },
 
   // ─── Wizard Layout ─────────────────────────────────────────────────────────

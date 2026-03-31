@@ -42,6 +42,19 @@ export const CITY_LINE_COLORS: Partial<Record<CityId, Record<string, {color: str
     'FS': {color: '#808183', textColor: '#FFFFFF'},
     'GS': {color: '#808183', textColor: '#FFFFFF'},
     'SI': {color: '#0039A6', textColor: '#FFFFFF'},
+    // LIRR branches — official MTA colors, keyed by API label
+    'Babylon Branch':        {color: '#00985F', textColor: '#FFFFFF'},
+    'City Terminal Zone':    {color: '#4D5357', textColor: '#FFFFFF'},
+    'Far Rockaway Branch':   {color: '#6E3219', textColor: '#FFFFFF'},
+    'Greenport Service':     {color: '#006983', textColor: '#FFFFFF'},
+    'Hempstead Branch':      {color: '#CE8E00', textColor: '#FFFFFF'},
+    'Long Beach Branch':     {color: '#FF6319', textColor: '#FFFFFF'},
+    'Montauk Branch':        {color: '#006983', textColor: '#FFFFFF'},
+    'Oyster Bay Branch':     {color: '#00AF3F', textColor: '#FFFFFF'},
+    'Port Jefferson Branch': {color: '#0039A6', textColor: '#FFFFFF'},
+    'Port Washington Branch':{color: '#C60C30', textColor: '#FFFFFF'},
+    'Ronkonkoma Branch':     {color: '#A626AA', textColor: '#FFFFFF'},
+    'West Hempstead Branch': {color: '#00A1DE', textColor: '#FFFFFF'},
   },
   chicago: {
     // CTA L lines — keyed by both longName-derived keys and actual API IDs (uppercase)

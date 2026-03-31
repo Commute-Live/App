@@ -163,9 +163,9 @@ export const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   sectionBlockLabel: {
-    color: colors.textMuted,
-    fontSize: 11,
-    fontWeight: '700',
+    color: colors.text,
+    fontSize: 13,
+    fontWeight: '900',
     textTransform: 'uppercase',
     letterSpacing: 1,
   },

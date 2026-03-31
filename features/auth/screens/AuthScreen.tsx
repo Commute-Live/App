@@ -149,6 +149,7 @@ const styles = StyleSheet.create({
     lineHeight: 19,
     textAlign: 'center',
     maxWidth: 240,
+    fontFamily: 'Geist_400Regular',
   },
   actionsCard: {
     gap: 8,
