@@ -13,18 +13,45 @@ export const colors = {
 
 export const spacing = {
   xxs: 4,
-  xs: 6,
-  sm: 10,
+  xs: 8,
+  sm: 12,
   md: 16,
-  lg: 22,
-  xl: 30,
-  xxl: 38,
+  lg: 20,
+  xl: 24,
+  xxl: 32,
 };
 
 export const radii = {
   sm: 8,
   md: 12,
-  lg: 18,
+  lg: 16,
+};
+
+export const typography = {
+  caption: 11,
+  label: 12,
+  body: 13,
+  bodyLg: 14,
+  title: 16,
+  titleLg: 20,
+  pageTitle: 28,
+};
+
+export const layout = {
+  screenPadding: spacing.lg,
+  screenGap: spacing.lg,
+  sectionGap: spacing.md,
+  cardPadding: spacing.md,
+  cardPaddingLg: spacing.lg,
+  buttonHeight: 48,
+  buttonHeightLg: 52,
+  inputHeight: 48,
+  headerHeight: 56,
+  tabHeight: 56,
+  iconButton: 36,
+  chromeSize: 32,
+  logoSize: 26,
+  bottomInset: 120,
 };
 
 export const fonts = {

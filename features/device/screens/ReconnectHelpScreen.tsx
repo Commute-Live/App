@@ -4,7 +4,7 @@ import {SafeAreaView} from 'react-native-safe-area-context';
 import {Ionicons} from '@expo/vector-icons';
 import {useRouter} from 'expo-router';
 import {ScreenHeader} from '../../../components/ScreenHeader';
-import {colors, spacing, radii} from '../../../theme';
+import {colors, layout, radii, spacing, typography} from '../../../theme';
 
 const tips = [
   {
@@ -63,36 +63,35 @@ export default function ReconnectHelpScreen() {
 
 const styles = StyleSheet.create({
   container: {flex: 1, backgroundColor: colors.background},
-  content: {padding: spacing.lg},
-  heading: {color: colors.text, fontSize: 20, fontWeight: '800', marginBottom: spacing.xs},
-  subheading: {color: colors.textMuted, fontSize: 13, marginBottom: spacing.lg},
+  content: {padding: layout.screenPadding, gap: spacing.md},
+  heading: {color: colors.text, fontSize: typography.titleLg, fontWeight: '800'},
+  subheading: {color: colors.textMuted, fontSize: typography.body, lineHeight: 18, marginBottom: spacing.sm},
   card: {
     backgroundColor: colors.card,
     borderColor: colors.border,
     borderWidth: 1,
     borderRadius: radii.lg,
-    padding: spacing.md,
-    marginBottom: spacing.md,
+    padding: layout.cardPadding,
   },
   row: {flexDirection: 'row', alignItems: 'center', gap: spacing.sm},
   textWrap: {flex: 1},
-  cardTitle: {color: colors.text, fontSize: 15, fontWeight: '700'},
-  cardSubtitle: {color: colors.textMuted, fontSize: 12, marginTop: 4},
+  cardTitle: {color: colors.text, fontSize: typography.bodyLg, fontWeight: '700'},
+  cardSubtitle: {color: colors.textMuted, fontSize: typography.label, marginTop: spacing.xxs},
   primaryButton: {
     backgroundColor: colors.accent,
-    paddingVertical: spacing.md,
+    minHeight: layout.buttonHeight,
     borderRadius: radii.md,
     alignItems: 'center',
-    marginTop: spacing.sm,
+    justifyContent: 'center',
   },
-  primaryText: {color: colors.background, fontWeight: '800', fontSize: 14},
+  primaryText: {color: colors.background, fontWeight: '800', fontSize: typography.bodyLg},
   secondaryButton: {
     borderColor: colors.border,
     borderWidth: 1,
-    paddingVertical: spacing.md,
+    minHeight: layout.buttonHeight,
     borderRadius: radii.md,
     alignItems: 'center',
-    marginTop: spacing.sm,
+    justifyContent: 'center',
   },
-  secondaryText: {color: colors.textMuted, fontWeight: '700', fontSize: 13},
+  secondaryText: {color: colors.textMuted, fontWeight: '700', fontSize: typography.body},
 });

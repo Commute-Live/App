@@ -4,7 +4,7 @@ import {SafeAreaView} from 'react-native-safe-area-context';
 import {useRouter} from 'expo-router';
 import {useQuery} from '@tanstack/react-query';
 import {ScreenHeader} from '../../../components/ScreenHeader';
-import {colors, spacing, radii} from '../../../theme';
+import {colors, layout, radii, spacing, typography} from '../../../theme';
 import {useAppState} from '../../../state/appState';
 import {queryKeys} from '../../../lib/queryKeys';
 
@@ -161,14 +161,14 @@ export default function RegisterDeviceScreen() {
 
 const styles = StyleSheet.create({
   container: {flex: 1, backgroundColor: colors.background},
-  content: {flex: 1, padding: spacing.lg, alignItems: 'stretch', gap: spacing.lg},
+  content: {flex: 1, padding: layout.screenPadding, alignItems: 'stretch', gap: layout.screenGap},
   heroSection: {alignItems: 'center', gap: spacing.sm},
   heroCopy: {alignItems: 'center', gap: spacing.xs},
-  logo: {width: 196, height: 196, marginTop: spacing.xs},
-  title: {color: colors.text, fontSize: 22, fontWeight: '800', textAlign: 'center'},
+  logo: {width: 176, height: 176, marginTop: spacing.xs},
+  title: {color: colors.text, fontSize: typography.titleLg, fontWeight: '800', textAlign: 'center'},
   subtitle: {
     color: colors.textMuted,
-    fontSize: 13,
+    fontSize: typography.body,
     textAlign: 'center',
     lineHeight: 19,
     maxWidth: 280,
@@ -179,7 +179,7 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     borderWidth: 1,
     borderRadius: radii.lg,
-    padding: spacing.lg,
+    padding: layout.cardPaddingLg,
     gap: spacing.md,
   },
   statusCard: {
@@ -188,14 +188,14 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     borderWidth: 1,
     borderRadius: radii.lg,
-    padding: spacing.lg,
+    padding: layout.cardPaddingLg,
     gap: spacing.sm,
   },
   statusCardConnected: {borderColor: colors.accent},
   statusHeader: {flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center'},
   statusTitleRow: {flexDirection: 'row', alignItems: 'center', gap: spacing.xs},
-  statusLabel: {color: colors.textMuted, fontSize: 12},
-  statusAction: {color: colors.accent, fontSize: 12, fontWeight: '700'},
+  statusLabel: {color: colors.textMuted, fontSize: typography.label},
+  statusAction: {color: colors.accent, fontSize: typography.label, fontWeight: '700'},
   statusText: {color: colors.text, fontWeight: '700', marginTop: spacing.xs, textAlign: 'center'},
   statusDot: {width: 10, height: 10, borderRadius: 5},
   statusDotConnected: {backgroundColor: colors.success},
@@ -215,28 +215,30 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignSelf: 'center',
   },
-  stepIndexText: {color: colors.text, fontWeight: '700', fontSize: 12},
+  stepIndexText: {color: colors.text, fontWeight: '700', fontSize: typography.label},
   stepTextWrap: {flex: 1, alignItems: 'flex-start', gap: spacing.xxs},
   stepTitle: {color: colors.text, fontWeight: '700'},
-  stepSubtitle: {color: colors.textMuted, fontSize: 12, lineHeight: 17},
+  stepSubtitle: {color: colors.textMuted, fontSize: typography.label, lineHeight: 18},
   actionGroup: {gap: spacing.sm},
   primaryButton: {
     backgroundColor: colors.accent,
-    paddingVertical: spacing.md,
+    minHeight: layout.buttonHeight,
     borderRadius: radii.md,
     alignItems: 'center',
+    justifyContent: 'center',
     width: '100%',
   },
-  primaryText: {color: colors.background, fontWeight: '800', fontSize: 15},
+  primaryText: {color: colors.background, fontWeight: '800', fontSize: typography.bodyLg},
   primaryButtonDisabled: {backgroundColor: colors.border},
   primaryTextDisabled: {color: colors.textMuted},
   secondaryButton: {
     borderColor: colors.border,
     borderWidth: 1,
-    paddingVertical: spacing.md,
+    minHeight: layout.buttonHeight,
     borderRadius: radii.md,
     alignItems: 'center',
+    justifyContent: 'center',
     width: '100%',
   },
-  secondaryText: {color: colors.textMuted, fontWeight: '700', fontSize: 14},
+  secondaryText: {color: colors.textMuted, fontWeight: '700', fontSize: typography.bodyLg},
 });

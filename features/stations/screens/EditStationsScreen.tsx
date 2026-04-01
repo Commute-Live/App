@@ -3,7 +3,7 @@ import {Pressable, ScrollView, StyleSheet, Text, TextInput, View} from 'react-na
 import {SafeAreaView} from 'react-native-safe-area-context';
 import {useQuery} from '@tanstack/react-query';
 import {ScreenHeader} from '../../../components/ScreenHeader';
-import {colors, radii, spacing} from '../../../theme';
+import {colors, layout, radii, spacing, typography} from '../../../theme';
 import {useAppState} from '../../../state/appState';
 import {CITY_LABELS, CITY_OPTIONS, type CityId} from '../../../constants/cities';
 import {getTransitStations} from '../../../lib/transitApi';
@@ -161,25 +161,27 @@ function normalizeStation(row: {id: string; name: string; area: string | null}):
 
 const styles = StyleSheet.create({
   container: {flex: 1, backgroundColor: colors.background},
-  content: {padding: spacing.lg, paddingBottom: spacing.xxl, gap: spacing.lg},
+  content: {padding: layout.screenPadding, paddingBottom: spacing.xxl, gap: layout.screenGap},
   section: {gap: spacing.sm},
-  label: {color: colors.textMuted, fontSize: 13},
-  value: {color: colors.text, fontSize: 15, fontWeight: '600'},
+  label: {color: colors.textMuted, fontSize: typography.body},
+  value: {color: colors.text, fontSize: typography.bodyLg, fontWeight: '600'},
   selectedRow: {
     backgroundColor: colors.card,
     borderColor: colors.border,
     borderWidth: 1,
     borderRadius: radii.md,
-    padding: spacing.md,
+    minHeight: layout.buttonHeight,
+    padding: layout.cardPadding,
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
   },
   selectedText: {color: colors.text, flex: 1, fontWeight: '700'},
-  removeBtn: {paddingHorizontal: spacing.sm, paddingVertical: spacing.xs},
-  removeText: {color: colors.textMuted, fontSize: 13},
-  empty: {color: colors.textMuted, fontSize: 13},
+  removeBtn: {minHeight: 32, paddingHorizontal: spacing.sm, justifyContent: 'center'},
+  removeText: {color: colors.textMuted, fontSize: typography.body},
+  empty: {color: colors.textMuted, fontSize: typography.body},
   input: {
+    minHeight: layout.inputHeight,
     borderRadius: radii.md,
     backgroundColor: colors.card,
     borderWidth: 1,
@@ -199,14 +201,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: '#0B0F13',
     borderRadius: radii.md,
-    padding: spacing.md,
+    minHeight: layout.buttonHeight,
+    padding: layout.cardPadding,
     borderWidth: 1,
     borderColor: colors.border,
     gap: spacing.sm,
   },
   resultTextWrap: {flex: 1, gap: spacing.xxs},
   resultText: {color: colors.text, fontWeight: '700'},
-  resultMeta: {color: colors.textMuted, fontSize: 12},
+  resultMeta: {color: colors.textMuted, fontSize: typography.label},
   addText: {color: colors.accent, fontWeight: '700'},
-  errorText: {color: '#FCA5A5', fontSize: 13},
+  errorText: {color: '#FCA5A5', fontSize: typography.body},
 });

@@ -3,7 +3,7 @@ import {Pressable, StyleSheet, Text, View} from 'react-native';
 import {Ionicons} from '@expo/vector-icons';
 import {usePathname, useRouter, type Href} from 'expo-router';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
-import {colors, spacing} from '../theme';
+import {colors, layout, spacing, typography} from '../theme';
 
 export interface BottomNavItem {
   key: string;
@@ -54,15 +54,15 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
     borderTopWidth: 1,
     borderTopColor: colors.border,
-    paddingTop: spacing.sm,
-    paddingHorizontal: spacing.sm,
+    paddingTop: spacing.xs,
+    paddingHorizontal: spacing.xs,
   },
   item: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: spacing.xxs,
-    minHeight: 52,
+    gap: spacing.xs,
+    minHeight: layout.tabHeight,
     paddingVertical: spacing.xs,
   },
   indicator: {
@@ -78,7 +78,7 @@ const styles = StyleSheet.create({
   },
   label: {
     color: colors.textMuted,
-    fontSize: 11,
+    fontSize: typography.caption,
     fontWeight: '700',
     letterSpacing: 0.2,
   },

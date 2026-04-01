@@ -4,7 +4,7 @@ import {SafeAreaView} from 'react-native-safe-area-context';
 import {Ionicons} from '@expo/vector-icons';
 import {useRouter} from 'expo-router';
 import {useMutation, useQuery} from '@tanstack/react-query';
-import {colors, spacing, radii} from '../../../theme';
+import {colors, layout, radii, spacing, typography} from '../../../theme';
 import {useAppState} from '../../../state/appState';
 import {apiFetch} from '../../../lib/api';
 import {queryKeys} from '../../../lib/queryKeys';
@@ -347,19 +347,17 @@ export default function SetupIntroScreen() {
 const styles = StyleSheet.create({
   container: {flex: 1, backgroundColor: colors.background},
   body: {flex: 1},
-  content: {padding: spacing.lg, paddingBottom: spacing.xxl, gap: spacing.md},
+  content: {padding: layout.screenPadding, paddingBottom: spacing.xxl, gap: spacing.md},
   heading: {
     color: colors.text,
-    fontSize: 20,
+    fontSize: typography.titleLg,
     fontWeight: '800',
-    marginBottom: spacing.xs,
     textAlign: 'center',
   },
   subheading: {
     color: colors.textMuted,
-    fontSize: 13,
+    fontSize: typography.body,
     lineHeight: 19,
-    marginBottom: spacing.md,
     textAlign: 'center',
   },
   card: {
@@ -416,7 +414,7 @@ const styles = StyleSheet.create({
     marginBottom: spacing.sm,
   },
   sectionHeader: {color: colors.text, fontSize: 14, fontWeight: '700'},
-  sectionTitle: {color: colors.text, fontSize: 13, fontWeight: '700', marginBottom: spacing.sm},
+  sectionTitle: {color: colors.text, fontSize: typography.body, fontWeight: '700', marginBottom: spacing.sm},
   scanButton: {
     borderColor: colors.border,
     borderWidth: 1,
@@ -467,9 +465,10 @@ const styles = StyleSheet.create({
     gap: spacing.xxs,
     marginBottom: spacing.md,
   },
-  selectedLabel: {color: colors.textMuted, fontSize: 12},
+  selectedLabel: {color: colors.textMuted, fontSize: typography.label},
   selectedValue: {color: colors.text, fontWeight: '700', marginTop: 4},
   input: {
+    minHeight: layout.inputHeight,
     borderRadius: radii.md,
     backgroundColor: colors.card,
     borderWidth: 1,
@@ -487,26 +486,28 @@ const styles = StyleSheet.create({
     gap: spacing.xs,
     marginBottom: spacing.md,
   },
-  deviceIdLabel: {color: colors.textMuted, fontSize: 12, fontWeight: '700'},
+  deviceIdLabel: {color: colors.textMuted, fontSize: typography.label, fontWeight: '700'},
   deviceIdValue: {color: colors.text, fontWeight: '800', marginTop: 4},
   primaryButton: {
     backgroundColor: colors.accent,
-    paddingVertical: spacing.md,
+    minHeight: layout.buttonHeight,
     borderRadius: radii.md,
     alignItems: 'center',
+    justifyContent: 'center',
   },
   primaryButtonDisabled: {backgroundColor: colors.border},
-  primaryText: {color: colors.background, fontWeight: '800', fontSize: 14},
+  primaryText: {color: colors.background, fontWeight: '800', fontSize: typography.bodyLg},
   primaryTextDisabled: {color: colors.textMuted},
   secondaryButton: {
     borderColor: colors.border,
     borderWidth: 1,
-    paddingVertical: spacing.md,
+    minHeight: layout.buttonHeight,
     borderRadius: radii.md,
     alignItems: 'center',
+    justifyContent: 'center',
     width: '100%',
   },
-  secondaryText: {color: colors.textMuted, fontWeight: '700', fontSize: 14},
+  secondaryText: {color: colors.textMuted, fontWeight: '700', fontSize: typography.bodyLg},
   pauseCard: {
     borderColor: colors.border,
     borderWidth: 1,
@@ -516,20 +517,20 @@ const styles = StyleSheet.create({
     marginTop: spacing.sm,
     gap: spacing.xs,
   },
-  pauseTitle: {color: colors.text, fontSize: 13, fontWeight: '800'},
-  pauseText: {color: colors.textMuted, fontSize: 12, lineHeight: 18},
+  pauseTitle: {color: colors.text, fontSize: typography.body, fontWeight: '800'},
+  pauseText: {color: colors.textMuted, fontSize: typography.label, lineHeight: 18},
   pauseActionButton: {marginTop: spacing.xs},
-  statusMessage: {fontSize: 12, marginTop: spacing.xs},
+  statusMessage: {fontSize: typography.label, marginTop: spacing.xs},
   statusMessageError: {color: '#FCA5A5'},
   statusMessageSuccess: {color: colors.success},
-  apiResponseText: {color: colors.textMuted, marginTop: spacing.xs, fontSize: 12},
+  apiResponseText: {color: colors.textMuted, marginTop: spacing.xs, fontSize: typography.label},
   pressed: {opacity: 0.85},
   footer: {
-    paddingHorizontal: spacing.lg,
+    paddingHorizontal: layout.screenPadding,
     paddingBottom: spacing.md,
   },
   finishLink: {alignItems: 'center', marginTop: spacing.md},
-  finishText: {color: colors.textMuted, fontWeight: '700', fontSize: 13},
+  finishText: {color: colors.textMuted, fontWeight: '700', fontSize: typography.body},
   loadingOverlay: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(0, 0, 0, 0.55)',
@@ -542,7 +543,7 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     borderWidth: 1,
     borderRadius: radii.lg,
-    paddingVertical: spacing.lg,
+    paddingVertical: layout.cardPaddingLg,
     paddingHorizontal: spacing.xl,
     alignItems: 'center',
     gap: spacing.sm,

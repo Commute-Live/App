@@ -5,11 +5,17 @@ import {Ionicons} from '@expo/vector-icons';
 import {useRouter} from 'expo-router';
 import {useMutation} from '@tanstack/react-query';
 import {PreviewCard} from '../../../components/PreviewCard';
-import {colors, spacing, radii} from '../../../theme';
+import {colors, layout, radii, spacing, typography} from '../../../theme';
 import {apiFetch} from '../../../lib/api';
 import {useAuth} from '../../../state/authProvider';
+import {BottomNav, type BottomNavItem} from '../../../components/BottomNav';
 
 const fallbackDevice = {id: 'commutelive-001', name: 'Commute Live Display'};
+const NAV_ITEMS: BottomNavItem[] = [
+  {key: 'home', label: 'Home', icon: 'home-outline', route: '/dashboard'},
+  {key: 'presets', label: 'Displays', icon: 'albums-outline', route: '/presets'},
+  {key: 'settings', label: 'Settings', icon: 'settings-outline', route: '/settings'},
+];
 
 export default function PairedOnlineScreen() {
   const router = useRouter();
@@ -152,38 +158,25 @@ export default function PairedOnlineScreen() {
         ) : null}
       </ScrollView>
 
-      <View style={styles.bottomNav}>
-        <Pressable style={styles.navItem}>
-          <Ionicons name="home-outline" size={18} color={colors.text} />
-          <Text style={styles.navLabel}>Home</Text>
-        </Pressable>
-        <Pressable style={styles.navItem}>
-          <Ionicons name="time-outline" size={18} color={colors.textMuted} />
-          <Text style={styles.navLabelMuted}>History</Text>
-        </Pressable>
-        <Pressable style={styles.navItem}>
-          <Ionicons name="settings-outline" size={18} color={colors.textMuted} />
-          <Text style={styles.navLabelMuted}>Settings</Text>
-        </Pressable>
-      </View>
+      <BottomNav items={NAV_ITEMS} />
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   container: {flex: 1, backgroundColor: colors.background},
-  content: {padding: spacing.lg, paddingBottom: spacing.xl + 64, gap: spacing.md},
+  content: {padding: layout.screenPadding, paddingBottom: layout.bottomInset, gap: spacing.md},
   dropdown: {
     backgroundColor: colors.card,
     borderColor: colors.border,
     borderWidth: 1,
     borderRadius: radii.lg,
-    padding: spacing.md,
+    padding: layout.cardPadding,
   },
   dropdownRow: {flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: spacing.sm},
-  dropdownLabel: {color: colors.textMuted, fontSize: 12},
-  dropdownValue: {color: colors.text, fontSize: 15, fontWeight: '700', marginTop: spacing.xxs},
-  dropdownMeta: {color: colors.textMuted, fontSize: 12, marginTop: spacing.xxs},
+  dropdownLabel: {color: colors.textMuted, fontSize: typography.label},
+  dropdownValue: {color: colors.text, fontSize: typography.bodyLg, fontWeight: '700', marginTop: spacing.xxs},
+  dropdownMeta: {color: colors.textMuted, fontSize: typography.label, marginTop: spacing.xxs},
   dropdownList: {
     backgroundColor: colors.card,
     borderColor: colors.border,
@@ -197,13 +190,13 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     borderWidth: 1,
     borderRadius: radii.lg,
-    padding: spacing.md,
+    padding: layout.cardPadding,
     gap: spacing.xxs,
   },
-  infoLabel: {color: colors.textMuted, fontSize: 12, fontWeight: '700'},
+  infoLabel: {color: colors.textMuted, fontSize: typography.label, fontWeight: '700'},
   infoValue: {color: colors.text, fontWeight: '800', marginTop: spacing.xxs, marginBottom: spacing.sm},
-  linkStatus: {color: colors.textMuted, fontSize: 12, fontWeight: '700', marginTop: spacing.xxs},
-  linkMessage: {color: colors.textMuted, fontSize: 12, marginTop: spacing.xxs},
+  linkStatus: {color: colors.textMuted, fontSize: typography.label, fontWeight: '700', marginTop: spacing.xxs},
+  linkMessage: {color: colors.textMuted, fontSize: typography.label, marginTop: spacing.xxs},
   dropdownItem: {
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.md,
@@ -214,22 +207,5 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: spacing.sm,
   },
-  bottomNav: {
-    position: 'absolute',
-    left: spacing.lg,
-    right: spacing.lg,
-    bottom: spacing.lg,
-    backgroundColor: colors.card,
-    borderColor: colors.border,
-    borderWidth: 1,
-    borderRadius: radii.lg,
-    paddingVertical: spacing.sm,
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    alignItems: 'center',
-  },
-  navItem: {alignItems: 'center', gap: spacing.xxs},
-  navLabel: {color: colors.text, fontSize: 11, fontWeight: '700'},
-  navLabelMuted: {color: colors.textMuted, fontSize: 11, fontWeight: '600'},
   pressed: {opacity: 0.85},
 });

@@ -1,7 +1,7 @@
 import React from 'react';
 import {Pressable, StyleSheet, Text, View} from 'react-native';
 import {Ionicons} from '@expo/vector-icons';
-import {colors, spacing, radii} from '../theme';
+import {colors, layout, spacing, radii, typography} from '../theme';
 
 interface Props {
   title: string;
@@ -28,7 +28,7 @@ export const ActionCard: React.FC<Props> = ({title, subtitle, icon, onPress}) =>
 const styles = StyleSheet.create({
   card: {
     backgroundColor: colors.card,
-    padding: spacing.lg,
+    padding: layout.cardPaddingLg,
     borderRadius: radii.lg,
     borderWidth: 1,
     borderColor: colors.border,
@@ -36,14 +36,14 @@ const styles = StyleSheet.create({
   pressed: {opacity: 0.85},
   row: {flexDirection: 'row', alignItems: 'center', gap: spacing.md},
   iconWrap: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
+    width: 44,
+    height: 44,
+    borderRadius: radii.md,
     backgroundColor: '#0F1A1D',
     alignItems: 'center',
     justifyContent: 'center',
   },
   textWrap: {flex: 1, gap: spacing.xxs},
-  title: {color: colors.text, fontSize: 16, fontWeight: '700'},
-  subtitle: {color: colors.textMuted, fontSize: 13},
+  title: {color: colors.text, fontSize: typography.title, fontWeight: '700'},
+  subtitle: {color: colors.textMuted, fontSize: typography.body},
 });

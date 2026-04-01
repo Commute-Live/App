@@ -2,7 +2,7 @@ import React from 'react';
 import {Pressable, ScrollView, StyleSheet, Text, View} from 'react-native';
 import {SafeAreaView} from 'react-native-safe-area-context';
 import {ScreenHeader} from '../../../components/ScreenHeader';
-import {colors, spacing, radii} from '../../../theme';
+import {colors, layout, radii, spacing, typography} from '../../../theme';
 import {useAppState} from '../../../state/appState';
 
 export default function BrightnessScreen() {
@@ -47,26 +47,27 @@ export default function BrightnessScreen() {
 
 const styles = StyleSheet.create({
   container: {flex: 1, backgroundColor: colors.background},
-  content: {padding: spacing.lg},
+  content: {padding: layout.screenPadding, gap: spacing.md},
   card: {
     backgroundColor: colors.card,
     borderColor: colors.border,
     borderWidth: 1,
     borderRadius: radii.lg,
-    padding: spacing.lg,
-    marginBottom: spacing.md,
+    padding: layout.cardPaddingLg,
+    gap: spacing.sm,
   },
-  heading: {color: colors.text, fontSize: 16, fontWeight: '700'},
+  heading: {color: colors.text, fontSize: typography.title, fontWeight: '700'},
   value: {color: colors.accent, fontSize: 32, fontWeight: '800', marginVertical: spacing.sm},
   row: {flexDirection: 'row', gap: spacing.sm},
   btn: {
     flex: 1,
+    minHeight: layout.buttonHeight,
     borderRadius: radii.md,
     backgroundColor: '#0D1116',
     borderWidth: 1,
     borderColor: colors.border,
-    paddingVertical: spacing.md,
     alignItems: 'center',
+    justifyContent: 'center',
   },
   btnText: {color: colors.text, fontSize: 18, fontWeight: '700'},
   track: {
@@ -79,15 +80,17 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
   },
   fill: {height: '100%', backgroundColor: colors.accent},
-  muted: {color: colors.textMuted, marginTop: spacing.sm, marginBottom: spacing.sm},
+  muted: {color: colors.textMuted, fontSize: typography.body, marginTop: spacing.xxs},
   toggle: {
     alignSelf: 'flex-start',
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
+    minHeight: layout.buttonHeight,
     borderRadius: radii.md,
     borderWidth: 1,
     borderColor: colors.border,
     backgroundColor: '#0D1116',
+    justifyContent: 'center',
   },
   toggleOn: {borderColor: colors.accent},
   toggleText: {color: colors.text, fontWeight: '700'},

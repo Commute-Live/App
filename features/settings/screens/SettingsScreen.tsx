@@ -1,11 +1,12 @@
 import React, {useState} from 'react';
-import {Alert, Image, Pressable, ScrollView, StyleSheet, Text, View} from 'react-native';
+import {Alert, Pressable, ScrollView, StyleSheet, Text, View} from 'react-native';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
 import {Ionicons} from '@expo/vector-icons';
 import {useRouter} from 'expo-router';
-import {colors, spacing, radii} from '../../../theme';
+import {colors, layout, radii, spacing, typography} from '../../../theme';
 import {useAuth} from '../../../state/authProvider';
 import {BottomNav, type BottomNavItem} from '../../../components/BottomNav';
+import {AppBrandHeader} from '../../../components/AppBrandHeader';
 
 const navItems: BottomNavItem[] = [
   {key: 'home', label: 'Home', icon: 'home-outline', route: '/dashboard'},
@@ -115,21 +116,7 @@ export default function SettingsScreen() {
 
   return (
     <View style={[styles.container, {paddingTop: insets.top}]}>
-
-      {/* ── Brand Header ─────────────────────────────────────────────── */}
-      <View style={styles.appHeader}>
-        <View style={styles.logoWrap}>
-          <Image source={require('../../../assets/images/app-logo.png')} style={styles.appLogo} resizeMode="contain" />
-        </View>
-        <View style={styles.wordmarkLockup}>
-          <Text style={styles.wordmark}>CommuteLive</Text>
-        </View>
-        {user?.email ? (
-          <View style={styles.avatarCircle}>
-            <Text style={styles.avatarText}>{user.email.charAt(0).toUpperCase()}</Text>
-          </View>
-        ) : null}
-      </View>
+      <AppBrandHeader email={user?.email} />
 
       <ScrollView
         contentContainerStyle={[styles.scroll, styles.scrollContent]}
@@ -328,50 +315,14 @@ const styles = StyleSheet.create({
   // ─── Layout ───────────────────────────────────────────────────────────────
   container: {flex: 1, backgroundColor: colors.background},
   scroll: {
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.lg,
-    paddingBottom: 120,
-    gap: spacing.lg,
+    paddingHorizontal: layout.screenPadding,
+    paddingTop: layout.screenPadding,
+    paddingBottom: layout.bottomInset,
+    gap: layout.screenGap,
   },
   scrollContent: {
     flexGrow: 1,
   },
-
-  // ─── Brand Header ─────────────────────────────────────────────────────────
-  appHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  logoWrap: {
-    position: 'absolute',
-    left: spacing.lg,
-    width: 30,
-    height: 30,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  appLogo: {
-    width: 26,
-    height: 26,
-  },
-  wordmarkLockup: {flexDirection: 'row', alignItems: 'center', gap: 7},
-  wordmark: {color: colors.text, fontSize: 20, fontWeight: '900', letterSpacing: -0.5},
-  avatarCircle: {
-    position: 'absolute',
-    right: spacing.lg,
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    backgroundColor: colors.accentMuted,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  avatarText: {color: colors.accent, fontSize: 13, fontWeight: '800'},
 
   // ─── Page Title ───────────────────────────────────────────────────────────
   pageHeader: {
@@ -380,7 +331,7 @@ const styles = StyleSheet.create({
   },
   pageTitle: {
     color: colors.text,
-    fontSize: 28,
+    fontSize: typography.pageTitle,
     fontWeight: '900',
     letterSpacing: -0.8,
     lineHeight: 33,
@@ -397,7 +348,7 @@ const styles = StyleSheet.create({
   listRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    minHeight: 56,
+    minHeight: layout.tabHeight,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.md,
     gap: spacing.sm,
@@ -407,8 +358,8 @@ const styles = StyleSheet.create({
     borderBottomColor: colors.border,
   },
   iconBox: {
-    width: 32,
-    height: 32,
+    width: layout.chromeSize,
+    height: layout.chromeSize,
     borderRadius: 8,
     alignItems: 'center',
     justifyContent: 'center',
@@ -428,7 +379,7 @@ const styles = StyleSheet.create({
 
   // ─── Expanded Content ─────────────────────────────────────────────────────
   expandedContent: {
-    paddingLeft: 58,
+    paddingLeft: spacing.md + layout.chromeSize + spacing.sm,
     paddingRight: spacing.md,
     paddingBottom: spacing.md,
     gap: spacing.md,
@@ -477,14 +428,14 @@ const styles = StyleSheet.create({
   cityCardActive: {borderColor: colors.accent, backgroundColor: colors.accentMuted},
   cityBadge: {
     alignSelf: 'flex-start',
-    borderRadius: 999,
+    borderRadius: radii.sm,
     borderWidth: 1,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
+    paddingHorizontal: spacing.xs,
+    paddingVertical: spacing.xxs,
   },
   cityBadgeText: {fontSize: 10, fontWeight: '900', letterSpacing: 0.4},
-  cityCardTitle: {color: colors.text, fontSize: 13, fontWeight: '800'},
-  cityCardBody: {color: colors.textMuted, fontSize: 11, lineHeight: 15, paddingRight: 12},
+  cityCardTitle: {color: colors.text, fontSize: typography.body, fontWeight: '800'},
+  cityCardBody: {color: colors.textMuted, fontSize: typography.caption, lineHeight: 16, paddingRight: spacing.sm},
   cityCardAccent: {position: 'absolute', right: 0, top: 0, bottom: 0, width: 4},
 
   // ─── Buttons ──────────────────────────────────────────────────────────────
@@ -492,13 +443,15 @@ const styles = StyleSheet.create({
     backgroundColor: '#2B1010',
     borderColor: '#5B1C1C',
     borderWidth: 1,
-    paddingVertical: spacing.sm,
+    minHeight: layout.buttonHeight,
     borderRadius: radii.md,
     alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: spacing.md,
   },
-  destructiveButtonText: {color: '#FCA5A5', fontWeight: '700', fontSize: 13},
-  ghostButton: {paddingVertical: spacing.xs, alignItems: 'center'},
-  ghostButtonText: {color: colors.textMuted, fontWeight: '600', fontSize: 12},
+  destructiveButtonText: {color: '#FCA5A5', fontWeight: '700', fontSize: typography.body},
+  ghostButton: {minHeight: 40, alignItems: 'center', justifyContent: 'center', paddingHorizontal: spacing.md},
+  ghostButtonText: {color: colors.textMuted, fontWeight: '600', fontSize: typography.label},
   buttonDisabled: {opacity: 0.5},
 
   // ─── Notices ─────────────────────────────────────────────────────────────

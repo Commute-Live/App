@@ -1,15 +1,17 @@
 import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react';
-import {Alert, Image, Modal, PanResponder, Pressable, ScrollView, StyleSheet, Text, View} from 'react-native';
-import Animated, {useSharedValue, useAnimatedStyle, withSpring} from 'react-native-reanimated';
+import {Alert, Modal, PanResponder, Pressable, ScrollView, StyleSheet, Text, View} from 'react-native';
+import {GestureHandlerRootView} from 'react-native-gesture-handler';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
 import {Ionicons} from '@expo/vector-icons';
 import {useRouter} from 'expo-router';
 import {useFocusEffect} from 'expo-router';
 import {useLocalSearchParams} from 'expo-router';
 import {useMutation, useQueries, useQuery, useQueryClient} from '@tanstack/react-query';
-import {colors, radii, spacing} from '../../../theme';
+import {colors, layout, radii, spacing, typography} from '../../../theme';
 import {BottomNav, type BottomNavItem} from '../../../components/BottomNav';
 import {apiFetch} from '../../../lib/api';
+import {AppBrandHeader} from '../../../components/AppBrandHeader';
+import DraggableFlatList, {type RenderItemParams} from 'react-native-draggable-flatlist';
 
 const NAV_ITEMS: BottomNavItem[] = [
   {key: 'home', label: 'Home', icon: 'home-outline', route: '/dashboard'},
@@ -58,13 +60,6 @@ type ScheduleDraft = {
   start: string;
   end: string;
   days: DisplayWeekday[];
-};
-
-type ReorderDragState = {
-  id: string;
-  startIndex: number;
-  currentIndex: number;
-  dy: number;
 };
 
 const formatScheduleSummary = (display: DeviceDisplay) => {
@@ -120,16 +115,6 @@ const buildDisplayPayload = (
     },
   };
 };
-
-const moveItem = <T,>(items: T[], fromIndex: number, toIndex: number) => {
-  if (fromIndex === toIndex) return items;
-  const next = [...items];
-  const [moved] = next.splice(fromIndex, 1);
-  next.splice(toIndex, 0, moved);
-  return next;
-};
-
-const clampIndex = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
 
 const getDisplayLineLabels = (display: DeviceDisplay) =>
   Array.from(
@@ -551,21 +536,7 @@ export default function PresetsScreen() {
 
   return (
     <View style={[styles.container, {paddingTop: insets.top}]}>
-
-      {/* ── Brand Header ─────────────────────────────────────────────── */}
-      <View style={styles.appHeader}>
-        <View style={styles.logoWrap}>
-          <Image source={require('../../../assets/images/app-logo.png')} style={styles.appLogo} resizeMode="contain" />
-        </View>
-        <View style={styles.wordmarkLockup}>
-          <Text style={styles.wordmark}>CommuteLive</Text>
-        </View>
-        {user?.email ? (
-          <View style={styles.avatarCircle}>
-            <Text style={styles.avatarText}>{user.email.charAt(0).toUpperCase()}</Text>
-          </View>
-        ) : null}
-      </View>
+      <AppBrandHeader email={user?.email} />
 
       <ScrollView contentContainerStyle={styles.scroll} bounces={false}>
 
@@ -947,199 +918,102 @@ function ReorderDisplaysModal({
   onClose: () => void;
   onSave: (orderedIds: string[]) => void;
 }) {
-  const [draftIds, setDraftIds] = useState<string[]>([]);
-  const [dragState, setDragState] = useState<ReorderDragState | null>(null);
-  const draftIdsRef = useRef<string[]>([]);
-  const dragStateRef = useRef<ReorderDragState | null>(null);
+  const [draftDisplays, setDraftDisplays] = useState<DeviceDisplay[]>([]);
+  const [activeId, setActiveId] = useState<string | null>(null);
+  const listHeight = Math.min(draftDisplays.length * REORDER_ROW_HEIGHT, 420);
 
   useEffect(() => {
     if (!visible) return;
-    setDraftIds(displays.map(display => display.displayId));
-    setDragState(null);
+    setDraftDisplays(displays);
+    setActiveId(null);
   }, [visible, displays]);
-
-  useEffect(() => {
-    draftIdsRef.current = draftIds;
-  }, [draftIds]);
-
-  useEffect(() => {
-    dragStateRef.current = dragState;
-  }, [dragState]);
-
-  const displayMap = useMemo(
-    () => Object.fromEntries(displays.map(display => [display.displayId, display])),
-    [displays],
-  );
-  const orderedDisplays = draftIds.map(displayId => displayMap[displayId]).filter(Boolean);
   const initialIds = useMemo(() => displays.map(display => display.displayId), [displays]);
-  const listHeight = orderedDisplays.length * REORDER_ROW_HEIGHT;
 
-  const handleDragStart = useCallback(
-    (displayId: string, index: number) => {
-      if (saving) return;
-      setDragState({id: displayId, startIndex: index, currentIndex: index, dy: 0});
+  const handleDragEnd = useCallback(
+    ({data}: {data: DeviceDisplay[]}) => {
+      setActiveId(null);
+      setDraftDisplays(data);
+      const orderedIds = data.map(display => display.displayId);
+      const changed =
+        orderedIds.length === initialIds.length &&
+        orderedIds.some((displayId, index) => displayId !== initialIds[index]);
+      if (changed && !saving) {
+        onSave(orderedIds);
+      }
     },
-    [saving],
+    [initialIds, onSave, saving],
   );
-
-  const handleDragMove = useCallback(
-    (dy: number) => {
-      const currentDrag = dragStateRef.current;
-      if (!currentDrag) return;
-      const minIndex = 0;
-      const maxIndex = Math.max(minIndex, draftIdsRef.current.length - 1);
-      const rawTop = currentDrag.startIndex * REORDER_ROW_HEIGHT + dy;
-      const clampedTop = clampIndex(rawTop, minIndex * REORDER_ROW_HEIGHT, maxIndex * REORDER_ROW_HEIGHT);
-      const nextIndex = clampIndex(Math.round(clampedTop / REORDER_ROW_HEIGHT), minIndex, maxIndex);
-
-      setDragState({
-        ...currentDrag,
-        currentIndex: nextIndex,
-        dy: clampedTop - currentDrag.startIndex * REORDER_ROW_HEIGHT,
-      });
-    },
-    [],
-  );
-
-  const handleDragEnd = useCallback(() => {
-    const currentDrag = dragStateRef.current;
-    if (!currentDrag) return;
-    const nextIds = moveItem(draftIdsRef.current, currentDrag.startIndex, currentDrag.currentIndex);
-    const changed =
-      nextIds.length === initialIds.length &&
-      nextIds.some((displayId, index) => displayId !== initialIds[index]);
-    setDraftIds(nextIds);
-    setDragState(null);
-    if (changed && !saving) {
-      onSave(nextIds);
-    }
-  }, [initialIds, onSave, saving]);
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <View style={styles.reorderBackdrop}>
-        <View style={styles.reorderModal}>
-          <View style={styles.reorderHeader}>
-            <View style={styles.reorderHeaderCopy}>
-              <Text style={styles.reorderTitle}>Reorder</Text>
-              <Text style={styles.reorderBody}>
-                Drag to reorder. First becomes active.
-              </Text>
+      <GestureHandlerRootView style={styles.reorderGestureRoot}>
+        <View style={styles.reorderBackdrop}>
+          <View style={styles.reorderModal}>
+            <View style={styles.reorderHeader}>
+              <View style={styles.reorderHeaderCopy}>
+                <Text style={styles.reorderTitle}>Reorder</Text>
+                <Text style={styles.reorderBody}>
+                  Drag to reorder. First becomes active.
+                </Text>
+              </View>
+              <Pressable style={styles.reorderCloseBtn} onPress={onClose} disabled={saving}>
+                <Ionicons name="close" size={16} color={colors.text} />
+              </Pressable>
             </View>
-            <Pressable style={styles.reorderCloseBtn} onPress={onClose} disabled={saving}>
-              <Ionicons name="close" size={16} color={colors.text} />
-            </Pressable>
-          </View>
 
-          <View style={[styles.reorderList, {height: listHeight}]}>
-            {orderedDisplays.map((display, index) => {
-              const isActive = index === 0;
-              const isDragging = dragState?.id === display.displayId;
-              let top = index * REORDER_ROW_HEIGHT;
-              if (dragState) {
-                if (isDragging) {
-                  top = dragState.startIndex * REORDER_ROW_HEIGHT + dragState.dy;
-                } else if (
-                  dragState.currentIndex > dragState.startIndex &&
-                  index > dragState.startIndex &&
-                  index <= dragState.currentIndex
-                ) {
-                  top -= REORDER_ROW_HEIGHT;
-                } else if (
-                  dragState.currentIndex < dragState.startIndex &&
-                  index >= dragState.currentIndex &&
-                  index < dragState.startIndex
-                ) {
-                  top += REORDER_ROW_HEIGHT;
-                }
-              }
-              const lineLabels = getDisplayLineLabels(display);
-              const providers = getDisplayProviders(display);
-
-              return (
+            <DraggableFlatList
+              data={draftDisplays}
+              keyExtractor={item => item.displayId}
+              activationDistance={0}
+              autoscrollSpeed={240}
+              dragItemOverflow={false}
+              scrollEnabled={draftDisplays.length * REORDER_ROW_HEIGHT > listHeight}
+              style={[styles.reorderList, {maxHeight: listHeight}]}
+              contentContainerStyle={styles.reorderListContent}
+              onDragBegin={index => setActiveId(draftDisplays[index]?.displayId ?? null)}
+              onRelease={() => setActiveId(null)}
+              onDragEnd={handleDragEnd}
+              renderItem={({item, drag, isActive, getIndex}: RenderItemParams<DeviceDisplay>) => (
                 <ReorderListRow
-                  key={display.displayId}
-                  display={display}
-                  lineLabels={lineLabels}
-                  providers={providers}
-                  isActive={isActive}
-                  isDragging={isDragging}
-                  top={top}
+                  display={item}
+                  index={getIndex() ?? 0}
+                  isDragging={isActive || activeId === item.displayId}
                   saving={saving}
-                  onDragStart={() => handleDragStart(display.displayId, index)}
-                  onDragMove={handleDragMove}
-                  onDragEnd={handleDragEnd}
+                  onDragStart={drag}
                 />
-              );
-            })}
-          </View>
+              )}
+            />
 
+          </View>
         </View>
-      </View>
+      </GestureHandlerRootView>
     </Modal>
   );
 }
 
 function ReorderListRow({
   display,
-  lineLabels,
-  providers,
-  isActive,
   isDragging,
-  top,
+  index,
   saving,
   onDragStart,
-  onDragMove,
-  onDragEnd,
 }: {
   display: DeviceDisplay;
-  lineLabels: string[];
-  providers: string[];
-  isActive: boolean;
   isDragging: boolean;
-  top: number;
+  index: number;
   saving: boolean;
   onDragStart: () => void;
-  onDragMove: (dy: number) => void;
-  onDragEnd: () => void;
 }) {
-  const rowTop = useSharedValue(top);
-
-  useEffect(() => {
-    if (isDragging) {
-      rowTop.value = top;
-    } else {
-      rowTop.value = withSpring(top, {damping: 20, stiffness: 300});
-    }
-  }, [top, isDragging]);
-
-  const animStyle = useAnimatedStyle(() => ({top: rowTop.value}));
-
-  const panResponder = useMemo(
-    () =>
-      PanResponder.create({
-        onStartShouldSetPanResponder: () => !saving,
-        onMoveShouldSetPanResponder: (_event, gestureState) => !saving && Math.abs(gestureState.dy) > 2,
-        onPanResponderGrant: () => {
-          onDragStart();
-        },
-        onPanResponderMove: (_event, gestureState) => {
-          onDragMove(gestureState.dy);
-        },
-        onPanResponderRelease: () => {
-          onDragEnd();
-        },
-        onPanResponderTerminate: () => {
-          onDragEnd();
-        },
-      }),
-    [onDragEnd, onDragMove, onDragStart, saving],
-  );
+  const lineLabels = getDisplayLineLabels(display);
+  const providers = getDisplayProviders(display);
+  const isActive = index === 0;
 
   return (
-    <Animated.View
-      {...panResponder.panHandlers}
-      style={[styles.reorderRow, animStyle, isDragging && styles.reorderRowDragging]}>
+    <Pressable
+      disabled={saving}
+      delayLongPress={120}
+      onLongPress={onDragStart}
+      style={[styles.reorderRow, isDragging && styles.reorderRowDragging]}>
       <View style={styles.reorderRowMain}>
         <View style={styles.reorderBadgeRow}>
           {lineLabels.length > 0 ? (
@@ -1187,7 +1061,7 @@ function ReorderListRow({
           </View>
         )}
       </View>
-    </Animated.View>
+    </Pressable>
   );
 }
 
@@ -1195,47 +1069,11 @@ const styles = StyleSheet.create({
   // ─── Layout ───────────────────────────────────────────────────────────────
   container: {flex: 1, backgroundColor: colors.background},
   scroll: {
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.lg,
-    paddingBottom: 120,
-    gap: spacing.lg,
+    paddingHorizontal: layout.screenPadding,
+    paddingTop: layout.screenPadding,
+    paddingBottom: layout.bottomInset,
+    gap: layout.screenGap,
   },
-
-  // ─── Brand Header ─────────────────────────────────────────────────────────
-  appHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  logoWrap: {
-    position: 'absolute',
-    left: spacing.lg,
-    width: 30,
-    height: 30,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  appLogo: {
-    width: 26,
-    height: 26,
-  },
-  wordmarkLockup: {flexDirection: 'row', alignItems: 'center', gap: spacing.xs},
-  wordmark: {color: colors.text, fontSize: 20, fontWeight: '900', letterSpacing: -0.5},
-  avatarCircle: {
-    position: 'absolute',
-    right: spacing.lg,
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    backgroundColor: colors.accentMuted,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  avatarText: {color: colors.accent, fontSize: 13, fontWeight: '800'},
 
   // ─── Page Header ──────────────────────────────────────────────────────────
   pageHeader: {
@@ -1251,9 +1089,9 @@ const styles = StyleSheet.create({
   pageHeaderLeft: {flex: 1},
   pageHeaderRight: {flexDirection: 'row', alignItems: 'center', gap: spacing.sm},
   addBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 10,
+    width: layout.iconButton,
+    height: layout.iconButton,
+    borderRadius: radii.md,
     borderWidth: 1,
     borderColor: colors.border,
     backgroundColor: colors.surface,
@@ -1262,7 +1100,7 @@ const styles = StyleSheet.create({
   },
   pageTitle: {
     color: colors.text,
-    fontSize: 28,
+    fontSize: typography.pageTitle,
     fontWeight: '900',
     letterSpacing: -0.8,
     lineHeight: 33,
@@ -1282,13 +1120,9 @@ const styles = StyleSheet.create({
   // ─── Display Card ─────────────────────────────────────────────────────────
   displayCard: {},
   displayCardActive: {
-    borderWidth: 1.5,
+    borderWidth: 1,
     borderColor: '#34D399',
-    borderRadius: 16,
-    shadowColor: '#34D399',
-    shadowOffset: {width: 0, height: 0},
-    shadowOpacity: 0.25,
-    shadowRadius: 12,
+    borderRadius: radii.lg,
   },
 
   // Card header: name + badges
@@ -1317,11 +1151,11 @@ const styles = StyleSheet.create({
   badge: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 5,
+    gap: spacing.xxs,
     borderRadius: radii.sm,
     borderWidth: 1,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
+    paddingHorizontal: spacing.xs,
+    paddingVertical: spacing.xxs,
   },
   badgeActive: {backgroundColor: '#0A2218', borderColor: '#1B5E4A'},
   badgePaused: {backgroundColor: colors.card, borderColor: colors.border},
@@ -1335,15 +1169,15 @@ const styles = StyleSheet.create({
   },
   activeOverlayBadge: {
     position: 'absolute',
-    top: 10,
-    right: 10,
+    top: spacing.xs,
+    right: spacing.xs,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 5,
+    gap: spacing.xxs,
     backgroundColor: 'rgba(0,0,0,0.6)',
-    paddingHorizontal: 9,
-    paddingVertical: 5,
-    borderRadius: 20,
+    paddingHorizontal: spacing.xs,
+    paddingVertical: spacing.xxs,
+    borderRadius: radii.md,
     borderWidth: 1,
     borderColor: '#34D399',
   },
@@ -1376,12 +1210,12 @@ const styles = StyleSheet.create({
   navActiveLabel: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 5,
+    gap: spacing.xxs,
     borderWidth: 1,
     borderColor: '#34D399',
-    borderRadius: 20,
-    paddingHorizontal: 9,
-    paddingVertical: 4,
+    borderRadius: radii.md,
+    paddingHorizontal: spacing.xs,
+    paddingVertical: spacing.xxs,
   },
   navActiveDot: {
     width: 7,
@@ -1408,13 +1242,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 4,
   },
   arrowBtn: {
-    width: 32,
-    height: 32,
+    width: layout.iconButton,
+    height: layout.iconButton,
     alignItems: 'center',
     justifyContent: 'center',
   },
   arrowBtnDisabled: {opacity: 0.25},
-  dotRow: {flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5},
+  dotRow: {flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.xxs},
   dot: {width: 5, height: 5, borderRadius: 3, backgroundColor: colors.border},
   dotActive: {width: 14, height: 5, borderRadius: 3, backgroundColor: colors.accent},
 
@@ -1528,7 +1362,7 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     backgroundColor: colors.card,
     padding: spacing.sm,
-    gap: 2,
+    gap: spacing.xxs,
   },
   scheduleAlwaysOnTitle: {color: colors.text, fontSize: 13, fontWeight: '800'},
   scheduleAlwaysOnBody: {color: colors.textMuted, fontSize: 12},
@@ -1541,12 +1375,12 @@ const styles = StyleSheet.create({
   },
 
   // ─── Days ─────────────────────────────────────────────────────────────────
-  daysRow: {flexDirection: 'row', gap: 6},
+  daysRow: {flexDirection: 'row', gap: spacing.xs},
   daysRowDisabled: {opacity: 0.35},
   dayPill: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
     borderWidth: 1,
     borderColor: colors.border,
     backgroundColor: colors.card,
@@ -1576,8 +1410,8 @@ const styles = StyleSheet.create({
     gap: spacing.xs,
   },
   timeAdjustButton: {
-    width: 28,
-    height: 28,
+    width: layout.chromeSize,
+    height: layout.chromeSize,
     borderRadius: radii.sm,
     borderWidth: 1,
     borderColor: colors.border,
@@ -1589,8 +1423,8 @@ const styles = StyleSheet.create({
   timeFieldValue: {color: colors.text, fontSize: 14, fontWeight: '800'},
 
   editBtn: {
-    width: 32,
-    height: 32,
+    width: layout.iconButton,
+    height: layout.iconButton,
     borderRadius: radii.sm,
     borderWidth: 1,
     borderColor: colors.border,
@@ -1600,8 +1434,8 @@ const styles = StyleSheet.create({
   },
   editBtnText: {color: colors.text, fontSize: 12, fontWeight: '700'},
   deleteBtn: {
-    width: 32,
-    height: 32,
+    width: layout.iconButton,
+    height: layout.iconButton,
     borderRadius: radii.sm,
     borderWidth: 1,
     borderColor: '#2A1212',
@@ -1615,14 +1449,17 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.62)',
     justifyContent: 'center',
-    paddingHorizontal: spacing.lg,
+    paddingHorizontal: layout.screenPadding,
+  },
+  reorderGestureRoot: {
+    flex: 1,
   },
   reorderModal: {
-    borderRadius: 12,
+    borderRadius: radii.lg,
     borderWidth: 1,
     borderColor: colors.border,
     backgroundColor: colors.surface,
-    padding: spacing.lg,
+    padding: layout.cardPaddingLg,
     gap: spacing.md,
   },
   reorderHeader: {
@@ -1647,8 +1484,8 @@ const styles = StyleSheet.create({
     lineHeight: 16,
   },
   reorderCloseBtn: {
-    width: 30,
-    height: 30,
+    width: layout.iconButton,
+    height: layout.iconButton,
     borderRadius: radii.sm,
     borderWidth: 1,
     borderColor: colors.border,
@@ -1657,14 +1494,15 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   reorderList: {
-    position: 'relative',
+    borderRadius: radii.md,
+    overflow: 'hidden',
+  },
+  reorderListContent: {
+    gap: spacing.sm,
   },
   reorderRow: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
     height: REORDER_ROW_HEIGHT - 8,
-    borderRadius: 10,
+    borderRadius: radii.md,
     borderWidth: 1,
     borderColor: colors.border,
     backgroundColor: colors.card,
@@ -1690,14 +1528,14 @@ const styles = StyleSheet.create({
     width: 72,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: spacing.xs,
     flexWrap: 'wrap',
   },
   reorderLineBadge: {
     minWidth: 24,
     height: 24,
     borderRadius: 12,
-    paddingHorizontal: 7,
+    paddingHorizontal: spacing.xs,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: colors.background,
@@ -1708,7 +1546,7 @@ const styles = StyleSheet.create({
     height: 22,
     borderRadius: 7,
     minWidth: 38,
-    paddingHorizontal: 5,
+    paddingHorizontal: spacing.xxs,
   },
   reorderLineBadgeText: {
     color: colors.text,
@@ -1746,19 +1584,19 @@ const styles = StyleSheet.create({
     fontSize: 12,
   },
   reorderHandle: {
-    width: 34,
-    height: 34,
+    width: layout.iconButton,
+    height: layout.iconButton,
     borderRadius: radii.sm,
     alignItems: 'center',
     justifyContent: 'center',
   },
   reorderActivePill: {
-    height: 26,
-    borderRadius: 13,
+    minHeight: 28,
+    borderRadius: radii.md,
     borderWidth: 1,
     borderColor: '#1B5E4A',
     backgroundColor: '#0A2218',
-    paddingHorizontal: 10,
+    paddingHorizontal: spacing.sm,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1778,7 +1616,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
     backgroundColor: colors.card,
-    paddingVertical: spacing.sm,
+    minHeight: layout.buttonHeight,
     paddingHorizontal: spacing.md,
     alignItems: 'center',
     justifyContent: 'center',
@@ -1792,7 +1630,7 @@ const styles = StyleSheet.create({
     minWidth: 120,
     borderRadius: radii.sm,
     backgroundColor: colors.accent,
-    paddingVertical: spacing.sm,
+    minHeight: layout.buttonHeight,
     paddingHorizontal: spacing.md,
     alignItems: 'center',
     justifyContent: 'center',
@@ -1810,9 +1648,10 @@ const styles = StyleSheet.create({
   setActiveBtn: {
     backgroundColor: colors.accent,
     borderRadius: radii.md,
-    paddingVertical: spacing.sm,
+    minHeight: layout.buttonHeight,
     alignItems: 'center',
     justifyContent: 'center',
+    paddingHorizontal: spacing.md,
   },
   setActiveBtnDisabled: {opacity: 0.5},
   setActiveBtnText: {
@@ -1823,7 +1662,7 @@ const styles = StyleSheet.create({
   activeStatusRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 7,
+    gap: spacing.xs,
   },
   activeDot: {
     width: 7,

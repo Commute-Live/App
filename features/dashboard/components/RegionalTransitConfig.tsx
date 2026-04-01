@@ -5,6 +5,7 @@ import {colors, radii, spacing} from '../../../theme';
 import {apiFetch} from '../../../lib/api';
 import {extractConfigDisplayId} from '../../../lib/deviceConfig';
 import {queryKeys} from '../../../lib/queryKeys';
+import {configSharedStyles} from './configStyles';
 
 const MAX_PHILLY_LINES = 2;
 const DISPLAY_PRESETS = [1, 2, 3, 4, 5] as const;
@@ -600,16 +601,7 @@ export default function RegionalTransitConfig({deviceId, city, mode}: Props) {
 }
 
 const styles = StyleSheet.create({
-  sectionCard: {
-    backgroundColor: colors.card,
-    borderColor: colors.border,
-    borderWidth: 1,
-    borderRadius: radii.lg,
-    padding: spacing.md,
-    marginBottom: spacing.sm,
-  },
-  sectionTitle: {color: colors.text, fontSize: 16, fontWeight: '800', marginBottom: spacing.sm},
-  hintText: {color: colors.textMuted, fontSize: 11, marginBottom: spacing.xs},
+  ...configSharedStyles,
   input: {
     borderRadius: radii.md,
     backgroundColor: colors.card,
@@ -618,61 +610,13 @@ const styles = StyleSheet.create({
     padding: spacing.md,
     color: colors.text,
     marginBottom: spacing.sm,
-  },
-  stationSelector: {
-    borderColor: colors.border,
-    borderWidth: 1,
-    borderRadius: radii.md,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.sm,
-    backgroundColor: colors.surface,
-    marginTop: spacing.sm,
-    marginBottom: spacing.sm,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  stationSelectorOpen: {
-    borderColor: colors.accent,
-    backgroundColor: colors.accentMuted,
-  },
-  stationSelectorPressed: {opacity: 0.9},
-  stationSelectorText: {color: colors.text, fontSize: 12, fontWeight: '700', flexShrink: 1},
-  stationSelectorCaret: {color: colors.textMuted, fontSize: 10, marginLeft: spacing.xs},
-  stopList: {
-    borderColor: colors.border,
-    borderWidth: 1,
-    borderRadius: radii.md,
-    overflow: 'hidden',
-    marginBottom: spacing.sm,
-  },
-  stopListScroll: {maxHeight: 260},
-  stopItem: {
-    borderBottomColor: colors.border,
-    borderBottomWidth: 1,
-    backgroundColor: colors.surface,
-    paddingVertical: spacing.xs,
-    paddingHorizontal: spacing.sm,
-  },
-  stopItemSelected: {
-    backgroundColor: colors.accentMuted,
-    borderBottomColor: colors.accent,
-  },
-  stopItemPressed: {opacity: 0.85},
-  stopItemTitle: {color: colors.text, fontSize: 12, fontWeight: '700'},
-  stopItemSubtitle: {color: colors.textMuted, fontSize: 11},
-  emptyText: {color: colors.textMuted, fontSize: 12, padding: spacing.sm},
-  saveButton: {
-    marginTop: spacing.sm,
-    backgroundColor: colors.accent,
-    borderRadius: radii.md,
-    paddingVertical: spacing.sm,
-    alignItems: 'center',
+    minHeight: 48,
   },
   saveButtonDisabled: {opacity: 0.6},
-  saveButtonText: {color: colors.background, fontSize: 12, fontWeight: '800'},
-  statusNote: {color: colors.textMuted, fontSize: 11, marginTop: spacing.sm},
-  lineGrid: {flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs, marginBottom: spacing.sm},
+  lineGrid: {
+    ...configSharedStyles.lineGrid,
+    marginBottom: spacing.sm,
+  },
   debugBox: {
     borderWidth: 1,
     borderColor: colors.border,
@@ -698,18 +642,4 @@ const styles = StyleSheet.create({
     padding: spacing.sm,
     fontFamily: 'Courier',
   },
-  lineChip: {
-    borderColor: colors.border,
-    borderWidth: 1,
-    borderRadius: radii.md,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
-    backgroundColor: colors.surface,
-  },
-  lineChipActive: {
-    borderColor: colors.accent,
-    backgroundColor: colors.accentMuted,
-  },
-  lineChipText: {color: colors.text, fontSize: 12, fontWeight: '700'},
-  lineChipTextActive: {color: colors.accent},
 });

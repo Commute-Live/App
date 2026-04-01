@@ -1,7 +1,6 @@
 import React, {useEffect, useRef, useState} from 'react';
 import {
   ActivityIndicator,
-  Image,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -15,11 +14,12 @@ import {
 import Animated, {FadeIn, FadeOut} from 'react-native-reanimated';
 import {SafeAreaView} from 'react-native-safe-area-context';
 import {useRouter} from 'expo-router';
-import {colors, spacing, radii} from '../../../theme';
+import {colors, layout, radii, spacing, typography} from '../../../theme';
 import {useAppState} from '../../../state/appState';
 import {apiFetch, API_BASE} from '../../../lib/api';
 import {useAuth} from '../../../state/authProvider';
 import {useBleProvision, WifiNetwork} from '../hooks/useBleProvision';
+import {AppBrandHeader} from '../../../components/AppBrandHeader';
 
 type ProvisionStep = 'idle' | 'online';
 
@@ -353,15 +353,7 @@ export default function BleProvisionScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={['top', 'left', 'right', 'bottom']}>
-      <View style={styles.appHeader}>
-        <View style={styles.logoWrap}>
-          <Image source={require('../../../assets/images/app-logo.png')} style={styles.appLogo} resizeMode="contain" />
-        </View>
-        <View style={styles.wordmarkLockup}>
-          <Text style={styles.wordmark}>CommuteLive</Text>
-        </View>
-        <View style={styles.headerSpacer} />
-      </View>
+      <AppBrandHeader />
 
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <View style={styles.heroBlock}>
@@ -552,51 +544,12 @@ export default function BleProvisionScreen() {
 // ── Styles ───────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
   container: {flex: 1, backgroundColor: colors.background},
-  appHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-    backgroundColor: colors.background,
-  },
-  logoWrap: {
-    position: 'absolute',
-    left: spacing.lg,
-    width: 30,
-    height: 30,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  appLogo: {
-    width: 26,
-    height: 26,
-  },
-  wordmarkLockup: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xxs,
-  },
-  wordmark: {
-    color: colors.text,
-    fontSize: 20,
-    fontWeight: '900',
-    letterSpacing: -0.5,
-  },
-  headerSpacer: {
-    position: 'absolute',
-    right: spacing.lg,
-    width: 30,
-    height: 30,
-  },
   content: {
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.lg,
+    paddingHorizontal: layout.screenPadding,
+    paddingTop: layout.screenPadding,
     paddingBottom: spacing.xxl,
     flexGrow: 1,
-    gap: spacing.md,
+    gap: layout.sectionGap,
   },
   heroBlock: {
     gap: spacing.xs,
@@ -604,13 +557,13 @@ const styles = StyleSheet.create({
   },
   heading: {
     color: colors.text,
-    fontSize: 28,
+    fontSize: typography.pageTitle,
     fontWeight: '900',
     letterSpacing: -0.8,
     textAlign: 'center',
   },
   section: {gap: spacing.md},
-  sectionTitle: {color: colors.text, fontSize: 13, fontWeight: '700', marginBottom: spacing.sm},
+  sectionTitle: {color: colors.text, fontSize: typography.label, fontWeight: '700', marginBottom: spacing.sm},
   errorCard: {
     backgroundColor: colors.surface,
     borderColor: colors.warning,
@@ -618,18 +571,18 @@ const styles = StyleSheet.create({
     borderRadius: radii.md,
     padding: spacing.md,
   },
-  errorText: {color: colors.warning, fontSize: 13},
+  errorText: {color: colors.warning, fontSize: typography.body},
   scanCard: {
     backgroundColor: colors.card,
     borderColor: colors.border,
     borderWidth: 1,
     borderRadius: radii.lg,
-    padding: spacing.xl,
+    padding: layout.cardPaddingLg,
     alignItems: 'center',
     gap: spacing.sm,
   },
   scanText: {color: colors.text, fontWeight: '700', textAlign: 'center'},
-  scanHint: {color: colors.textMuted, fontSize: 12, textAlign: 'center'},
+  scanHint: {color: colors.textMuted, fontSize: typography.label, textAlign: 'center'},
   deviceCard: {
     backgroundColor: colors.card,
     borderColor: colors.accent,
@@ -638,10 +591,10 @@ const styles = StyleSheet.create({
     padding: spacing.md,
     gap: spacing.xxs,
   },
-  deviceCardLabel: {color: colors.textMuted, fontSize: 12},
+  deviceCardLabel: {color: colors.textMuted, fontSize: typography.label},
   deviceVerifyText: {
     color: colors.text,
-    fontSize: 14,
+    fontSize: typography.bodyLg,
     lineHeight: 20,
     marginTop: spacing.xxs,
   },
@@ -669,20 +622,20 @@ const styles = StyleSheet.create({
   },
   deviceRowCopy: {
     flex: 1,
-    gap: 2,
+    gap: spacing.xxs,
   },
   deviceRowName: {
     color: colors.text,
-    fontSize: 15,
+    fontSize: typography.bodyLg,
     fontWeight: '700',
   },
   deviceRowMeta: {
     color: colors.textMuted,
-    fontSize: 12,
+    fontSize: typography.label,
   },
   deviceRowAction: {
     color: colors.accent,
-    fontSize: 12,
+    fontSize: typography.label,
     fontWeight: '700',
   },
   deviceRowActionSelected: {
@@ -694,17 +647,17 @@ const styles = StyleSheet.create({
     gap: spacing.xs,
     marginBottom: spacing.md,
   },
-  connectedText: {color: colors.success, fontWeight: '700', fontSize: 13},
+  connectedText: {color: colors.success, fontWeight: '700', fontSize: typography.body},
   wifiScanCard: {
     backgroundColor: colors.card,
     borderColor: colors.border,
     borderWidth: 1,
     borderRadius: radii.lg,
-    padding: spacing.lg,
+    padding: layout.cardPaddingLg,
     alignItems: 'center',
     gap: spacing.sm,
   },
-  wifiScanText: {color: colors.textMuted, fontSize: 13},
+  wifiScanText: {color: colors.textMuted, fontSize: typography.body},
   networkList: {
     borderRadius: radii.lg,
     overflow: 'hidden',
@@ -715,7 +668,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
-    paddingVertical: 14,
+    minHeight: layout.buttonHeight,
+    paddingVertical: spacing.sm,
     paddingHorizontal: spacing.md,
     backgroundColor: colors.card,
   },
@@ -735,19 +689,19 @@ const styles = StyleSheet.create({
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: colors.border,
   },
-  networkName: {flex: 1, color: colors.text, fontSize: 15, fontWeight: '500'},
-  lockIcon: {fontSize: 12},
+  networkName: {flex: 1, color: colors.text, fontSize: typography.bodyLg, fontWeight: '500'},
+  lockIcon: {fontSize: typography.label},
   chevron: {color: colors.textMuted, fontSize: 18, fontWeight: '300'},
   enterpriseBadge: {
     backgroundColor: colors.surface,
-    borderRadius: 4,
-    paddingHorizontal: 5,
+    borderRadius: radii.sm,
+    paddingHorizontal: spacing.xxs,
     paddingVertical: 1,
   },
   enterpriseText: {color: colors.textMuted, fontSize: 9, fontWeight: '800'},
-  manualEntryText: {flex: 1, color: colors.accent, fontSize: 14, fontWeight: '600'},
+  manualEntryText: {flex: 1, color: colors.accent, fontSize: typography.bodyLg, fontWeight: '600'},
   rescanRow: {alignSelf: 'center', marginTop: spacing.sm, paddingVertical: spacing.xs},
-  rescanText: {color: colors.accent, fontSize: 13, fontWeight: '600'},
+  rescanText: {color: colors.accent, fontSize: typography.body, fontWeight: '600'},
   progressCard: {
     backgroundColor: colors.surface,
     borderColor: colors.border,
@@ -757,7 +711,7 @@ const styles = StyleSheet.create({
     gap: spacing.xs,
   },
   statusRow: {flexDirection: 'row', alignItems: 'center', gap: spacing.xs},
-  statusLabel: {color: colors.text, fontSize: 13},
+  statusLabel: {color: colors.text, fontSize: typography.body},
   dot: {width: 8, height: 8, borderRadius: 4},
   dotIdle: {backgroundColor: colors.textMuted},
   dotActive: {backgroundColor: colors.success},
@@ -780,7 +734,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  secondaryText: {color: colors.textMuted, fontWeight: '700', fontSize: 14},
+  secondaryText: {color: colors.textMuted, fontWeight: '700', fontSize: typography.bodyLg},
   successText: {color: colors.success, fontWeight: '700', textAlign: 'center', fontSize: 15},
   skipLink: {
     alignItems: 'center',
@@ -791,7 +745,7 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     backgroundColor: colors.surface,
   },
-  skipText: {color: colors.textMuted, fontWeight: '700', fontSize: 13},
+  skipText: {color: colors.textMuted, fontWeight: '700', fontSize: typography.body},
 });
 
 const modal = StyleSheet.create({
@@ -803,9 +757,10 @@ const modal = StyleSheet.create({
     paddingVertical: spacing.sm,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.border,
+    minHeight: layout.headerHeight,
   },
   navBtn: {
-    minWidth: 60,
+    minWidth: 72,
     alignItems: 'flex-start',
     paddingVertical: spacing.xs,
   },
@@ -821,19 +776,19 @@ const modal = StyleSheet.create({
     flex: 1,
     textAlign: 'center',
     color: colors.text,
-    fontSize: 16,
+    fontSize: typography.title,
     fontWeight: '700',
   },
   navConnect: {
     color: colors.accent,
-    fontSize: 16,
+    fontSize: typography.title,
     fontWeight: '700',
   },
   navConnectDim: {
     color: colors.textMuted,
   },
   body: {
-    padding: spacing.lg,
+    padding: layout.cardPaddingLg,
     paddingTop: spacing.xl,
     gap: spacing.md,
   },
@@ -849,18 +804,18 @@ const modal = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: spacing.md,
     paddingVertical: 2,
-    minHeight: 48,
+    minHeight: layout.inputHeight,
   },
   fieldLabel: {
     color: colors.text,
-    fontSize: 15,
+    fontSize: typography.bodyLg,
     fontWeight: '500',
     width: 100,
   },
   fieldInput: {
     flex: 1,
     color: colors.text,
-    fontSize: 15,
+    fontSize: typography.bodyLg,
     paddingVertical: spacing.sm,
     paddingLeft: spacing.sm,
   },
@@ -874,12 +829,12 @@ const modal = StyleSheet.create({
   },
   openText: {
     color: colors.textMuted,
-    fontSize: 13,
+    fontSize: typography.body,
     lineHeight: 18,
   },
   errorText: {
     color: colors.warning,
-    fontSize: 13,
+    fontSize: typography.body,
     textAlign: 'center',
   },
 });

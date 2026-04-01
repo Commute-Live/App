@@ -1,66 +1,17 @@
 import {StyleSheet} from 'react-native';
-import {colors, radii, spacing} from '../../../theme';
+import {colors, layout, radii, spacing, typography} from '../../../theme';
 
 export const styles = StyleSheet.create({
   // ─── Layout ──────────────────────────────────────────────────────────────
   container: {flex: 1, backgroundColor: colors.background},
   scroll: {
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.lg,
-    paddingBottom: 128,
-    gap: spacing.lg,
+    paddingHorizontal: layout.screenPadding,
+    paddingTop: layout.screenPadding,
+    paddingBottom: layout.bottomInset,
+    gap: layout.screenGap,
   },
   loadingContainer: {flex: 1, alignItems: 'center', justifyContent: 'center', gap: spacing.sm},
-  loadingText: {color: colors.textMuted, fontSize: 13},
-
-  // ─── Fixed App Header ────────────────────────────────────────────────────
-  appHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  logoWrap: {
-    position: 'absolute',
-    left: spacing.lg,
-    width: 30,
-    height: 30,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  appLogo: {
-    width: 26,
-    height: 26,
-  },
-  wordmarkLockup: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs,
-  },
-  wordmark: {
-    color: colors.text,
-    fontSize: 20,
-    fontWeight: '900',
-    letterSpacing: -0.5,
-  },
-  avatarCircle: {
-    position: 'absolute',
-    right: spacing.lg,
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    backgroundColor: colors.accentMuted,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  avatarText: {
-    color: colors.accent,
-    fontSize: 13,
-    fontWeight: '800',
-  },
+  loadingText: {color: colors.textMuted, fontSize: typography.body},
 
   // ─── Page Header (device linked — not a card) ────────────────────────────
   pageHeader: {
@@ -84,14 +35,14 @@ export const styles = StyleSheet.create({
   pageHeaderLeft: {gap: spacing.xxs},
   pageStatusText: {
     color: colors.text,
-    fontSize: 28,
+    fontSize: typography.pageTitle,
     fontWeight: '900',
     letterSpacing: -0.8,
     lineHeight: 33,
   },
   pageHeaderMeta: {
     color: colors.textMuted,
-    fontSize: 13,
+    fontSize: typography.body,
     lineHeight: 18,
   },
 
@@ -104,6 +55,7 @@ export const styles = StyleSheet.create({
     borderWidth: 1,
     paddingHorizontal: spacing.sm,
     paddingVertical: spacing.xs,
+    minHeight: 36,
   },
   statusPillOn: {backgroundColor: '#0E2B21', borderColor: '#1B5E4A'},
   statusPillOff: {backgroundColor: colors.surface, borderColor: colors.border},
@@ -128,6 +80,8 @@ export const styles = StyleSheet.create({
     backgroundColor: colors.surface,
     paddingHorizontal: spacing.sm,
     paddingVertical: spacing.xs,
+    minHeight: 36,
+    justifyContent: 'center',
   },
   devicePillActive: {
     borderColor: colors.accent,
@@ -142,8 +96,8 @@ export const styles = StyleSheet.create({
     borderRadius: radii.lg,
     borderWidth: 1,
     borderColor: colors.border,
-    padding: spacing.lg,
-    gap: spacing.lg,
+    padding: layout.cardPaddingLg,
+    gap: layout.screenGap,
   },
   noDeviceCard: {borderColor: colors.warning, borderStyle: 'dashed'},
 
@@ -248,7 +202,7 @@ export const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
     backgroundColor: colors.card,
-    padding: spacing.lg,
+    padding: layout.cardPaddingLg,
     gap: spacing.md,
   },
   emptyStateBody: {gap: spacing.xs},
@@ -257,9 +211,11 @@ export const styles = StyleSheet.create({
   commandError: {color: colors.warning, fontSize: 12},
   setupButton: {
     backgroundColor: colors.accent,
-    paddingVertical: spacing.sm,
+    minHeight: layout.buttonHeight,
     borderRadius: radii.md,
     alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: spacing.md,
   },
   setupButtonText: {color: colors.background, fontWeight: '800', fontSize: 13},
 
@@ -297,6 +253,7 @@ export const styles = StyleSheet.create({
     paddingVertical: spacing.xs,
     borderWidth: 1,
     flexShrink: 0,
+    minHeight: 36,
   },
   toggleChipOn: {backgroundColor: '#0E2B21', borderColor: '#1B5E4A'},
   toggleChipOff: {backgroundColor: colors.surface, borderColor: colors.border},
@@ -315,6 +272,7 @@ export const styles = StyleSheet.create({
     backgroundColor: colors.surface,
     padding: spacing.sm,
     gap: spacing.xs,
+    minHeight: 76,
   },
   timeFieldLabel: {
     color: colors.textMuted,
@@ -330,8 +288,8 @@ export const styles = StyleSheet.create({
     gap: spacing.xs,
   },
   timeFieldButton: {
-    width: 30,
-    height: 30,
+    width: layout.chromeSize,
+    height: layout.chromeSize,
     borderRadius: radii.sm,
     borderWidth: 1,
     borderColor: colors.border,

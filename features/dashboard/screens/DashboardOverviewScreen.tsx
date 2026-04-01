@@ -1,11 +1,12 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Image, PanResponder, Pressable, ScrollView, Text, View } from 'react-native';
+import { ActivityIndicator, PanResponder, Pressable, ScrollView, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
 import { colors, spacing } from '../../../theme';
 import { BottomNav, type BottomNavItem } from '../../../components/BottomNav';
+import {AppBrandHeader} from '../../../components/AppBrandHeader';
 
 const NAV_ITEMS: BottomNavItem[] = [
   {key: 'home', label: 'Home', icon: 'home-outline', route: '/dashboard'},
@@ -386,21 +387,7 @@ export default function DashboardOverviewScreen() {
 
    return (
       <View style={[styles.container, {paddingTop: insets.top}]}>
-
-         {/* ── Fixed App Header ──────────────────────────────────────── */}
-         <View style={styles.appHeader}>
-            <View style={styles.logoWrap}>
-               <Image source={require('../../../assets/images/app-logo.png')} style={styles.appLogo} resizeMode="contain" />
-            </View>
-            <View style={styles.wordmarkLockup}>
-               <Text style={styles.wordmark}>CommuteLive</Text>
-            </View>
-            {user?.email ? (
-               <View style={styles.avatarCircle}>
-                  <Text style={styles.avatarText}>{user.email.charAt(0).toUpperCase()}</Text>
-               </View>
-            ) : null}
-         </View>
+         <AppBrandHeader email={user?.email} />
 
          <ScrollView contentContainerStyle={styles.scroll} bounces={false}>
 

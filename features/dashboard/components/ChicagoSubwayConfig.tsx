@@ -5,6 +5,7 @@ import {colors, radii, spacing} from '../../../theme';
 import {apiFetch} from '../../../lib/api';
 import {extractConfigDisplayId} from '../../../lib/deviceConfig';
 import {queryKeys} from '../../../lib/queryKeys';
+import {configSharedStyles} from './configStyles';
 
 const CTA_DEFAULT_STOP_ID = '40380';
 const CTA_DEFAULT_STOP_NAME = 'Clark/Lake';
@@ -443,82 +444,6 @@ export default function ChicagoSubwayConfig({deviceId}: Props) {
 }
 
 const styles = StyleSheet.create({
-  sectionCard: {
-    backgroundColor: colors.card,
-    borderColor: colors.border,
-    borderWidth: 1,
-    borderRadius: radii.lg,
-    padding: spacing.md,
-    marginBottom: spacing.sm,
-  },
-  sectionTitle: {color: colors.text, fontSize: 16, fontWeight: '800', marginBottom: spacing.sm},
-  hintText: {color: colors.textMuted, fontSize: 11, marginBottom: spacing.xs},
-  stationSelector: {
-    borderColor: colors.border,
-    borderWidth: 1,
-    borderRadius: radii.md,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.sm,
-    backgroundColor: colors.surface,
-    marginTop: spacing.sm,
-    marginBottom: spacing.sm,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  stationSelectorOpen: {
-    borderColor: colors.accent,
-    backgroundColor: colors.accentMuted,
-  },
-  stationSelectorPressed: {opacity: 0.9},
-  stationSelectorText: {color: colors.text, fontSize: 12, fontWeight: '700', flexShrink: 1},
-  stationSelectorCaret: {color: colors.textMuted, fontSize: 10, marginLeft: spacing.xs},
-  stopList: {
-    borderColor: colors.border,
-    borderWidth: 1,
-    borderRadius: radii.md,
-    overflow: 'hidden',
-    marginBottom: spacing.sm,
-  },
-  stopListScroll: {maxHeight: 260},
-  stopItem: {
-    borderBottomColor: colors.border,
-    borderBottomWidth: 1,
-    backgroundColor: colors.surface,
-    paddingVertical: spacing.xs,
-    paddingHorizontal: spacing.sm,
-  },
-  stopItemSelected: {
-    backgroundColor: colors.accentMuted,
-    borderBottomColor: colors.accent,
-  },
-  stopItemPressed: {opacity: 0.85},
-  stopItemTitle: {color: colors.text, fontSize: 12, fontWeight: '700'},
-  stopItemSubtitle: {color: colors.textMuted, fontSize: 11},
-  emptyText: {color: colors.textMuted, fontSize: 12, padding: spacing.sm},
+  ...configSharedStyles,
   destFixed: {color: colors.textMuted, fontSize: 12, marginBottom: spacing.sm},
-  lineGrid: {flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs},
-  lineChip: {
-    borderColor: colors.border,
-    borderWidth: 1,
-    borderRadius: radii.md,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
-    backgroundColor: colors.surface,
-  },
-  lineChipActive: {
-    borderColor: colors.accent,
-    backgroundColor: colors.accentMuted,
-  },
-  lineChipText: {color: colors.text, fontSize: 12, fontWeight: '700'},
-  lineChipTextActive: {color: colors.accent},
-  saveButton: {
-    marginTop: spacing.sm,
-    backgroundColor: colors.accent,
-    borderRadius: radii.md,
-    paddingVertical: spacing.sm,
-    alignItems: 'center',
-  },
-  saveButtonText: {color: colors.background, fontSize: 12, fontWeight: '800'},
-  statusNote: {color: colors.textMuted, fontSize: 11, marginTop: spacing.sm},
 });

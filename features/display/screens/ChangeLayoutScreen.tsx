@@ -2,7 +2,7 @@ import React from 'react';
 import {Pressable, ScrollView, StyleSheet, Text, View} from 'react-native';
 import {SafeAreaView} from 'react-native-safe-area-context';
 import {ScreenHeader} from '../../../components/ScreenHeader';
-import {colors, spacing, radii} from '../../../theme';
+import {colors, layout, radii, spacing, typography} from '../../../theme';
 import {useAppState} from '../../../state/appState';
 
 const themes: {key: 'mono' | 'metro' | 'bold'; label: string; desc: string}[] = [
@@ -101,9 +101,9 @@ const Selectable = ({
 
 const styles = StyleSheet.create({
   container: {flex: 1, backgroundColor: colors.background},
-  content: {padding: spacing.lg},
-  section: {marginBottom: spacing.lg},
-  sectionTitle: {color: colors.text, fontSize: 15, fontWeight: '700', marginBottom: spacing.sm},
+  content: {padding: layout.screenPadding, gap: spacing.sm},
+  section: {marginBottom: layout.screenGap},
+  sectionTitle: {color: colors.text, fontSize: typography.bodyLg, fontWeight: '700', marginBottom: spacing.sm},
   grid: {flexDirection: 'row', gap: spacing.md, flexWrap: 'wrap'},
   card: {
     flex: 1,
@@ -112,11 +112,10 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     borderWidth: 1,
     borderRadius: radii.lg,
-    padding: spacing.md,
-    marginBottom: spacing.sm,
+    padding: layout.cardPadding,
   },
   cardSelected: {borderColor: colors.accent},
-  cardLabel: {color: colors.text, fontWeight: '700', fontSize: 15},
-  cardDesc: {color: colors.textMuted, marginTop: 4, fontSize: 13},
-  cardChip: {color: colors.accent, marginTop: spacing.sm, fontSize: 12, fontWeight: '700'},
+  cardLabel: {color: colors.text, fontWeight: '700', fontSize: typography.bodyLg},
+  cardDesc: {color: colors.textMuted, marginTop: spacing.xxs, fontSize: typography.body},
+  cardChip: {color: colors.accent, marginTop: spacing.sm, fontSize: typography.label, fontWeight: '700'},
 });

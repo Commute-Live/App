@@ -2,7 +2,7 @@ import React from 'react';
 import {Pressable, ScrollView, StyleSheet, Text, View} from 'react-native';
 import {SafeAreaView} from 'react-native-safe-area-context';
 import {ScreenHeader} from '../../../components/ScreenHeader';
-import {colors, spacing, radii} from '../../../theme';
+import {colors, layout, radii, spacing, typography} from '../../../theme';
 import {Preset, useAppState} from '../../../state/appState';
 
 const PRESETS: Preset[] = [
@@ -58,20 +58,20 @@ export default function SwitchPresetScreen() {
 
 const styles = StyleSheet.create({
   container: {flex: 1, backgroundColor: colors.background},
-  content: {padding: spacing.lg},
+  content: {padding: layout.screenPadding, gap: spacing.md},
   card: {
     backgroundColor: colors.card,
     borderColor: colors.border,
     borderWidth: 1,
     borderRadius: radii.lg,
-    padding: spacing.md,
-    marginBottom: spacing.md,
+    minHeight: 88,
+    padding: layout.cardPadding,
     flexDirection: 'row',
     gap: spacing.sm,
     alignItems: 'center',
   },
   active: {borderColor: colors.accent},
-  title: {color: colors.text, fontSize: 16, fontWeight: '700'},
-  desc: {color: colors.textMuted, marginTop: 4, fontSize: 13},
-  chip: {color: colors.accent, fontWeight: '700', fontSize: 12},
+  title: {color: colors.text, fontSize: typography.title, fontWeight: '700'},
+  desc: {color: colors.textMuted, marginTop: spacing.xxs, fontSize: typography.body},
+  chip: {color: colors.accent, fontWeight: '700', fontSize: typography.label},
 });

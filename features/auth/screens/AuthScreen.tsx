@@ -10,7 +10,7 @@ import {
 import {SafeAreaView} from 'react-native-safe-area-context';
 import * as AppleAuthentication from 'expo-apple-authentication';
 import {GoogleLogo} from '../../../components/GoogleLogo';
-import {colors, spacing, radii} from '../../../theme';
+import {colors, layout, radii, spacing, typography} from '../../../theme';
 import {ExternalLink} from '../../../components/ExternalLink';
 import {useAppleAuth} from '../hooks/useAppleAuth';
 import {useGoogleAuth} from '../hooks/useGoogleAuth';
@@ -105,17 +105,17 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.lg,
-    paddingBottom: spacing.lg,
+    paddingHorizontal: layout.screenPadding,
+    paddingTop: layout.screenPadding,
+    paddingBottom: layout.screenPadding,
     justifyContent: 'space-between',
   },
   mainSection: {
     flex: 1,
     justifyContent: 'center',
-    gap: spacing.xxl,
-    paddingTop: spacing.xl,
-    paddingBottom: spacing.lg,
+    gap: spacing.xl,
+    paddingTop: spacing.lg,
+    paddingBottom: spacing.md,
   },
   brandSection: {
     alignItems: 'center',
@@ -134,14 +134,14 @@ const styles = StyleSheet.create({
   },
   title: {
     color: colors.text,
-    fontSize: 28,
+    fontSize: typography.pageTitle,
     fontWeight: '800',
     letterSpacing: -0.6,
     textAlign: 'center',
   },
   subtitle: {
     color: colors.textMuted,
-    fontSize: 13,
+    fontSize: typography.body,
     lineHeight: 19,
     textAlign: 'center',
     maxWidth: 260,
@@ -151,7 +151,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
     backgroundColor: colors.card,
-    padding: spacing.lg,
+    padding: layout.cardPaddingLg,
     gap: spacing.md,
   },
   actionsSection: {
@@ -169,15 +169,16 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'center',
     backgroundColor: colors.card,
-    minHeight: 48,
+    minHeight: layout.buttonHeight,
+    paddingHorizontal: spacing.md,
   },
   googleIcon: {marginRight: 8},
-  googleText: {color: colors.text, fontWeight: '700', fontSize: 15},
+  googleText: {color: colors.text, fontWeight: '700', fontSize: typography.bodyLg},
   buttonDisabled: {opacity: 0.5},
-  errorText: {color: '#FCA5A5', fontSize: 12, fontWeight: '700', textAlign: 'center'},
+  errorText: {color: '#FCA5A5', fontSize: typography.label, fontWeight: '700', textAlign: 'center'},
   securityText: {
     color: colors.textMuted,
-    fontSize: 12,
+    fontSize: typography.label,
     lineHeight: 18,
     textAlign: 'center',
   },
@@ -190,6 +191,6 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.xs,
     paddingHorizontal: spacing.sm,
   },
-  legalText: {color: colors.textMuted, fontSize: 12, lineHeight: 18, textAlign: 'center'},
-  legalLink: {color: colors.accent, fontSize: 12, fontWeight: '700'},
+  legalText: {color: colors.textMuted, fontSize: typography.label, lineHeight: 18, textAlign: 'center'},
+  legalLink: {color: colors.accent, fontSize: typography.label, fontWeight: '700'},
 });

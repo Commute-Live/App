@@ -4,6 +4,7 @@ import {SafeAreaView} from 'react-native-safe-area-context';
 
 import EditScreenInfo from '@/components/EditScreenInfo';
 import {Text, View} from '@/components/Themed';
+import {colors, layout, spacing, typography} from '../../../theme';
 
 export default function ModalScreen() {
   return (
@@ -23,13 +24,16 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
+    padding: layout.screenPadding,
+    backgroundColor: colors.background,
   },
   title: {
-    fontSize: 20,
-    fontWeight: 'bold',
+    color: colors.text,
+    fontSize: typography.titleLg,
+    fontWeight: '800',
   },
   separator: {
-    marginVertical: 30,
+    marginVertical: spacing.xl,
     height: 1,
     width: '80%',
   },

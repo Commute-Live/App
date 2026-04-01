@@ -1,10 +1,10 @@
 import {StyleSheet} from 'react-native';
-import {colors, radii, spacing} from '../../../theme';
+import {colors, layout, radii, spacing, typography} from '../../../theme';
 
 export const styles = StyleSheet.create({
   container: {flex: 1, backgroundColor: colors.background},
   keyboardAvoid: {flex: 1},
-  scroll: {padding: spacing.lg, paddingBottom: 144, gap: spacing.lg},
+  scroll: {padding: layout.screenPadding, paddingBottom: 144, gap: layout.screenGap},
   topBarWrap: {
     backgroundColor: colors.background,
     borderBottomWidth: 1,
@@ -14,9 +14,9 @@ export const styles = StyleSheet.create({
   topBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: spacing.lg,
+    paddingHorizontal: layout.screenPadding,
     paddingVertical: spacing.sm,
-    minHeight: 52,
+    minHeight: layout.headerHeight,
   },
   topBarSideLeft: {
     width: 88,
@@ -43,7 +43,7 @@ export const styles = StyleSheet.create({
   },
   presetNameTitle: {color: colors.text, fontSize: 15, fontWeight: '800', textAlign: 'center', maxWidth: 160},
   presetNameEditButton: {
-    padding: 4,
+    padding: spacing.xxs,
   },
   presetNameEditEmoji: {fontSize: 12, color: colors.textMuted},
   renameRow: {
@@ -89,7 +89,7 @@ export const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   backButton: {
-    paddingVertical: 4,
+    paddingVertical: spacing.xxs,
     paddingRight: spacing.xs,
   },
   topBarBackText: {
@@ -108,7 +108,7 @@ export const styles = StyleSheet.create({
     borderRadius: radii.lg,
     borderWidth: 1,
     borderColor: colors.border,
-    padding: spacing.md,
+    padding: layout.cardPadding,
   },
   confirmTitle: {color: colors.text, fontSize: 16, fontWeight: '800'},
   confirmBody: {color: colors.textMuted, fontSize: 13, marginTop: spacing.xs},
@@ -131,7 +131,13 @@ export const styles = StyleSheet.create({
     paddingVertical: spacing.xs,
   },
   confirmLeaveText: {color: '#FCA5A5', fontSize: 13, fontWeight: '700'},
-  modalOverlay: {flex: 1, backgroundColor: '#00000088', justifyContent: 'flex-start', paddingHorizontal: spacing.lg, paddingTop: spacing.xl},
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: '#00000088',
+    justifyContent: 'flex-start',
+    paddingHorizontal: layout.screenPadding,
+    paddingTop: spacing.xl,
+  },
   modalBackdrop: {position: 'absolute', top: 0, right: 0, bottom: 0, left: 0},
   modalSheet: {
     backgroundColor: colors.card,
@@ -199,7 +205,7 @@ export const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#0F131A',
     backgroundColor: '#020204',
-    padding: spacing.lg,
+    padding: layout.cardPaddingLg,
     minHeight: 180,
   },
   previewHeaderRow: {flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center'},
@@ -207,9 +213,9 @@ export const styles = StyleSheet.create({
   statusPill: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: spacing.xs,
     paddingHorizontal: spacing.sm,
-    paddingVertical: 4,
+    paddingVertical: spacing.xxs,
     borderRadius: radii.md,
   },
   statusGood: {backgroundColor: '#0B3B2E'},
@@ -263,8 +269,8 @@ export const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.08)',
     backgroundColor: 'rgba(11, 16, 24, 0.84)',
-    padding: spacing.lg,
-    gap: spacing.lg,
+    padding: layout.cardPaddingLg,
+    gap: layout.screenGap,
     shadowColor: '#000',
     shadowOpacity: 0.22,
     shadowRadius: 18,
@@ -278,21 +284,21 @@ export const styles = StyleSheet.create({
   builderHeaderCopy: {flex: 1, gap: spacing.xs},
   builderEyebrow: {
     color: '#7DD3FC',
-    fontSize: 11,
+    fontSize: typography.caption,
     fontWeight: '800',
     letterSpacing: 0.8,
     textTransform: 'uppercase',
   },
-  builderTitle: {color: '#F4F8FC', fontSize: 22, fontWeight: '900'},
+  builderTitle: {color: '#F4F8FC', fontSize: typography.titleLg, fontWeight: '900'},
   builderProgress: {flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'center', alignSelf: 'center', width: '100%'},
   builderProgressItem: {
     flex: 1,
-    gap: 6,
+    gap: spacing.xs,
     alignItems: 'center',
     position: 'relative',
     borderRadius: radii.md,
     paddingVertical: spacing.xs,
-    paddingHorizontal: 4,
+    paddingHorizontal: spacing.xxs,
   },
   builderProgressItemEditable: {
     borderWidth: 1,
@@ -361,7 +367,7 @@ export const styles = StyleSheet.create({
   layoutPillTopRight: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
+    gap: spacing.xxs,
     backgroundColor: colors.accentMuted,
     borderColor: colors.accent,
     borderWidth: 1,
@@ -418,7 +424,7 @@ export const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
     backgroundColor: colors.background,
-    padding: 2,
+    padding: spacing.xxs / 2,
     justifyContent: 'center',
   },
   scheduleToggleOn: {
@@ -483,7 +489,14 @@ export const styles = StyleSheet.create({
     borderColor: colors.border,
     overflow: 'hidden',
   },
-  segment: {flex: 1, paddingVertical: spacing.sm, alignItems: 'center', justifyContent: 'center', minHeight: 44, paddingHorizontal: 4},
+  segment: {
+    flex: 1,
+    paddingVertical: spacing.sm,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: layout.buttonHeight,
+    paddingHorizontal: spacing.xxs,
+  },
   segmentActive: {backgroundColor: colors.accentMuted},
   segmentDisabled: {opacity: 0.4},
   segmentText: {color: colors.textMuted, fontWeight: '700', fontSize: 11, textAlign: 'center'},
@@ -540,7 +553,7 @@ export const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
-    gap: 6,
+    gap: spacing.xs,
     marginTop: spacing.xs,
   },
   presetCarouselIndicator: {
@@ -570,11 +583,6 @@ export const styles = StyleSheet.create({
   presetChoiceCardActive: {
     borderColor: colors.accent,
     backgroundColor: colors.accentMuted,
-    shadowColor: colors.accent,
-    shadowOpacity: 0.22,
-    shadowRadius: 10,
-    shadowOffset: {width: 0, height: 4},
-    elevation: 4,
   },
   presetChoiceHeader: {
     flexDirection: 'row',

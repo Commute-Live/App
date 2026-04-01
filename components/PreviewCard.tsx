@@ -1,6 +1,6 @@
 import React from 'react';
 import {StyleSheet, Text, View} from 'react-native';
-import {colors, spacing, radii} from '../theme';
+import {colors, layout, spacing, radii, typography} from '../theme';
 import {useAppState} from '../state/appState';
 
 const themeBackground: Record<string, string> = {
@@ -45,15 +45,15 @@ export const PreviewCard = () => {
 const styles = StyleSheet.create({
   card: {
     borderRadius: radii.lg,
-    padding: spacing.lg,
+    padding: layout.cardPaddingLg,
     borderWidth: 1,
     borderColor: colors.border,
     gap: spacing.sm,
   },
   headerRow: {flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center'},
   statusRow: {flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center'},
-  label: {color: colors.textMuted, fontSize: 13, letterSpacing: 0.4},
-  meta: {color: colors.text, fontSize: 13, fontWeight: '600'},
+  label: {color: colors.textMuted, fontSize: typography.body, letterSpacing: 0.4},
+  meta: {color: colors.text, fontSize: typography.body, fontWeight: '600'},
   arrivalRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -65,10 +65,10 @@ const styles = StyleSheet.create({
     backgroundColor: colors.accentMuted,
     paddingHorizontal: spacing.sm,
     paddingVertical: spacing.xs,
-    borderRadius: 10,
+    borderRadius: radii.md,
     marginRight: spacing.md,
   },
-  lineText: {color: colors.text, fontWeight: '700', fontSize: 13},
-  destination: {flex: 1, color: colors.text, fontSize: 15, fontWeight: '600'},
+  lineText: {color: colors.text, fontWeight: '700', fontSize: typography.body},
+  destination: {flex: 1, color: colors.text, fontSize: typography.bodyLg, fontWeight: '600'},
   minutes: {color: colors.success, fontWeight: '700'},
 });
