@@ -2,11 +2,11 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, PanResponder, Pressable, ScrollView, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useFocusEffect, useRouter } from 'expo-router';
+import { useRouter } from 'expo-router';
 import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
 import { colors, spacing } from '../../../theme';
 import {AppBrandHeader} from '../../../components/AppBrandHeader';
-import {TabScreen} from '../../../components/TabScreen';
+import {TabScreen, useTabRouteIsActive} from '../../../components/TabScreen';
 import DashboardPreviewSection from '../components/DashboardPreviewSection';
 import { useAppState } from '../../../state/appState';
 import {
@@ -42,23 +42,16 @@ export default function DashboardOverviewScreen() {
    const { status, user, deviceId, deviceIds, setDeviceId } = useAuth();
    const selectedDevice = useSelectedDevice();
    const hasLinkedDevice = deviceIds.length > 0;
+   const isScreenFocused = useTabRouteIsActive('/dashboard');
    const [carouselIndex, setCarouselIndex] = useState(0);
    const [quietHoursEnabled, setQuietHoursEnabled] = useState(true);
    const [quietHours, setQuietHours] = useState({ start: '23:00', end: '05:00' });
    const [quietHoursError, setQuietHoursError] = useState('');
-   const [isScreenFocused, setIsScreenFocused] = useState(false);
 
    const city = appState.selectedCity;
    const cityBrand = CITY_BRANDS[city];
    const cityOption = CITY_OPTIONS.find((option) => option.id === city);
    const cityAgency = cityOption?.agencyCode ?? CITY_LABELS[city];
-
-   useFocusEffect(
-      useCallback(() => {
-         setIsScreenFocused(true);
-         return () => setIsScreenFocused(false);
-      }, []),
-   );
 
    const displaysQuery = useQuery({
       queryKey: queryKeys.displays(selectedDevice.id || 'none'),
@@ -208,18 +201,17 @@ export default function DashboardOverviewScreen() {
       setCarouselIndex(0);
    }, [city, carouselPresets.length]);
 
-   useFocusEffect(
-      useCallback(() => {
-         if (hasLinkedDevice && selectedDevice.id && status === 'authenticated') {
-            void queryClient.invalidateQueries({queryKey: queryKeys.displays(selectedDevice.id)});
-            void queryClient.invalidateQueries({queryKey: queryKeys.lastCommand(selectedDevice.id)});
-         }
-         if (!hasLinkedDevice) {
-            void queryClient.invalidateQueries({queryKey: queryKeys.espHeartbeat});
-            void queryClient.invalidateQueries({queryKey: queryKeys.espDeviceInfo});
-         }
-      }, [hasLinkedDevice, queryClient, selectedDevice.id, status]),
-   );
+   useEffect(() => {
+      if (!isScreenFocused) return;
+      if (hasLinkedDevice && selectedDevice.id && status === 'authenticated') {
+         void queryClient.invalidateQueries({queryKey: queryKeys.displays(selectedDevice.id)});
+         void queryClient.invalidateQueries({queryKey: queryKeys.lastCommand(selectedDevice.id)});
+      }
+      if (!hasLinkedDevice) {
+         void queryClient.invalidateQueries({queryKey: queryKeys.espHeartbeat});
+         void queryClient.invalidateQueries({queryKey: queryKeys.espDeviceInfo});
+      }
+   }, [hasLinkedDevice, isScreenFocused, queryClient, selectedDevice.id, status]);
 
    const activePreset = useMemo(
       () => carouselPresets.length === 0
@@ -380,7 +372,7 @@ export default function DashboardOverviewScreen() {
    }
 
    return (
-      <TabScreen style={[styles.container, {paddingTop: insets.top}]}>
+      <TabScreen style={[styles.container, {paddingTop: insets.top}]} tabRoute="/dashboard">
          <AppBrandHeader email={user?.email} />
 
          <ScrollView contentContainerStyle={styles.scroll} bounces={false}>

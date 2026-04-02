@@ -9,7 +9,7 @@ export const TAB_NAV_ITEMS: BottomNavItem[] = [
   {key: 'settings', label: 'Settings', icon: 'settings-outline', route: '/settings'},
 ];
 
-const TAB_ROUTES: TabRoute[] = TAB_NAV_ITEMS.map(item => item.route as TabRoute);
+export const TAB_ROUTES: TabRoute[] = TAB_NAV_ITEMS.map(item => item.route as TabRoute);
 
 const toRouteString = (route: Href) => (typeof route === 'string' ? route : null);
 

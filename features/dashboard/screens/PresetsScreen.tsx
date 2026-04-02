@@ -5,14 +5,13 @@ import {useSafeAreaInsets} from 'react-native-safe-area-context';
 import {Ionicons} from '@expo/vector-icons';
 import Slider from '@react-native-community/slider';
 import {useRouter} from 'expo-router';
-import {useFocusEffect} from 'expo-router';
 import {useLocalSearchParams} from 'expo-router';
 import {useMutation, useQueries, useQuery, useQueryClient} from '@tanstack/react-query';
 import {colors, layout, radii, spacing, typography} from '../../../theme';
 import {apiFetch} from '../../../lib/api';
 import {AppBrandHeader} from '../../../components/AppBrandHeader';
 import DraggableFlatList, {type RenderItemParams} from 'react-native-draggable-flatlist';
-import {TabScreen} from '../../../components/TabScreen';
+import {TabScreen, useTabRouteIsActive} from '../../../components/TabScreen';
 import DashboardPreviewSection from '../components/DashboardPreviewSection';
 import {CITY_BRANDS, CITY_LABELS} from '../../../constants/cities';
 import {useAppState} from '../../../state/appState';
@@ -163,10 +162,10 @@ export default function PresetsScreen() {
   const {state: appState} = useAppState();
   const {deviceId, status, user} = useAuth();
   const selectedCity = appState.selectedCity;
+  const isScreenFocused = useTabRouteIsActive('/presets');
   const [carouselIndex, setCarouselIndex] = useState(0);
   const [brightnessOverrides, setBrightnessOverrides] = useState<Record<string, number>>({});
   const [scheduleOverrides, setScheduleOverrides] = useState<Record<string, ScheduleDraft>>({});
-  const [isScreenFocused, setIsScreenFocused] = useState(false);
   const [reorderVisible, setReorderVisible] = useState(false);
   const [isDisplayGestureRegionActive, setIsDisplayGestureRegionActive] = useState(false);
   const [pendingFocusDisplayId, setPendingFocusDisplayId] = useState<string | null>(
@@ -373,20 +372,11 @@ export default function PresetsScreen() {
     },
   });
 
-  useFocusEffect(
-    useCallback(() => {
-      setIsScreenFocused(true);
-      return () => setIsScreenFocused(false);
-    }, []),
-  );
-
-  useFocusEffect(
-    useCallback(() => {
-      if (!deviceId || status !== 'authenticated') return;
-      void queryClient.invalidateQueries({queryKey: queryKeys.displays(deviceId)});
-      void queryClient.invalidateQueries({queryKey: queryKeys.lastCommand(deviceId)});
-    }, [deviceId, queryClient, status]),
-  );
+  useEffect(() => {
+    if (!isScreenFocused || !deviceId || status !== 'authenticated') return;
+    void queryClient.invalidateQueries({queryKey: queryKeys.displays(deviceId)});
+    void queryClient.invalidateQueries({queryKey: queryKeys.lastCommand(deviceId)});
+  }, [deviceId, isScreenFocused, queryClient, status]);
 
   const visibleDisplays = useMemo(
     () => sortDisplaysForCarousel(displays, activeDisplayId),
@@ -561,7 +551,10 @@ export default function PresetsScreen() {
   }, []);
 
   return (
-    <TabScreen style={[styles.container, {paddingTop: insets.top}]} swipeEnabled={!isDisplayGestureRegionActive}>
+    <TabScreen
+      style={[styles.container, {paddingTop: insets.top}]}
+      swipeEnabled={!isDisplayGestureRegionActive}
+      tabRoute="/presets">
       <AppBrandHeader email={user?.email} />
 
       <ScrollView contentContainerStyle={styles.scroll} bounces={false}>

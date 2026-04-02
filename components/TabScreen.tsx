@@ -1,61 +1,52 @@
-import React, {useMemo} from 'react';
-import {
-  PanResponder,
-  StyleSheet,
-  type GestureResponderEvent,
-  type GestureResponderHandlers,
-  type GestureResponderState,
-  type StyleProp,
-  type ViewStyle,
-  View,
-} from 'react-native';
-import {usePathname, useRouter} from 'expo-router';
+import React, {createContext, useContext, useEffect} from 'react';
+import {StyleSheet, type StyleProp, type ViewStyle, View} from 'react-native';
+import {usePathname} from 'expo-router';
 import {BottomNav} from './BottomNav';
-import {TAB_NAV_ITEMS, getAdjacentTabRoute} from './tabNavigation';
+import {TAB_NAV_ITEMS, type TabRoute} from './tabNavigation';
 
-const SWIPE_DISTANCE_PX = 56;
-const SWIPE_VELOCITY = 0.2;
-const HORIZONTAL_DOMINANCE_RATIO = 1.25;
+type TabScreenHostContextValue = {
+  activeRoute: TabRoute;
+  setSwipeEnabled: (route: TabRoute, enabled: boolean) => void;
+};
+
+export const TabScreenHostContext = createContext<TabScreenHostContextValue | null>(null);
 
 interface Props {
   children: React.ReactNode;
   style?: StyleProp<ViewStyle>;
   swipeEnabled?: boolean;
+  tabRoute?: TabRoute;
 }
 
-const isTabSwipeGesture = (_event: GestureResponderEvent, gestureState: GestureResponderState) =>
-  Math.abs(gestureState.dx) > 18 &&
-  Math.abs(gestureState.dx) > Math.abs(gestureState.dy) * HORIZONTAL_DOMINANCE_RATIO;
+const matchesRoute = (pathname: string, route: TabRoute) =>
+  pathname === route || pathname.startsWith(`${route}/`);
 
-const shouldNavigateTab = (gestureState: GestureResponderState) =>
-  Math.abs(gestureState.dx) >= SWIPE_DISTANCE_PX || Math.abs(gestureState.vx) >= SWIPE_VELOCITY;
-
-export function TabScreen({children, style, swipeEnabled = true}: Props) {
-  const router = useRouter();
+export const useTabRouteIsActive = (route: TabRoute) => {
   const pathname = usePathname();
+  const host = useContext(TabScreenHostContext);
+  const activePath = host?.activeRoute ?? pathname;
+  return matchesRoute(activePath, route);
+};
 
-  const panHandlers = useMemo<GestureResponderHandlers | undefined>(() => {
-    if (!swipeEnabled) return undefined;
+export function TabScreen({children, style, swipeEnabled = true, tabRoute}: Props) {
+  const host = useContext(TabScreenHostContext);
+  const isHostedRouteActive = !!host && !!tabRoute && matchesRoute(host.activeRoute, tabRoute);
 
-    return PanResponder.create({
-      onMoveShouldSetPanResponder: isTabSwipeGesture,
-      onPanResponderRelease: (_event, gestureState) => {
-        if (!shouldNavigateTab(gestureState)) return;
+  useEffect(() => {
+    if (!host || !tabRoute || !isHostedRouteActive) return;
+    host.setSwipeEnabled(tabRoute, swipeEnabled);
+    return () => {
+      host.setSwipeEnabled(tabRoute, true);
+    };
+  }, [host, isHostedRouteActive, swipeEnabled, tabRoute]);
 
-        const direction: -1 | 1 = gestureState.dx < 0 ? 1 : -1;
-        const nextRoute = getAdjacentTabRoute(pathname, direction);
-        if (!nextRoute) return;
-        router.navigate(nextRoute);
-      },
-      onPanResponderTerminationRequest: () => true,
-    }).panHandlers;
-  }, [pathname, router, swipeEnabled]);
+  if (host) {
+    return <View style={[styles.content, style]}>{children}</View>;
+  }
 
   return (
     <View style={[styles.container, style]}>
-      <View style={styles.content} {...panHandlers}>
-        {children}
-      </View>
+      <View style={styles.content}>{children}</View>
       <BottomNav items={TAB_NAV_ITEMS} />
     </View>
   );
