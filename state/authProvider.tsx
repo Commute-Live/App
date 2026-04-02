@@ -19,6 +19,7 @@ type AuthContextValue = {
   isAuthenticated: boolean;
   user: AuthUser | null;
   deviceIds: string[];
+  displayCount: number;
   deviceId: string | null;
   currentProvider: SocialProvider | null;
   hydrate: () => Promise<void>;
@@ -288,6 +289,7 @@ export function AuthProvider({children}: {children: React.ReactNode}) {
       isAuthenticated: status === 'authenticated',
       user,
       deviceIds,
+      displayCount: deviceIds.length,
       deviceId: appDeviceId,
       currentProvider,
       hydrate,

@@ -382,6 +382,7 @@ export default function PresetsScreen() {
     () => sortDisplaysForCarousel(displays, activeDisplayId),
     [activeDisplayId, displays],
   );
+  const displayCountLabel = `${visibleDisplays.length} ${visibleDisplays.length === 1 ? 'display' : 'displays'}`;
   const safeIndex = visibleDisplays.length > 0 ? Math.min(carouselIndex, visibleDisplays.length - 1) : 0;
   const currentDisplay = visibleDisplays[safeIndex] ?? null;
   const currentDisplayCity = providerToCity(currentDisplay?.config.lines?.[0]?.provider ?? null) ?? selectedCity;
@@ -563,6 +564,7 @@ export default function PresetsScreen() {
           <View style={styles.pageHeaderRow}>
             <View style={styles.pageHeaderLeft}>
               <Text style={styles.pageTitle}>Displays</Text>
+              <Text style={styles.pageMeta}>{displayCountLabel}</Text>
             </View>
             <View style={styles.pageHeaderRight}>
               <Pressable
@@ -1109,6 +1111,12 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     letterSpacing: -0.8,
     lineHeight: 33,
+  },
+  pageMeta: {
+    color: colors.textMuted,
+    fontSize: 13,
+    fontWeight: '600',
+    marginTop: spacing.xs,
   },
 
   // ─── Loading / Error / Empty ───────────────────────────────────────────────
