@@ -23,7 +23,7 @@ const SECTIONS: {key: SectionKey; label: string; icon: keyof typeof Ionicons.gly
 export default function SettingsScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const {deviceId, disconnectDevice, signOut, deleteAccount, user, currentProvider} = useAuth();
+  const {deviceId, disconnectDevice, signOut, deleteAccount, user, currentProvider, displayCount} = useAuth();
   const {state: appState} = useAppState();
   const [openSection, setOpenSection] = useState<SectionKey | null>(null);
   const [isSigningOut, setIsSigningOut] = useState(false);
@@ -35,6 +35,7 @@ export default function SettingsScreen() {
   const [scrollContentHeight, setScrollContentHeight] = useState(0);
   const currentDeviceId = deviceId ?? appState.deviceId;
   const scrollEnabled = scrollContentHeight > scrollViewportHeight + 1;
+  const displayCountLabel = `${displayCount} ${displayCount === 1 ? 'display' : 'displays'}`;
 
   const toggle = (key: SectionKey) =>
     setOpenSection(prev => (prev === key ? null : key));
@@ -97,7 +98,7 @@ export default function SettingsScreen() {
     switch (key) {
       case 'Account': return user?.email ?? '-';
       case 'Session': return 'Manage';
-      case 'Device': return currentDeviceId ? 'Paired' : 'Not paired';
+      case 'Device': return displayCountLabel;
       case 'Time Format': return timeFormat === 'ampm' ? 'AM / PM' : '24-hour';
       case 'Notifications': return 'Enabled';
       case 'Privacy': return 'View';
@@ -151,6 +152,10 @@ export default function SettingsScreen() {
                           <Text style={styles.detailLabel}>Email</Text>
                           <Text style={styles.detailValue}>{user?.email ?? '-'}</Text>
                         </View>
+                        <View style={styles.detailRow}>
+                          <Text style={styles.detailLabel}>Displays</Text>
+                          <Text style={styles.detailValue}>{displayCountLabel}</Text>
+                        </View>
                       </>
                     )}
 
@@ -180,6 +185,10 @@ export default function SettingsScreen() {
 
                     {section.key === 'Device' && (
                       <>
+                        <View style={styles.detailRow}>
+                          <Text style={styles.detailLabel}>Linked displays</Text>
+                          <Text style={styles.detailValue}>{displayCountLabel}</Text>
+                        </View>
                         <View style={styles.detailRow}>
                           <Text style={styles.detailLabel}>Device ID</Text>
                           <Text style={styles.detailValue}>{currentDeviceId ?? '-'}</Text>
