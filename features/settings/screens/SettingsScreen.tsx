@@ -5,14 +5,8 @@ import {Ionicons} from '@expo/vector-icons';
 import {useRouter} from 'expo-router';
 import {colors, layout, radii, spacing, typography} from '../../../theme';
 import {useAuth} from '../../../state/authProvider';
-import {BottomNav, type BottomNavItem} from '../../../components/BottomNav';
 import {AppBrandHeader} from '../../../components/AppBrandHeader';
-
-const navItems: BottomNavItem[] = [
-  {key: 'home', label: 'Home', icon: 'home-outline', route: '/dashboard'},
-  {key: 'presets', label: 'Displays', icon: 'albums-outline', route: '/presets'},
-  {key: 'settings', label: 'Settings', icon: 'settings-outline', route: '/settings'},
-];
+import {TabScreen} from '../../../components/TabScreen';
 import {useAppState} from '../../../state/appState';
 
 type SectionKey = 'Account' | 'Session' | 'Device' | 'Time Format' | 'Notifications' | 'Privacy';
@@ -111,7 +105,7 @@ export default function SettingsScreen() {
   };
 
   return (
-    <View style={[styles.container, {paddingTop: insets.top}]}>
+    <TabScreen style={[styles.container, {paddingTop: insets.top}]}>
       <AppBrandHeader email={user?.email} />
 
       <ScrollView
@@ -265,8 +259,7 @@ export default function SettingsScreen() {
 
       </ScrollView>
 
-      <BottomNav items={navItems} />
-    </View>
+    </TabScreen>
   );
 }
 
