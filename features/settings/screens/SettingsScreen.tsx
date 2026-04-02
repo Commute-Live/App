@@ -105,7 +105,7 @@ export default function SettingsScreen() {
   };
 
   return (
-    <TabScreen style={[styles.container, {paddingTop: insets.top}]}>
+    <TabScreen style={[styles.container, {paddingTop: insets.top}]} tabRoute="/settings">
       <AppBrandHeader email={user?.email} />
 
       <ScrollView

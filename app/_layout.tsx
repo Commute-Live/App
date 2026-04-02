@@ -50,9 +50,7 @@ function AppNavigator() {
       <Stack.Screen name="auth" />
       <Stack.Screen name="register-device" />
       <Stack.Screen name="ble-provision" options={{animation: 'fade'}} />
-      <Stack.Screen name="dashboard" options={{animation: 'none'}} />
-      <Stack.Screen name="presets" options={{animation: 'none'}} />
-      <Stack.Screen name="settings" options={{animation: 'none'}} />
+      <Stack.Screen name="(tabs)" options={{animation: 'none'}} />
       <Stack.Screen name="preset-editor" options={{animation: 'slide_from_right'}} />
       <Stack.Screen name="paired-online" />
       <Stack.Screen name="setup-intro" />

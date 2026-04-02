@@ -1,18 +1,17 @@
 import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react';
-import {Alert, Modal, Pressable, ScrollView, StyleSheet, Text, View} from 'react-native';
+import {Alert, Modal, PanResponder, Pressable, ScrollView, StyleSheet, Text, View} from 'react-native';
 import {GestureHandlerRootView} from 'react-native-gesture-handler';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
 import {Ionicons} from '@expo/vector-icons';
 import Slider from '@react-native-community/slider';
 import {useRouter} from 'expo-router';
-import {useFocusEffect} from 'expo-router';
 import {useLocalSearchParams} from 'expo-router';
 import {useMutation, useQueries, useQuery, useQueryClient} from '@tanstack/react-query';
 import {colors, layout, radii, spacing, typography} from '../../../theme';
 import {apiFetch} from '../../../lib/api';
 import {AppBrandHeader} from '../../../components/AppBrandHeader';
 import DraggableFlatList, {type RenderItemParams} from 'react-native-draggable-flatlist';
-import {TabScreen} from '../../../components/TabScreen';
+import {TabScreen, useTabRouteIsActive} from '../../../components/TabScreen';
 import DashboardPreviewSection from '../components/DashboardPreviewSection';
 import {CITY_BRANDS, CITY_LABELS} from '../../../constants/cities';
 import {useAppState} from '../../../state/appState';
@@ -163,11 +162,12 @@ export default function PresetsScreen() {
   const {state: appState} = useAppState();
   const {deviceId, status, user} = useAuth();
   const selectedCity = appState.selectedCity;
+  const isScreenFocused = useTabRouteIsActive('/presets');
   const [carouselIndex, setCarouselIndex] = useState(0);
   const [brightnessOverrides, setBrightnessOverrides] = useState<Record<string, number>>({});
   const [scheduleOverrides, setScheduleOverrides] = useState<Record<string, ScheduleDraft>>({});
-  const [isScreenFocused, setIsScreenFocused] = useState(false);
   const [reorderVisible, setReorderVisible] = useState(false);
+  const [isDisplayGestureRegionActive, setIsDisplayGestureRegionActive] = useState(false);
   const [pendingFocusDisplayId, setPendingFocusDisplayId] = useState<string | null>(
     typeof params.focusDisplayId === 'string' ? params.focusDisplayId : null,
   );
@@ -372,20 +372,11 @@ export default function PresetsScreen() {
     },
   });
 
-  useFocusEffect(
-    useCallback(() => {
-      setIsScreenFocused(true);
-      return () => setIsScreenFocused(false);
-    }, []),
-  );
-
-  useFocusEffect(
-    useCallback(() => {
-      if (!deviceId || status !== 'authenticated') return;
-      void queryClient.invalidateQueries({queryKey: queryKeys.displays(deviceId)});
-      void queryClient.invalidateQueries({queryKey: queryKeys.lastCommand(deviceId)});
-    }, [deviceId, queryClient, status]),
-  );
+  useEffect(() => {
+    if (!isScreenFocused || !deviceId || status !== 'authenticated') return;
+    void queryClient.invalidateQueries({queryKey: queryKeys.displays(deviceId)});
+    void queryClient.invalidateQueries({queryKey: queryKeys.lastCommand(deviceId)});
+  }, [deviceId, isScreenFocused, queryClient, status]);
 
   const visibleDisplays = useMemo(
     () => sortDisplaysForCarousel(displays, activeDisplayId),
@@ -442,10 +433,43 @@ export default function PresetsScreen() {
     [deleteDisplayMutation, deviceId],
   );
 
-  const goTo = (index: number) => {
-    if (index < 0 || index >= visibleDisplays.length) return;
-    setCarouselIndex(index);
-  };
+  const goTo = useCallback(
+    (index: number) => {
+      if (index < 0 || index >= visibleDisplays.length) return;
+      setCarouselIndex(index);
+    },
+    [visibleDisplays.length],
+  );
+
+  const moveCarousel = useCallback(
+    (direction: 1 | -1) => {
+      if (visibleDisplays.length <= 1) return;
+      goTo(safeIndex + direction);
+    },
+    [goTo, safeIndex, visibleDisplays.length],
+  );
+
+  const displaySwipeResponder = useMemo(
+    () =>
+      PanResponder.create({
+        onMoveShouldSetPanResponder: (_event, gestureState) =>
+          visibleDisplays.length > 1 &&
+          Math.abs(gestureState.dx) > 14 &&
+          Math.abs(gestureState.dx) > Math.abs(gestureState.dy) * 1.2,
+        onPanResponderGrant: () => {
+          setIsDisplayGestureRegionActive(true);
+        },
+        onPanResponderRelease: (_event, gestureState) => {
+          setIsDisplayGestureRegionActive(false);
+          if (Math.abs(gestureState.dx) < 40) return;
+          moveCarousel(gestureState.dx < 0 ? 1 : -1);
+        },
+        onPanResponderTerminate: () => {
+          setIsDisplayGestureRegionActive(false);
+        },
+      }),
+    [moveCarousel, visibleDisplays.length],
+  );
 
   const commitBrightnessChange = useCallback(
     async (displayId: string, brightness: number) => {
@@ -527,7 +551,10 @@ export default function PresetsScreen() {
   }, []);
 
   return (
-    <TabScreen style={[styles.container, {paddingTop: insets.top}]}>
+    <TabScreen
+      style={[styles.container, {paddingTop: insets.top}]}
+      swipeEnabled={!isDisplayGestureRegionActive}
+      tabRoute="/presets">
       <AppBrandHeader email={user?.email} />
 
       <ScrollView contentContainerStyle={styles.scroll} bounces={false}>
@@ -566,84 +593,89 @@ export default function PresetsScreen() {
           currentDisplay ? (
             <>
               <View style={styles.displayCard}>
-
-                {/* LED preview — no header, name lives in nav row */}
-                <View style={styles.cardPreviewContainer}>
-                  <DashboardPreviewSection
-                    slots={toPreviewSlots(
-                      currentDisplay,
-                      brand.accent,
-                      stopNames,
-                      currentDisplay.displayId === activeDisplayId ? liveArrivalLookup : null,
-                      {
-                      showDirectionFallback: false,
-                      },
-                    )}
-                    displayType={currentDisplay.config.displayType ?? Number(currentDisplay.config.lines?.[0]?.displayType) ?? 1}
-                    onSelectSlot={() =>
-                      router.push({
-                        pathname: '/preset-editor',
-                        params: {city: currentDisplayCity, from: 'presets', mode: 'edit', displayId: currentDisplay.displayId},
-                      })
-                    }
-                    onReorderSlot={() => {}}
-                    onDragStateChange={() => {}}
-                    showHint={false}
-                    brightness={currentBrightness}
-                  />
-                </View>
-
-                {/* [Edit + Active] | ‹ Name › | [Delete] */}
-                <View style={styles.navActionsRow}>
-                  {/* Left: Edit + Active badge */}
-                  <View style={styles.navLeft}>
-                    <Pressable
-                      style={styles.editBtn}
-                      onPress={() =>
+                <View
+                  onTouchStart={() => setIsDisplayGestureRegionActive(true)}
+                  onTouchEnd={() => setIsDisplayGestureRegionActive(false)}
+                  onTouchCancel={() => setIsDisplayGestureRegionActive(false)}
+                  {...displaySwipeResponder.panHandlers}>
+                  {/* LED preview — no header, name lives in nav row */}
+                  <View style={styles.cardPreviewContainer}>
+                    <DashboardPreviewSection
+                      slots={toPreviewSlots(
+                        currentDisplay,
+                        brand.accent,
+                        stopNames,
+                        currentDisplay.displayId === activeDisplayId ? liveArrivalLookup : null,
+                        {
+                        showDirectionFallback: false,
+                        },
+                      )}
+                      displayType={currentDisplay.config.displayType ?? Number(currentDisplay.config.lines?.[0]?.displayType) ?? 1}
+                      onSelectSlot={() =>
                         router.push({
                           pathname: '/preset-editor',
                           params: {city: currentDisplayCity, from: 'presets', mode: 'edit', displayId: currentDisplay.displayId},
                         })
+                      }
+                      onReorderSlot={() => {}}
+                      onDragStateChange={() => {}}
+                      showHint={false}
+                      brightness={currentBrightness}
+                    />
+                  </View>
+
+                  {/* [Edit + Active] | ‹ Name › | [Delete] */}
+                  <View style={styles.navActionsRow}>
+                    {/* Left: Edit + Active badge */}
+                    <View style={styles.navLeft}>
+                      <Pressable
+                        style={styles.editBtn}
+                        onPress={() =>
+                          router.push({
+                            pathname: '/preset-editor',
+                            params: {city: currentDisplayCity, from: 'presets', mode: 'edit', displayId: currentDisplay.displayId},
+                          })
                       }>
-                      <Ionicons name="pencil-outline" size={14} color={colors.text} />
-                    </Pressable>
-                    {currentDisplay.displayId === activeDisplayId ? (
-                      <View style={styles.navActiveLabel}>
-                        <View style={styles.navActiveDot} />
-                        <Text style={styles.navActiveLabelText}>Active</Text>
-                      </View>
-                    ) : null}
-                  </View>
-
-                  {/* Center: ‹ Name › — truly centered */}
-                  <View style={styles.navCenter}>
-                    {visibleDisplays.length > 1 ? (
-                      <Pressable
-                        style={[styles.arrowBtn, safeIndex === 0 && styles.arrowBtnDisabled]}
-                        onPress={() => goTo(safeIndex - 1)}
-                        disabled={safeIndex === 0}>
-                        <Ionicons name="chevron-back" size={15} color={colors.textMuted} />
+                        <Ionicons name="pencil-outline" size={14} color={colors.text} />
                       </Pressable>
-                    ) : null}
-                    <View style={styles.navTitleBlock}>
-                      <Text style={styles.navDisplayName} numberOfLines={1}>{currentDisplay.name}</Text>
-                      <Text style={styles.navDisplayCity}>{CITY_LABELS[currentDisplayCity]}</Text>
+                      {currentDisplay.displayId === activeDisplayId ? (
+                        <View style={styles.navActiveLabel}>
+                          <View style={styles.navActiveDot} />
+                          <Text style={styles.navActiveLabelText}>Active</Text>
+                        </View>
+                      ) : null}
                     </View>
-                    {visibleDisplays.length > 1 ? (
-                      <Pressable
-                        style={[styles.arrowBtn, safeIndex === visibleDisplays.length - 1 && styles.arrowBtnDisabled]}
-                        onPress={() => goTo(safeIndex + 1)}
-                        disabled={safeIndex === visibleDisplays.length - 1}>
-                        <Ionicons name="chevron-forward" size={15} color={colors.textMuted} />
-                      </Pressable>
-                    ) : null}
-                  </View>
 
-                  {/* Right: Delete */}
-                  <View style={styles.navRight}>
-                    <Pressable style={styles.deleteBtn} onPress={() => confirmDelete(currentDisplay)}>
-                      <Ionicons name="trash-outline" size={14} color="#F87171" />
-                    </Pressable>
+                    {/* Center: ‹ Name › — truly centered */}
+                    <View style={styles.navCenter}>
+                      {visibleDisplays.length > 1 ? (
+                        <Pressable
+                          style={[styles.arrowBtn, safeIndex === 0 && styles.arrowBtnDisabled]}
+                          onPress={() => goTo(safeIndex - 1)}
+                          disabled={safeIndex === 0}>
+                          <Ionicons name="chevron-back" size={15} color={colors.textMuted} />
+                        </Pressable>
+                      ) : null}
+                      <View style={styles.navTitleBlock}>
+                        <Text style={styles.navDisplayName} numberOfLines={1}>{currentDisplay.name}</Text>
+                        <Text style={styles.navDisplayCity}>{CITY_LABELS[currentDisplayCity]}</Text>
+                      </View>
+                      {visibleDisplays.length > 1 ? (
+                        <Pressable
+                          style={[styles.arrowBtn, safeIndex === visibleDisplays.length - 1 && styles.arrowBtnDisabled]}
+                          onPress={() => goTo(safeIndex + 1)}
+                          disabled={safeIndex === visibleDisplays.length - 1}>
+                          <Ionicons name="chevron-forward" size={15} color={colors.textMuted} />
+                        </Pressable>
+                      ) : null}
+                    </View>
+
+                    {/* Right: Delete */}
+                    <View style={styles.navRight}>
+                      <Pressable style={styles.deleteBtn} onPress={() => confirmDelete(currentDisplay)}>
+                        <Ionicons name="trash-outline" size={14} color="#F87171" />
+                      </Pressable>
+                    </View>
                   </View>
                 </View>
 
