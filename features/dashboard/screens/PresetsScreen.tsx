@@ -9,16 +9,10 @@ import {useFocusEffect} from 'expo-router';
 import {useLocalSearchParams} from 'expo-router';
 import {useMutation, useQueries, useQuery, useQueryClient} from '@tanstack/react-query';
 import {colors, layout, radii, spacing, typography} from '../../../theme';
-import {BottomNav, type BottomNavItem} from '../../../components/BottomNav';
 import {apiFetch} from '../../../lib/api';
 import {AppBrandHeader} from '../../../components/AppBrandHeader';
 import DraggableFlatList, {type RenderItemParams} from 'react-native-draggable-flatlist';
-
-const NAV_ITEMS: BottomNavItem[] = [
-  {key: 'home', label: 'Home', icon: 'home-outline', route: '/dashboard'},
-  {key: 'presets', label: 'Displays', icon: 'albums-outline', route: '/presets'},
-  {key: 'settings', label: 'Settings', icon: 'settings-outline', route: '/settings'},
-];
+import {TabScreen} from '../../../components/TabScreen';
 import DashboardPreviewSection from '../components/DashboardPreviewSection';
 import {CITY_BRANDS, CITY_LABELS} from '../../../constants/cities';
 import {useAppState} from '../../../state/appState';
@@ -533,12 +527,10 @@ export default function PresetsScreen() {
   }, []);
 
   return (
-    <View style={[styles.container, {paddingTop: insets.top}]}>
+    <TabScreen style={[styles.container, {paddingTop: insets.top}]}>
       <AppBrandHeader email={user?.email} />
 
       <ScrollView contentContainerStyle={styles.scroll} bounces={false}>
-
-
         {/* ── Page Header ───────────────────────────────────────────────── */}
         <View style={styles.pageHeader}>
           <View style={styles.pageHeaderRow}>
@@ -792,7 +784,6 @@ export default function PresetsScreen() {
 
       </ScrollView>
 
-      <BottomNav items={NAV_ITEMS} />
       <ReorderDisplaysModal
         visible={reorderVisible}
         displays={visibleDisplays}
@@ -804,7 +795,7 @@ export default function PresetsScreen() {
         }}
         onSave={handleSaveReorder}
       />
-    </View>
+    </TabScreen>
   );
 }
 

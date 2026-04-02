@@ -5,14 +5,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
 import { colors, spacing } from '../../../theme';
-import { BottomNav, type BottomNavItem } from '../../../components/BottomNav';
 import {AppBrandHeader} from '../../../components/AppBrandHeader';
-
-const NAV_ITEMS: BottomNavItem[] = [
-  {key: 'home', label: 'Home', icon: 'home-outline', route: '/dashboard'},
-  {key: 'presets', label: 'Displays', icon: 'albums-outline', route: '/presets'},
-  {key: 'settings', label: 'Settings', icon: 'settings-outline', route: '/settings'},
-];
+import {TabScreen} from '../../../components/TabScreen';
 import DashboardPreviewSection from '../components/DashboardPreviewSection';
 import { useAppState } from '../../../state/appState';
 import {
@@ -386,7 +380,7 @@ export default function DashboardOverviewScreen() {
    }
 
    return (
-      <View style={[styles.container, {paddingTop: insets.top}]}>
+      <TabScreen style={[styles.container, {paddingTop: insets.top}]}>
          <AppBrandHeader email={user?.email} />
 
          <ScrollView contentContainerStyle={styles.scroll} bounces={false}>
@@ -580,7 +574,6 @@ export default function DashboardOverviewScreen() {
 
          </ScrollView>
 
-         <BottomNav items={NAV_ITEMS} />
-      </View>
+      </TabScreen>
    );
 }
