@@ -168,6 +168,7 @@ export default function PresetsScreen() {
   const [scheduleOverrides, setScheduleOverrides] = useState<Record<string, ScheduleDraft>>({});
   const [isScreenFocused, setIsScreenFocused] = useState(false);
   const [reorderVisible, setReorderVisible] = useState(false);
+  const [isDisplayGestureRegionActive, setIsDisplayGestureRegionActive] = useState(false);
   const [pendingFocusDisplayId, setPendingFocusDisplayId] = useState<string | null>(
     typeof params.focusDisplayId === 'string' ? params.focusDisplayId : null,
   );
@@ -465,11 +466,17 @@ export default function PresetsScreen() {
           visibleDisplays.length > 1 &&
           Math.abs(gestureState.dx) > 14 &&
           Math.abs(gestureState.dx) > Math.abs(gestureState.dy) * 1.2,
+        onPanResponderGrant: () => {
+          setIsDisplayGestureRegionActive(true);
+        },
         onPanResponderRelease: (_event, gestureState) => {
+          setIsDisplayGestureRegionActive(false);
           if (Math.abs(gestureState.dx) < 40) return;
           moveCarousel(gestureState.dx < 0 ? 1 : -1);
         },
-        onPanResponderTerminate: () => {},
+        onPanResponderTerminate: () => {
+          setIsDisplayGestureRegionActive(false);
+        },
       }),
     [moveCarousel, visibleDisplays.length],
   );
@@ -554,7 +561,7 @@ export default function PresetsScreen() {
   }, []);
 
   return (
-    <TabScreen style={[styles.container, {paddingTop: insets.top}]}>
+    <TabScreen style={[styles.container, {paddingTop: insets.top}]} swipeEnabled={!isDisplayGestureRegionActive}>
       <AppBrandHeader email={user?.email} />
 
       <ScrollView contentContainerStyle={styles.scroll} bounces={false}>
@@ -593,7 +600,11 @@ export default function PresetsScreen() {
           currentDisplay ? (
             <>
               <View style={styles.displayCard}>
-                <View {...displaySwipeResponder.panHandlers}>
+                <View
+                  onTouchStart={() => setIsDisplayGestureRegionActive(true)}
+                  onTouchEnd={() => setIsDisplayGestureRegionActive(false)}
+                  onTouchCancel={() => setIsDisplayGestureRegionActive(false)}
+                  {...displaySwipeResponder.panHandlers}>
                   {/* LED preview — no header, name lives in nav row */}
                   <View style={styles.cardPreviewContainer}>
                     <DashboardPreviewSection
