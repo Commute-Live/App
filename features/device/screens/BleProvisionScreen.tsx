@@ -558,7 +558,7 @@ const styles = StyleSheet.create({
   heading: {
     color: colors.text,
     fontSize: typography.pageTitle,
-    fontWeight: '900',
+    fontWeight: '800',
     letterSpacing: -0.8,
     textAlign: 'center',
   },

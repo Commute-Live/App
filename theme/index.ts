@@ -55,9 +55,45 @@ export const layout = {
 };
 
 export const fonts = {
-  sans: 'Inter_400Regular',
-  medium: 'Inter_500Medium',
-  semiBold: 'Inter_600SemiBold',
-  bold: 'Inter_700Bold',
-  extraBold: 'Inter_700Bold',
+  light: 'Rubik_300Light',
+  lightItalic: 'Rubik_300LightItalic',
+  sans: 'Rubik_400Regular',
+  sansItalic: 'Rubik_400Italic',
+  medium: 'Rubik_500Medium',
+  mediumItalic: 'Rubik_500MediumItalic',
+  semiBold: 'Rubik_600SemiBold',
+  semiBoldItalic: 'Rubik_600SemiBoldItalic',
+  bold: 'Rubik_700Bold',
+  boldItalic: 'Rubik_700BoldItalic',
+  extraBold: 'Rubik_800ExtraBold',
+  extraBoldItalic: 'Rubik_800ExtraBoldItalic',
+  black: 'Rubik_900Black',
+  blackItalic: 'Rubik_900BlackItalic',
+};
+
+export const resolveFontFamily = ({
+  fontStyle,
+  fontWeight,
+}: {
+  fontStyle?: unknown;
+  fontWeight?: unknown;
+}) => {
+  const italic = fontStyle === 'italic';
+  const numericWeight =
+    typeof fontWeight === 'number'
+      ? fontWeight
+      : typeof fontWeight === 'string' && /^\d+$/.test(fontWeight)
+        ? Number(fontWeight)
+        : null;
+
+  if (numericWeight !== null) {
+    if (numericWeight >= 900) return italic ? fonts.blackItalic : fonts.black;
+    if (numericWeight >= 800) return italic ? fonts.extraBoldItalic : fonts.extraBold;
+    if (numericWeight >= 700) return italic ? fonts.boldItalic : fonts.bold;
+    if (numericWeight >= 600) return italic ? fonts.semiBoldItalic : fonts.semiBold;
+    if (numericWeight >= 500) return italic ? fonts.mediumItalic : fonts.medium;
+    if (numericWeight <= 300) return italic ? fonts.lightItalic : fonts.light;
+  }
+
+  return italic ? fonts.sansItalic : fonts.sans;
 };

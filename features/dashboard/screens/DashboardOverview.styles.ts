@@ -36,7 +36,7 @@ export const styles = StyleSheet.create({
   pageStatusText: {
     color: colors.text,
     fontSize: typography.pageTitle,
-    fontWeight: '900',
+    fontWeight: '800',
     letterSpacing: -0.8,
     lineHeight: 33,
   },

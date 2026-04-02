@@ -90,21 +90,36 @@ export const CITY_LINE_COLORS: Partial<Record<CityId, Record<string, {color: str
   boston: {
     // MBTA rapid transit — keyed by actual API IDs and common variants
     'Red':     {color: '#DA291C', textColor: '#FFFFFF'},
+    'RED':     {color: '#DA291C', textColor: '#FFFFFF'},
     'Orange':  {color: '#ED8B00', textColor: '#FFFFFF'},
+    'ORANGE':  {color: '#ED8B00', textColor: '#FFFFFF'},
     'Blue':    {color: '#003DA5', textColor: '#FFFFFF'},
+    'BLUE':    {color: '#003DA5', textColor: '#FFFFFF'},
     'Green':   {color: '#00843D', textColor: '#FFFFFF'},
+    'GREEN':   {color: '#00843D', textColor: '#FFFFFF'},
     'Silver':  {color: '#7C878E', textColor: '#FFFFFF'},
+    'SILVER':  {color: '#7C878E', textColor: '#FFFFFF'},
     'Mattapan':{color: '#DA291C', textColor: '#FFFFFF'},
+    'MATTAPAN':{color: '#DA291C', textColor: '#FFFFFF'},
     // Green line branches (MBTA API uses these as lineId)
     'Green-B': {color: '#00843D', textColor: '#FFFFFF'},
+    'GREEN-B': {color: '#00843D', textColor: '#FFFFFF'},
     'Green-C': {color: '#00843D', textColor: '#FFFFFF'},
+    'GREEN-C': {color: '#00843D', textColor: '#FFFFFF'},
     'Green-D': {color: '#00843D', textColor: '#FFFFFF'},
+    'GREEN-D': {color: '#00843D', textColor: '#FFFFFF'},
     'Green-E': {color: '#00843D', textColor: '#FFFFFF'},
+    'GREEN-E': {color: '#00843D', textColor: '#FFFFFF'},
     // Short IDs
     'RL': {color: '#DA291C', textColor: '#FFFFFF'},
     'OL': {color: '#ED8B00', textColor: '#FFFFFF'},
     'BL': {color: '#003DA5', textColor: '#FFFFFF'},
     'GL': {color: '#00843D', textColor: '#FFFFFF'},
+    // Compact local badge labels
+    'ORG': {color: '#ED8B00', textColor: '#FFFFFF'},
+    'BLU': {color: '#003DA5', textColor: '#FFFFFF'},
+    'GRN': {color: '#00843D', textColor: '#FFFFFF'},
+    'MAT': {color: '#DA291C', textColor: '#FFFFFF'},
   },
   philadelphia: {
     // SEPTA Regional Rail

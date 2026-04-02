@@ -1,7 +1,7 @@
 import React, {useCallback, useEffect, useMemo, useState} from 'react';
 import {Pressable, ScrollView, Share, StyleSheet, Text, TextInput, View} from 'react-native';
 import {useMutation, useQueryClient} from '@tanstack/react-query';
-import {colors, radii, spacing} from '../../../theme';
+import {colors, fonts, radii, spacing} from '../../../theme';
 import {apiFetch} from '../../../lib/api';
 import {extractConfigDisplayId} from '../../../lib/deviceConfig';
 import {queryKeys} from '../../../lib/queryKeys';
@@ -640,6 +640,6 @@ const styles = StyleSheet.create({
     color: colors.text,
     fontSize: 10,
     padding: spacing.sm,
-    fontFamily: 'Courier',
+    fontFamily: fonts.sans,
   },
 });

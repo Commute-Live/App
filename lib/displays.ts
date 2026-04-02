@@ -1,6 +1,7 @@
 import {apiFetch} from './api';
 import type {CityId} from '../constants/cities';
 import {CITY_LINE_COLORS, hashLineColor} from './lineColors';
+import {getLocalDirectionLabel, getLocalLineLabel, getLocalRouteBadgeLabel, inferUiModeFromProvider, isRailLinePreviewMode} from './transitUi';
 
 export type DisplayWeekday = 'sun' | 'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat';
 
@@ -172,8 +173,22 @@ const isDueTimeLabel = (value: string) => {
   );
 };
 
-const resolvePreviewDirectionLabel = (value: unknown) => {
+const resolvePreviewDirectionLabel = (
+  provider: string | undefined,
+  lineId: string | undefined,
+  stopId: string | undefined,
+  value: unknown,
+) => {
   const normalized = normalizeDirectionToken(value);
+  const city = providerToCity(provider ?? null);
+  const mode = inferUiModeFromProvider(provider, stopId, lineId);
+  if (city && mode) {
+    const direction = normalized === 'S' || normalized === '1' ? 'downtown' : 'uptown';
+    if (isRailLinePreviewMode(city, mode)) {
+      return getLocalLineLabel(city, mode, lineId ?? '', lineId ?? '');
+    }
+    return getLocalDirectionLabel(city, mode, direction, lineId, 'bound');
+  }
   if (normalized === 'N') return 'Uptown';
   if (normalized === 'S') return 'Downtown';
   return typeof value === 'string' && value.trim().length > 0 ? value.trim() : '--';
@@ -204,10 +219,10 @@ const extractMinutesFromPreviewTime = (value: string | undefined) => {
 const buildPreviewEtaList = (firstMinutes: number, count: number) => {
   const safeCount = Math.max(1, Math.min(5, Math.round(count || DEFAULT_NEXT_STOPS)));
   const times: string[] = [];
-  let current = Math.max(1, Math.round(firstMinutes));
+  let current = Math.max(1, Math.round(firstMinutes)) + 2;
   for (let idx = 0; idx < safeCount; idx += 1) {
     times.push(`${current}m`);
-    current += idx % 2 === 0 ? 2 : 3;
+    current += 2;
   }
   return times.join(', ');
 };
@@ -221,11 +236,16 @@ const MTA_MNR_LINE_LABELS: Record<string, string> = {
   '6': 'Waterbury',
 };
 
-const resolvePreviewRouteLabel = (provider: string | undefined, rawLineId: string) => {
+const resolvePreviewRouteLabel = (provider: string | undefined, rawLineId: string, stopId?: string) => {
   const lineId = rawLineId.trim();
   if (!lineId) return '--';
+  const city = providerToCity(provider ?? null);
+  const mode = inferUiModeFromProvider(provider, stopId, lineId);
   if ((provider ?? '').trim().toLowerCase() === 'mta-mnr') {
     return MTA_MNR_LINE_LABELS[lineId.toUpperCase()] ?? MTA_MNR_LINE_LABELS[lineId] ?? lineId;
+  }
+  if (city && mode) {
+    return getLocalRouteBadgeLabel(city, mode, lineId, lineId);
   }
   return lineId.toUpperCase().slice(0, 4);
 };
@@ -425,13 +445,14 @@ export const toPreviewSlots = (
   const showDirectionFallback = options.showDirectionFallback ?? true;
   return (display.config.lines ?? []).slice(0, 2).map((line, index) => {
     const city = PROVIDER_TO_CITY[line.provider ?? ''] ?? null;
+    const mode = inferUiModeFromProvider(line.provider, line.stop, line.line);
     const lineColors = city ? (CITY_LINE_COLORS[city] ?? {}) : {};
     const lineId = (line.line ?? '').toUpperCase();
     const {color, textColor: lineTextColor} =
       line.provider === 'mta-bus'
         ? {color: '#0039A6', textColor: '#FFFFFF'}
         : lineColors[lineId] ?? hashLineColor(lineId);
-    const directionLabel = resolvePreviewDirectionLabel(line.direction);
+    const directionLabel = resolvePreviewDirectionLabel(line.provider, line.line, line.stop, line.direction);
     const destinationLabel = stopNames[`${line.provider}:${line.stop}`] || line.stop || 'Select stop';
     const displayType = Number.isFinite(Number(line.displayType))
       ? Math.max(1, Math.min(5, Math.trunc(Number(line.displayType))))
@@ -464,7 +485,13 @@ export const toPreviewSlots = (
     const badgeShape: PreviewSlot['badgeShape'] =
       city === 'new-york' && line.provider === 'mta-bus'
         ? 'pill'
-        : line.provider === 'mta-lirr' || line.provider === 'mta-mnr' || line.provider === 'mbta'
+        : city === 'chicago' && line.provider === 'cta-subway'
+          ? 'pill'
+        : city === 'boston' && (mode === 'train' || mode === 'ferry')
+          ? 'pill'
+          : city === 'philadelphia' && mode === 'train'
+            ? 'pill'
+            : line.provider === 'mta-lirr' || line.provider === 'mta-mnr' || mode === 'commuter-rail'
           ? 'rail'
           : 'circle';
 
@@ -472,7 +499,7 @@ export const toPreviewSlots = (
       id: `${display.displayId}-${index}`,
       color,
       textColor: line.textColor || lineTextColor,
-      routeLabel: resolvePreviewRouteLabel(line.provider, line.line ?? ''),
+      routeLabel: resolvePreviewRouteLabel(line.provider, line.line ?? '', line.stop),
       badgeShape,
       selected: false,
       stopName: previewTitle,

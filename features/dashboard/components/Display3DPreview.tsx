@@ -116,9 +116,14 @@ export default function Display3DPreview({
                   {backgroundColor: slot.color},
                 ]}>
                 <Text
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.72}
+                  numberOfLines={1}
                   style={[
                     styles.routeBadgeText,
+                    slot.badgeShape === 'pill' && styles.routeBadgeTextPill,
                     compact && styles.routeBadgeTextCompact,
+                    compact && slot.badgeShape === 'pill' && styles.routeBadgeTextPillCompact,
                     slot.badgeShape === 'rail' && styles.routeBadgeTextRail,
                     compact && slot.badgeShape === 'rail' && styles.routeBadgeTextRailCompact,
                     {color: slot.textColor},
@@ -280,12 +285,15 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   routeBadgeCompact: {width: 30, height: 30, borderRadius: 15},
-  routeBadgePill: {width: 58, height: 36, borderRadius: 10, paddingHorizontal: 6},
-  routeBadgePillCompact: {width: 44, height: 26, borderRadius: 8},
+  routeBadgePill: {minWidth: 58, height: 36, borderRadius: 10, paddingHorizontal: 8},
+  routeBadgePillCompact: {minWidth: 44, height: 26, borderRadius: 8, paddingHorizontal: 6},
   routeBadgeRail: {width: 58, height: 48, borderRadius: 12, paddingHorizontal: 5},
   routeBadgeRailCompact: {width: 40, height: 30, borderRadius: 8, paddingHorizontal: 3},
   routeBadgeText: {fontSize: 20, fontWeight: '900'},
+  routeBadgeTextPill: {fontSize: 15, lineHeight: 18, textAlign: 'center', includeFontPadding: false},
   routeBadgeTextCompact: {fontSize: 13},
+  routeBadgeTextPillCompact: {fontSize: 11, lineHeight: 13},
+  routeBadgeTextPillCompactShort: {fontSize: 12, lineHeight: 14, textAlign: 'center', includeFontPadding: false},
   routeBadgeTextRail: {fontSize: 12, lineHeight: 14, textAlign: 'center', includeFontPadding: false},
   routeBadgeTextRailCompact: {fontSize: 9, lineHeight: 10},
   slotBody: {flex: 1, paddingLeft: 2},

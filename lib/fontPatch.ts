@@ -1,6 +1,5 @@
 import {StyleSheet} from 'react-native';
-
-const FONT_FAMILY = 'Inter_400Regular';
+import {resolveFontFamily} from '../theme';
 
 const shouldPatchTextStyle = (style: unknown) => {
   if (!style || Array.isArray(style) || typeof style !== 'object') {
@@ -27,7 +26,7 @@ const patchStyleValue = (value: unknown): unknown => {
 
   return {
     ...(value as object),
-    fontFamily: FONT_FAMILY,
+    fontFamily: resolveFontFamily(value as {fontStyle?: unknown; fontWeight?: unknown}),
   };
 };
 

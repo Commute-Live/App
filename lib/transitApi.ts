@@ -118,8 +118,18 @@ const buildGlobalLinesEndpoint = (context: TransitContext) =>
 const buildStopsByLineEndpoint = (context: TransitContext, lineId: string) =>
   `/${encodeURIComponent(context.provider)}/stations/${encodeURIComponent(context.mode)}/${encodeURIComponent(lineId)}/stopId`;
 
-const buildArrivalsEndpoint = (context: TransitContext, stopId: string, lineIds: string[]) => {
+const buildArrivalsEndpoint = (
+  context: TransitContext,
+  stopId: string,
+  lineIds: string[],
+  options: {
+    direction?: string;
+  } = {},
+) => {
   const query = new URLSearchParams({line_ids: lineIds.join(',')});
+  if (typeof options.direction === 'string' && options.direction.trim().length > 0) {
+    query.set('direction', options.direction.trim());
+  }
   return `/${encodeURIComponent(context.provider)}/stations/${encodeURIComponent(context.mode)}/${encodeURIComponent(
     stopId,
   )}/arrivals?${query.toString()}`;
@@ -400,11 +410,14 @@ export const getTransitArrivals = async (
   uiMode: TransitUiMode,
   stopId: string,
   lineIds: readonly string[],
+  options: {
+    direction?: string;
+  } = {},
 ): Promise<TransitArrivalGroup> => {
   const context = createContext(city, uiMode);
   const normalizedStopId = normalizeStopId(stopId);
   const normalizedLineIds = normalizeLineIds(lineIds);
-  const endpoint = buildArrivalsEndpoint(context, normalizedStopId, normalizedLineIds);
+  const endpoint = buildArrivalsEndpoint(context, normalizedStopId, normalizedLineIds, options);
   const response = await apiFetch(endpoint);
 
   await ensureOk(response, endpoint);

@@ -6,11 +6,19 @@ import {useMutation, useQueryClient} from '@tanstack/react-query';
 import {colors} from '../../../theme';
 import DashboardPreviewSection from '../components/DashboardPreviewSection';
 import {useAppState} from '../../../state/appState';
-import {CITY_LABELS, type CityId} from '../../../constants/cities';
+import {CITY_BRANDS, CITY_LABELS, CITY_OPTIONS, type CityId} from '../../../constants/cities';
 import type {DisplayContent, DisplayFormat} from '../../../types/transit';
 import type {Display3DSlot} from '../components/Display3DPreview';
 import {apiFetch} from '../../../lib/api';
 import {queryKeys} from '../../../lib/queryKeys';
+import {
+  deserializeUiDirection,
+  getLocalDirectionLabel,
+  getLocalLineLabel,
+  getLocalRouteBadgeLabel,
+  isRailLinePreviewMode,
+  serializeUiDirection,
+} from '../../../lib/transitUi';
 import {
   createDisplay,
   fetchDisplay,
@@ -80,7 +88,7 @@ type LinePick = {
 };
 type StationsByMode = Partial<Record<ModeId, Station[]>>;
 type RoutesByStation = Record<string, Route[]>;
-type EditorStep = 'format' | 'lines' | 'stops' | 'done';
+type EditorStep = 'city' | 'format' | 'lines' | 'stops' | 'done';
 type RoutePickerItem = {id: string; label: string; displayLabel: string; color: string; textColor?: string; routes: Route[]};
 type RouteGroup = {key: string; title?: string; routes: RoutePickerItem[]};
 
@@ -109,7 +117,35 @@ const LAYOUT_OPTIONS = [
   {id: 'layout-1', slots: 1, label: '1 line'},
   {id: 'layout-2', slots: 2, label: '2 lines'},
 ];
-const stripBranchSuffix = (label: string) => label.replace(/\s+Branch$/i, '').trim();
+const withHexAlpha = (color: string, alpha: string) => (/^#[0-9a-f]{6}$/i.test(color) ? `${color}${alpha}` : color);
+const getCityAgencyPillPalette = (city: CityId) => {
+  const brand = CITY_BRANDS[city];
+
+  if (city === 'new-york') {
+    return {
+      borderColor: brand.badgeBorder,
+      textColor: '#D7E7FF',
+      backgroundColor: withHexAlpha(brand.badgeBg, '38'),
+    };
+  }
+
+  return {
+    borderColor: brand.accent,
+    textColor: brand.accent,
+    backgroundColor: withHexAlpha(brand.accent, '16'),
+  };
+};
+
+const getMockStopName = (city: CityId, mode: ModeId) => {
+  if (city === 'chicago' && mode === 'train') return 'Clark/Lake';
+  if (city === 'boston' && mode === 'train') return 'Park Street';
+  if (city === 'boston' && mode === 'commuter-rail') return 'Back Bay';
+  if (city === 'boston' && mode === 'ferry') return 'Long Wharf';
+  if (city === 'philadelphia' && mode === 'train') return 'Gray 30th St Station';
+  if (city === 'philadelphia' && mode === 'trolley') return '13th St';
+  if (city === 'philadelphia' && mode === 'bus') return '69th St TC';
+  return 'Times Sq–42 St';
+};
 
 const DISPLAY_PRESET_OPTIONS = [
   {id: 1, label: 'Destination', description: 'Stop name on the left, next arrival on the right.'},
@@ -182,43 +218,40 @@ const inferDisplayPreset = (
   return fallbackPreset;
 };
 
-const isLirrMode = (mode: ModeId) => mode === 'lirr';
-
 const isNycRailMode = (mode: ModeId) => mode === 'lirr' || mode === 'mnr';
 
-const getDirectionLabel = (mode: ModeId, direction: Direction) => {
-  if (mode === 'mnr') {
-    return direction === 'uptown' ? 'Outbound' : 'Inbound';
-  }
-  return direction === 'downtown' ? 'Downtown' : 'Uptown';
+const getDirectionLabel = (city: CityId, mode: ModeId, direction: Direction, routeId?: string) => {
+  return getLocalDirectionLabel(city, mode, direction, routeId, 'bound');
 };
 
-const getDirectionSummaryLabel = (mode: ModeId, direction: Direction) => {
-  if (mode === 'mnr') {
-    return direction === 'uptown' ? 'Outbound' : 'Inbound';
-  }
-  return direction === 'downtown' ? 'Downtown / South' : 'Uptown / North';
+const getDirectionSummaryLabel = (city: CityId, mode: ModeId, direction: Direction, routeId?: string) => {
+  return getLocalDirectionLabel(city, mode, direction, routeId, 'summary');
 };
 
-const getRailPreviewRouteLabel = (mode: ModeId, routeLabel: string) => {
+const getRailPreviewRouteLabel = (city: CityId, mode: ModeId, routeLabel: string, routeId?: string) => {
   const trimmed = routeLabel.trim();
-  if (!trimmed) return 'Route';
-  if (mode === 'lirr') return stripBranchSuffix(trimmed);
-  return trimmed;
+  if (!trimmed && !routeId) return 'Route';
+  return getLocalLineLabel(city, mode, routeId ?? trimmed, trimmed || (routeId ?? 'Route'));
 };
 
-const getPreviewSecondaryLabel = (mode: ModeId, routeLabel: string, direction: Direction) => {
-  if (isNycRailMode(mode)) {
-    return getRailPreviewRouteLabel(mode, routeLabel);
+const getPreviewSecondaryLabel = (
+  city: CityId,
+  mode: ModeId,
+  routeLabel: string,
+  direction: Direction,
+  routeId?: string,
+) => {
+  if (isRailLinePreviewMode(city, mode)) {
+    return getRailPreviewRouteLabel(city, mode, routeLabel, routeId);
   }
-  return getDirectionLabel(mode, direction);
+  return getDirectionLabel(city, mode, direction, routeId);
 };
 
-const getPresetLabelForMode = (mode: ModeId, presetId: number, defaultLabel: string) => {
+const getPresetLabelForMode = (city: CityId, mode: ModeId, presetId: number, defaultLabel: string) => {
   if (mode === 'lirr') {
     return {2: 'Branch', 3: 'Destination + Branch', 5: 'Branch + Upcoming Trains'}[presetId] ?? defaultLabel;
   }
-  if (mode === 'mnr') {
+  if (mode === 'mnr' || mode === 'commuter-rail' || (city === 'philadelphia' && mode === 'train')) {
     return {2: 'Line', 3: 'Destination + Line', 5: 'Line + Upcoming Trains'}[presetId] ?? defaultLabel;
   }
   return defaultLabel;
@@ -227,10 +260,12 @@ const getPresetLabelForMode = (mode: ModeId, presetId: number, defaultLabel: str
 export default function DisplayEditorScreen() {
   const queryClient = useQueryClient();
   const router = useRouter();
-  const {state: appState, setPreset, setSelectedStations, setArrivals: setAppArrivals} = useAppState();
+  const {state: appState, setPreset, setSelectedStations, setArrivals: setAppArrivals, setSelectedCity} = useAppState();
   const params = useLocalSearchParams<{city?: string; from?: string; mode?: string; displayId?: string}>();
-  const city = normalizeCityIdParam(params.city ?? appState.selectedCity);
+  const initialCity = normalizeCityIdParam(params.city ?? appState.selectedCity);
   const isCreateMode = params.mode === 'new';
+  const [editorCity, setEditorCity] = useState<CityId>(initialCity);
+  const city = editorCity;
   const fallbackRoute = params.from === 'presets' ? '/presets' : '/dashboard';
   const headerEnter = useRef(new Animated.Value(0)).current;
   const previewEnter = useRef(new Animated.Value(0)).current;
@@ -266,7 +301,7 @@ export default function DisplayEditorScreen() {
   const [routesLoadingByStation, setRoutesLoadingByStation] = useState<Record<string, boolean>>({});
   const [arrivals, setArrivals] = useState<Arrival[]>([]);
   const [liveStatusText, setLiveStatusText] = useState('');
-  const [editorStep, setEditorStep] = useState<EditorStep>(isCreateMode ? 'lines' : 'done');
+  const [editorStep, setEditorStep] = useState<EditorStep>(isCreateMode ? 'city' : 'done');
   // Tracks the style the user is hovering/previewing in Step 3 (format) before confirming
   const [liveStylePreview, setLiveStylePreview] = useState<number | null>(null);
   const [linesByMode, setLinesByMode] = useState<Partial<Record<ModeId, Route[]>>>({});
@@ -289,6 +324,17 @@ export default function DisplayEditorScreen() {
       update: {type: LayoutAnimation.Types.easeInEaseOut},
       delete: {type: LayoutAnimation.Types.easeInEaseOut, property: LayoutAnimation.Properties.opacity},
     });
+  };
+
+  const handleCitySelect = (nextCity: CityId) => {
+    if (nextCity !== city) {
+      setEditorCity(nextCity);
+      setDisplayPresetsByLine({});
+      setSelectedLineId('');
+      setLiveStylePreview(null);
+    }
+    setSelectedCity(nextCity);
+    setEditorStep('lines');
   };
 
   useEffect(() => {
@@ -565,8 +611,12 @@ export default function DisplayEditorScreen() {
               else if (!/^place-/i.test(stopId)) mode = 'commuter-rail';
             }
             const normalizedSavedStop = saved.stop.trim().toUpperCase();
-            const dir: Direction =
-              saved.direction === 'S' || (!saved.direction && normalizedSavedStop.endsWith('S')) ? 'downtown' : 'uptown';
+            const dir: Direction = deserializeUiDirection(
+              city,
+              mode,
+              typeof saved.direction === 'string' ? saved.direction : undefined,
+              normalizedSavedStop,
+            );
             return {
               id: `line-${i + 1}`,
               mode,
@@ -676,7 +726,13 @@ export default function DisplayEditorScreen() {
         const updates = await Promise.all(
           activeLiveSelections.map(async line => {
             const liveArrival = await queryClient.fetchQuery({
-              queryKey: queryKeys.transitArrivalsForSelection(city, line.mode, line.stationId, line.routeId),
+              queryKey: queryKeys.transitArrivalsForSelection(
+                city,
+                line.mode,
+                line.stationId,
+                line.routeId,
+                serializeUiDirection(city, line.mode, line.direction),
+              ),
               queryFn: () => loadArrivalForSelection(city, line),
             });
             if (!liveArrival) return null;
@@ -785,7 +841,7 @@ export default function DisplayEditorScreen() {
         provider: resolveBackendProvider(city, line.mode),
         line: line.routeId,
         stop: line.stationId,
-        ...(line.direction ? {direction: line.direction === 'uptown' ? 'N' : 'S'} : {}),
+        ...(line.direction ? {direction: serializeUiDirection(city, line.mode, line.direction)} : {}),
         displayType: displayPresetsByLine[line.id] ?? inferDisplayPreset(line),
         label: line.label.trim() || undefined,
         secondaryLabel: line.secondaryLabel.trim() || undefined,
@@ -1216,8 +1272,8 @@ export default function DisplayEditorScreen() {
           ? buildNextArrivalTimes(3, line.nextStops).join(', ')
           : buildNextArrivalTimes(etaMinutes ?? 2, line.nextStops).join(', ');
         const routePreviewLabel = route?.label ?? line.routeId ?? '';
-        const directionLabel = getPreviewSecondaryLabel(safeMode, routePreviewLabel, line.direction);
-        const stopName = station?.name ?? (mockEta ? 'Times Sq–42 St' : '');
+        const directionLabel = getPreviewSecondaryLabel(city, safeMode, routePreviewLabel, line.direction, line.routeId);
+        const stopName = station?.name ?? (mockEta ? getMockStopName(city, safeMode) : '');
         const primaryPreviewText = resolveDisplayContent(line.primaryContent, stopName, directionLabel, line.label);
         const secondaryPreviewText = resolveDisplayContent(line.secondaryContent, stopName, directionLabel, line.secondaryLabel || (mockEta ? directionLabel : ''));
         const previewTitle = stopName ? primaryPreviewText : '';
@@ -1232,10 +1288,14 @@ export default function DisplayEditorScreen() {
         const previewSubLineColor = displayPreset === 4 || displayPreset === 5 ? '#E5C15A' : undefined;
 
         const isBusBadge = city === 'new-york' && safeMode === 'bus';
+        const isChicagoTrainBadge = city === 'chicago' && safeMode === 'train';
+        const isBostonTrainBadge = city === 'boston' && safeMode === 'train';
+        const isBostonFerryBadge = city === 'boston' && safeMode === 'ferry';
+        const isPhillyRailBadge = city === 'philadelphia' && safeMode === 'train';
         const isRailLineBadge = isNycRailMode(safeMode);
         const isCommuterRailBadge = safeMode === 'commuter-rail';
 
-        const badgeShape: Display3DSlot['badgeShape'] = (isBusBadge || isRailLineBadge)
+        const badgeShape: Display3DSlot['badgeShape'] = (isBusBadge || isRailLineBadge || isChicagoTrainBadge || isBostonTrainBadge || isBostonFerryBadge || isPhillyRailBadge)
           ? 'pill'
           : isCommuterRailBadge
             ? 'rail'
@@ -1245,7 +1305,9 @@ export default function DisplayEditorScreen() {
           id: line.id,
           color: route?.color ?? '#3A3A3A',
           textColor: line.textColor || route?.textColor || '#FFFFFF',
-          routeLabel: isRailLineBadge ? (route ? '' : '?') : (route?.label ?? '?'),
+          routeLabel: isRailLineBadge
+            ? (route ? '' : '?')
+            : getLocalRouteBadgeLabel(city, safeMode, line.routeId ?? route?.id ?? '?', route?.label ?? line.routeId ?? '?'),
           badgeShape,
           selected: line.id === selectedLineId,
           stopName: previewTitle,
@@ -1358,7 +1420,7 @@ export default function DisplayEditorScreen() {
         ? (() => {
             const selectedMode = selectedLine != null ? normalizeMode(city, selectedLine.mode) : 'train';
             const defaultLabel = DISPLAY_PRESET_OPTIONS.find(option => option.id === selectedDisplayPreset)?.label ?? 'Choose style';
-            return getPresetLabelForMode(selectedMode, selectedDisplayPreset, defaultLabel);
+            return getPresetLabelForMode(city, selectedMode, selectedDisplayPreset, defaultLabel);
           })()
         : 'Choose style',
       onPress: selectedLine?.routeId && selectedLine?.stationId ? () => setEditorStep('format') : undefined,
@@ -1383,11 +1445,13 @@ export default function DisplayEditorScreen() {
           />
           <WizardStepBar
             step={editorStep}
+            includeCityStep={isCreateMode}
             hasLine={!!selectedLine?.routeId}
             hasStop={!!selectedLine?.stationId}
             hasPreset={selectedLinePresetConfirmed}
             isLirr={selectedLine != null && normalizeMode(city, selectedLine.mode) === 'lirr'}
             onGoTo={targetStep => {
+              if (targetStep === 'city' && isCreateMode) { setEditorStep('city'); return; }
               if (!selectedLine) return;
               if (targetStep === 'lines') { setEditorStep('lines'); return; }
               if (targetStep === 'stops' && selectedLine.routeId) { setEditorStep('stops'); return; }
@@ -1398,17 +1462,24 @@ export default function DisplayEditorScreen() {
         </Animated.View>
 
         {/* ── Fixed preview — always visible, never scrolls ─────────────── */}
-        <Animated.View style={[styles.wizardFixedPreview, previewAnimatedStyle]}>
-          <DashboardPreviewSection
-            slots={previewSlots}
-            displayType={liveDisplayType}
-            onSelectSlot={handleSelectSlotForEdit}
-            onReorderSlot={reorderLineByHold}
-            onDragStateChange={setPreviewDragging}
-            showHint={false}
-            mini={layoutSlots === 1}
-          />
-        </Animated.View>
+        {editorStep !== 'city' ? (
+          <Animated.View style={[styles.wizardFixedPreview, previewAnimatedStyle]}>
+            <DashboardPreviewSection
+              slots={previewSlots}
+              displayType={liveDisplayType}
+              onSelectSlot={handleSelectSlotForEdit}
+              onReorderSlot={reorderLineByHold}
+              onDragStateChange={setPreviewDragging}
+              showHint={false}
+            />
+          </Animated.View>
+        ) : null}
+
+        {editorStep === 'city' ? (
+          <Animated.View style={[stepAnimatedStyle, styles.linePickerFullScreen]}>
+            <CityPickerStep selectedCity={city} onSelectCity={handleCitySelect} />
+          </Animated.View>
+        ) : null}
 
         {/* ── Stop picker — fixed layout, lives outside the scroll view ── */}
         {editorStep === 'stops' && selectedLine ? (
@@ -1454,7 +1525,7 @@ export default function DisplayEditorScreen() {
         ) : null}
 
         {/* ── Scrollable step content (format/save only) ─────────────────── */}
-        {editorStep !== 'stops' && editorStep !== 'lines' ? (
+        {editorStep !== 'city' && editorStep !== 'stops' && editorStep !== 'lines' ? (
         <ScrollView
           contentContainerStyle={styles.wizardScroll}
           scrollEnabled={!previewDragging}
@@ -1471,7 +1542,7 @@ export default function DisplayEditorScreen() {
             <View style={styles.liveDisabledCard}>
               <Text style={styles.liveDisabledTitle}>Live Transit Unavailable</Text>
               <Text style={styles.liveDisabledBody}>
-                Real-time transit is currently supported in New York and Philadelphia only. {CITY_LABELS[city]} does not support live stop/line lookups yet.
+                {CITY_LABELS[city]} does not support live stop and line lookups yet.
               </Text>
             </View>
           ) : null}
@@ -1482,6 +1553,7 @@ export default function DisplayEditorScreen() {
               {/* Step 3: Style picker — fixed preview above reflects live selection */}
               {editorStep === 'format' ? (
                 <LedStylePickerStep
+                  city={city}
                   displayType={selectedDisplayPreset}
                   line={selectedLine}
                   selectedRoute={selectedRouteForEditor}
@@ -1511,6 +1583,7 @@ export default function DisplayEditorScreen() {
               {/* Step 4: Review & save */}
               {editorStep === 'done' ? (
                 <WizardReviewStep
+                  city={city}
                   line={selectedLine}
                   displayPreset={selectedDisplayPreset}
                   presetConfirmed={selectedLinePresetConfirmed}
@@ -1662,8 +1735,80 @@ function TopBar({
   );
 }
 
+function CityPickerStep({
+  selectedCity,
+  onSelectCity,
+}: {
+  selectedCity: CityId;
+  onSelectCity: (city: CityId) => void;
+}) {
+  return (
+    <View style={styles.cityPickerSection}>
+      <Text style={styles.stepTitle}>Select city</Text>
+      <Text style={styles.stepSubtitle}>Pick which transit provider family this display should use.</Text>
+      <View style={styles.cityPickerList}>
+        {CITY_OPTIONS.map(option => {
+          const active = option.id === selectedCity;
+          const brand = CITY_BRANDS[option.id];
+          const pillPalette = getCityAgencyPillPalette(option.id);
+          return (
+            <Pressable
+              key={option.id}
+              style={[
+                styles.cityPickerCard,
+                !active && {
+                  borderColor: withHexAlpha(brand.badgeBorder, '8A'),
+                  backgroundColor: withHexAlpha(brand.badgeBg, '14'),
+                },
+                active && styles.cityPickerCardActive,
+              ]}
+              onPress={() => onSelectCity(option.id)}>
+              <View style={styles.cityPickerCardTop}>
+                <View style={styles.cityPickerIdentity}>
+                  <View
+                    style={[
+                      styles.cityPickerAgencyPill,
+                      {
+                        borderColor: pillPalette.borderColor,
+                        backgroundColor: active
+                          ? option.id === 'new-york'
+                            ? withHexAlpha(brand.badgeBg, '52')
+                            : brand.accentSoft
+                          : pillPalette.backgroundColor,
+                      },
+                    ]}>
+                    <Text
+                      style={[
+                        styles.cityPickerAgencyText,
+                        {color: pillPalette.textColor},
+                      ]}>
+                      {option.agencyCode}
+                    </Text>
+                  </View>
+                  <Text style={[styles.cityPickerTitle, active && styles.cityPickerTitleActive]}>
+                    {option.label}
+                  </Text>
+                </View>
+                <View style={[styles.choiceRowCheck, active && styles.choiceRowCheckActive]}>
+                  {active ? <Text style={styles.choiceRowCheckText}>✓</Text> : null}
+                </View>
+              </View>
+              <View style={styles.cityPickerCopy}>
+                <Text style={styles.cityPickerDescription} numberOfLines={2}>
+                  {option.description}
+                </Text>
+              </View>
+            </Pressable>
+          );
+        })}
+      </View>
+    </View>
+  );
+}
+
 function WizardStepBar({
   step,
+  includeCityStep,
   hasLine,
   hasStop,
   hasPreset,
@@ -1671,6 +1816,7 @@ function WizardStepBar({
   onGoTo,
 }: {
   step: EditorStep;
+  includeCityStep: boolean;
   hasLine: boolean;
   hasStop: boolean;
   hasPreset: boolean;
@@ -1678,21 +1824,24 @@ function WizardStepBar({
   onGoTo: (step: EditorStep) => void;
 }) {
   const stepDefs: Array<{id: EditorStep; label: string; complete: boolean; reachable: boolean}> = [
+    ...(includeCityStep
+      ? [{id: 'city' as const, label: 'City', complete: step !== 'city', reachable: true}]
+      : []),
     {id: 'lines', label: isLirr ? 'Branch' : 'Line', complete: hasLine, reachable: true},
     {id: 'stops', label: isLirr ? 'Station' : 'Stop', complete: hasStop, reachable: hasLine},
     {id: 'format', label: 'Style', complete: hasPreset, reachable: hasLine && hasStop},
     {id: 'done', label: 'Save', complete: false, reachable: hasLine && hasStop && hasPreset},
   ];
 
+  const connectorStates = stepDefs.slice(0, -1).map(item => item.complete);
+
   // Connector fill anims (3 connectors between 4 steps)
-  const connectorAnims = useRef([
-    new Animated.Value(hasLine ? 1 : 0),
-    new Animated.Value(hasStop ? 1 : 0),
-    new Animated.Value(hasPreset ? 1 : 0),
-  ]).current;
+  const connectorAnims = useRef(
+    connectorStates.map(complete => new Animated.Value(complete ? 1 : 0)),
+  ).current;
 
   useEffect(() => {
-    [hasLine, hasStop, hasPreset].forEach((complete, i) => {
+    connectorStates.forEach((complete, i) => {
       Animated.spring(connectorAnims[i], {
         toValue: complete ? 1 : 0,
         useNativeDriver: false,
@@ -1700,7 +1849,7 @@ function WizardStepBar({
         bounciness: 0,
       }).start();
     });
-  }, [hasLine, hasStop, hasPreset, connectorAnims]);
+  }, [connectorAnims, connectorStates]);
 
   return (
     <View style={styles.wizardStepBar}>
@@ -2096,6 +2245,7 @@ function SimplePicker({
 }
 
 function DisplayPresetPickerStep({
+  city,
   selectedPreset,
   line,
   selectedRoute,
@@ -2105,6 +2255,7 @@ function DisplayPresetPickerStep({
   onChangeLine,
   onSelect,
 }: {
+  city: CityId;
   selectedPreset: number | null;
   line: LinePick;
   selectedRoute: Route | undefined;
@@ -2117,12 +2268,13 @@ function DisplayPresetPickerStep({
   const carouselRef = useRef<ScrollView | null>(null);
   const [visiblePresetId, setVisiblePresetId] = useState<number>(selectedPreset ?? DISPLAY_PRESET_OPTIONS[0].id);
   const routeLabel = selectedRoute?.label ?? line.routeId ?? '?';
-  const directionLabel = getPreviewSecondaryLabel(line.mode, routeLabel, line.direction);
+  const routeBadgeLabel = getLocalRouteBadgeLabel(city, line.mode, line.routeId, routeLabel);
+  const directionLabel = getPreviewSecondaryLabel(city, line.mode, routeLabel, line.direction, line.routeId);
   const routeColor = selectedRoute?.color ?? '#0C7A59';
   const routeTextColor = selectedRoute?.textColor ?? '#E8FFF8';
   const stopLabel = selectedStation?.name?.trim() || 'Selected stop';
-  const secondaryStopLabel = isNycRailMode(line.mode)
-    ? getRailPreviewRouteLabel(line.mode, routeLabel)
+  const secondaryStopLabel = isRailLinePreviewMode(city, line.mode)
+    ? getRailPreviewRouteLabel(city, line.mode, routeLabel, line.routeId)
     : selectedStation?.area?.trim() || selectedStation?.name?.trim() || routeLabel || 'Route';
   const etaText = arrival ? `${Math.max(0, Math.round(arrival.minutes))}m` : '3m';
   const etaListText = buildNextArrivalTimes(arrival?.minutes ?? 3, line.nextStops).join(', ');
@@ -2151,7 +2303,7 @@ function DisplayPresetPickerStep({
         contentContainerStyle={styles.presetCarousel}>
         {DISPLAY_PRESET_OPTIONS.map((option, index) => {
           const behavior = getPresetBehavior(option.id);
-          const optionLabel = getPresetLabelForMode(line.mode, option.id, option.label);
+          const optionLabel = getPresetLabelForMode(city, line.mode, option.id, option.label);
           const primaryText =
             resolveDisplayContent(
               line.label.trim().length > 0 ? 'custom' : behavior.primaryContent,
@@ -2174,7 +2326,7 @@ function DisplayPresetPickerStep({
               optionLabel={optionLabel}
               index={index}
               active={option.id === selectedPreset}
-              routeLabel={routeLabel}
+              routeLabel={routeBadgeLabel}
               routeColor={routeColor}
               routeTextColor={routeTextColor}
               primaryText={primaryText}
@@ -2624,6 +2776,25 @@ const NYC_MODE_COLORS: Partial<Record<ModeId, string>> = {
   mnr: '#00A1DE',
 };
 
+const CITY_MODE_COLORS: Partial<Record<CityId, Partial<Record<ModeId, string>>>> = {
+  'new-york': NYC_MODE_COLORS,
+  philadelphia: {
+    train: '#005DAA',
+    trolley: '#6D3FA9',
+    bus: '#17844B',
+  },
+  boston: {
+    train: '#DA291C',
+    bus: '#7C878E',
+    'commuter-rail': '#7B61FF',
+    ferry: '#0EA5E9',
+  },
+  chicago: {
+    train: '#00A1DE',
+    bus: '#17844B',
+  },
+};
+
 
 function LinePickerStep({
   city,
@@ -2657,6 +2828,14 @@ function LinePickerStep({
   const pulseAnims = useRef<Record<string, Animated.Value>>({}).current;
 
   const isBusGrouped = city === 'new-york' && selectedMode === 'bus';
+  const isWidePillMode =
+    (city === 'chicago' && selectedMode === 'train') ||
+    (city === 'boston' && (selectedMode === 'train' || selectedMode === 'ferry'));
+  const isBranchListMode =
+    selectedMode === 'lirr' ||
+    selectedMode === 'mnr' ||
+    selectedMode === 'commuter-rail' ||
+    (city === 'philadelphia' && selectedMode === 'train');
 
   const toggleGroup = (key: string) => {
     setCollapsedGroups(prev => {
@@ -2716,14 +2895,14 @@ function LinePickerStep({
         <View style={styles.liveDisabledCard}>
           <Text style={styles.liveDisabledTitle}>Live Transit Unavailable</Text>
           <Text style={styles.liveDisabledBody}>
-            Real-time transit is currently supported in New York and Philadelphia only. {CITY_LABELS[city]} does not support live stop/line lookups yet.
+            {CITY_LABELS[city]} does not support live stop and line lookups yet.
           </Text>
         </View>
       ) : null}
       <View style={styles.modePickerGrid}>
         {modeOptions.map(mode => {
           const active = selectedMode === mode;
-          const accentColor = NYC_MODE_COLORS[mode] ?? colors.accent;
+          const accentColor = CITY_MODE_COLORS[city]?.[mode] ?? colors.accent;
           return (
             <Pressable
               key={mode}
@@ -2788,7 +2967,7 @@ function LinePickerStep({
                   )
                 ) : null}
                 {!isCollapsed ? (
-                selectedMode === 'lirr' || selectedMode === 'mnr' ? (
+                isBranchListMode ? (
                   <View style={styles.lirrBranchList}>
                     {group.routes.map(route => {
                       const isSelected = route.routes.some(item => item.id === selectedRouteId);
@@ -2807,24 +2986,36 @@ function LinePickerStep({
                     })}
                   </View>
                 ) : (
-                <View style={styles.lineGrid}>
+                <View style={[styles.lineGrid, isWidePillMode && styles.lineGridChicagoTrain]}>
                   {group.routes.map(route => {
                       const isSelected = route.routes.some(item => item.id === selectedRouteId);
                       const isBusBadge = city === 'new-york' && selectedMode === 'bus';
-                      const isCommuterRailBadge = selectedMode === 'commuter-rail';
+                      const isChicagoTrainBadge = city === 'chicago' && selectedMode === 'train';
+                      const isBostonWideBadge = city === 'boston' && (selectedMode === 'train' || selectedMode === 'ferry');
+                      const isCommuterRailBadge = false;
                       const isExpress = !isBusBadge && isExpressRouteBadge(city, selectedMode, route);
                       const useCompactBadgeText = isBusBadge && route.displayLabel.length >= 5;
-                      const shouldAutoFitBadgeText = isBusBadge || isCommuterRailBadge || isExpress;
+                      const shouldAutoFitBadgeText = isBusBadge || isChicagoTrainBadge || isBostonWideBadge || isCommuterRailBadge || isExpress;
                       const anim = getPulseAnim(route.id);
                     return (
-                      <Animated.View key={route.id} style={{transform: [{scale: anim}]}}>
+                      <Animated.View
+                        key={route.id}
+                        style={[
+                          {transform: [{scale: anim}]},
+                          isWidePillMode && styles.lineBadgeTileWrapChicagoTrain,
+                        ]}>
                         <Pressable
-                          style={[styles.lineBadgeTile, isSelected && styles.lineBadgeTileActive]}
+                          style={[
+                            styles.lineBadgeTile,
+                            isWidePillMode && styles.lineBadgeTileChicagoTrain,
+                            isSelected && styles.lineBadgeTileActive,
+                          ]}
                           onPress={() => handleSelectLine(route)}>
                             <View
                               style={[
                                 styles.lineBadgeCircle,
                                 isBusBadge && styles.lineBadgeBusPill,
+                                (isChicagoTrainBadge || isBostonWideBadge) && styles.lineBadgeChicagoTrainPill,
                                 isCommuterRailBadge && styles.lineBadgeCommuterRail,
                                 {backgroundColor: route.color},
                                 isExpress && styles.lineBadgeDiamond,
@@ -2836,6 +3027,7 @@ function LinePickerStep({
                                 style={[
                                   styles.lineBadgeText,
                                   isBusBadge && styles.lineBadgeBusText,
+                                  (isChicagoTrainBadge || isBostonWideBadge) && styles.lineBadgeChicagoTrainText,
                                   isCommuterRailBadge && styles.lineBadgeCommuterRailText,
                                   useCompactBadgeText && styles.lineBadgeTextCompact,
                                   {color: route.textColor ?? '#fff'},
@@ -2929,6 +3121,7 @@ function StopPickerStep({
 
   const term = search.trim().toLowerCase();
   const isBusGrouped = city === 'new-york' && selectedMode === 'bus';
+  const isChicagoTrainMode = city === 'chicago' && selectedMode === 'train';
 
   const filtered = useMemo(() => {
     if (!term) return stations;
@@ -2955,18 +3148,26 @@ function StopPickerStep({
     <View style={[styles.stepContainer, styles.stopPickerStepFull]}>
       <View style={styles.stopPickerHeader}>
         <View style={{flex: 1}} />
-        <View style={styles.stopPickerDirRow}>
+        <View style={[styles.stopPickerDirRow, isChicagoTrainMode && styles.stopPickerDirRowChicagoTrain]}>
           {(['uptown', 'downtown'] as Direction[]).map(dir => {
             const active = selectedDirection === dir;
-            const label = selectedMode === 'lirr' || selectedMode === 'mnr'
-              ? (dir === 'uptown' ? 'Outbound' : 'Inbound')
-              : (dir === 'uptown' ? '↑ North' : '↓ South');
+            const label = getLocalDirectionLabel(city, selectedMode, dir, selectedRouteId, 'toggle');
             return (
               <Pressable
                 key={dir}
-                style={[styles.stopPickerDirPill, active && styles.stopPickerDirPillActive]}
+                style={[
+                  styles.stopPickerDirPill,
+                  isChicagoTrainMode && styles.stopPickerDirPillChicagoTrain,
+                  active && styles.stopPickerDirPillActive,
+                ]}
                 onPress={() => onSelectDirection(dir)}>
-                <Text style={[styles.stopPickerDirText, active && styles.stopPickerDirTextActive]}>
+                <Text
+                  style={[
+                    styles.stopPickerDirText,
+                    isChicagoTrainMode && styles.stopPickerDirTextChicagoTrain,
+                    active && styles.stopPickerDirTextActive,
+                  ]}
+                  numberOfLines={isChicagoTrainMode ? 2 : 1}>
                   {label}
                 </Text>
               </Pressable>
@@ -3070,6 +3271,7 @@ function StopRow({
 }
 
 function DoneStep({
+  city,
   line,
   displayPreset,
   presetConfirmed,
@@ -3079,6 +3281,7 @@ function DoneStep({
   onClearStop,
   onClearDisplayType,
 }: {
+  city: CityId;
   line: LinePick;
   displayPreset: number;
   presetConfirmed: boolean;
@@ -3095,8 +3298,8 @@ function DoneStep({
   const onChangeDisplayType = onClearDisplayType;
   const liveStatusText = '';
   const presetOption = DISPLAY_PRESET_OPTIONS.find(option => option.id === displayPreset);
-  const presetLabel = getPresetLabelForMode(line.mode, displayPreset, presetOption?.label ?? `Display Type ${displayPreset}`);
-  const directionLabel = getDirectionSummaryLabel(line.mode, line.direction);
+  const presetLabel = getPresetLabelForMode(city, line.mode, displayPreset, presetOption?.label ?? `Display Type ${displayPreset}`);
+  const directionLabel = getDirectionSummaryLabel(city, line.mode, line.direction, line.routeId);
 
   return (
     <View style={styles.doneStepContainer}>
@@ -3161,6 +3364,7 @@ function DoneStep({
 }
 
 function ReviewDoneStep({
+  city,
   line,
   displayPreset,
   presetConfirmed,
@@ -3171,6 +3375,7 @@ function ReviewDoneStep({
   onClearStop,
   onClearDisplayType,
 }: {
+  city: CityId;
   line: LinePick;
   displayPreset: number;
   presetConfirmed: boolean;
@@ -3182,11 +3387,11 @@ function ReviewDoneStep({
   onClearDisplayType: () => void;
 }) {
   const presetOption = DISPLAY_PRESET_OPTIONS.find(option => option.id === displayPreset);
-  const presetLabel = getPresetLabelForMode(line.mode, displayPreset, presetOption?.label ?? `Display Type ${displayPreset}`);
-  const directionLabel = getDirectionSummaryLabel(line.mode, line.direction);
+  const presetLabel = getPresetLabelForMode(city, line.mode, displayPreset, presetOption?.label ?? `Display Type ${displayPreset}`);
+  const directionLabel = getDirectionSummaryLabel(city, line.mode, line.direction, line.routeId);
   const activePresetBehavior = getPresetBehavior(displayPreset);
   const routeLabel = selectedRoute?.label ?? line.routeId ?? 'Route';
-  const previewDirectionLabel = getPreviewSecondaryLabel(line.mode, routeLabel, line.direction);
+  const previewDirectionLabel = getPreviewSecondaryLabel(city, line.mode, routeLabel, line.direction, line.routeId);
   const topPlaceholder = resolveDisplayContent(
     activePresetBehavior.primaryContent,
     selectedStation?.name?.trim() || 'Selected stop',
@@ -3195,8 +3400,8 @@ function ReviewDoneStep({
   );
   const bottomPlaceholder = resolveDisplayContent(
     activePresetBehavior.secondaryContent,
-    isNycRailMode(line.mode)
-      ? getRailPreviewRouteLabel(line.mode, routeLabel)
+    isRailLinePreviewMode(city, line.mode)
+      ? getRailPreviewRouteLabel(city, line.mode, routeLabel, line.routeId)
       : selectedStation?.area?.trim() || selectedStation?.name?.trim() || routeLabel || 'Route',
     previewDirectionLabel,
     '',
@@ -3271,10 +3476,12 @@ function ReviewRow({label, value, onClear}: {label: string; value: string; onCle
 }
 
 // ─── Mini LED mockup inside each style row ────────────────────────────────────
-function StyleMockLed({preset, routeColor, routeLabel, destinationLabel, active, mode, direction, nextStops = 2, branchLabel, badgeShape = 'circle', hideBadgeLabel = false}: {
+function StyleMockLed({city, preset, routeColor, routeLabel, routeId, destinationLabel, active, mode, direction, nextStops = 2, branchLabel, badgeShape = 'circle', hideBadgeLabel = false}: {
+  city: CityId;
   preset: number;
   routeColor: string;
   routeLabel: string;
+  routeId?: string;
   destinationLabel: string;
   active: boolean;
   mode: ModeId;
@@ -3285,7 +3492,7 @@ function StyleMockLed({preset, routeColor, routeLabel, destinationLabel, active,
   hideBadgeLabel?: boolean;
 }) {
   const textOpacity = active ? 1 : 0.55;
-  const dirLabel = branchLabel ?? getDirectionLabel(mode, direction);
+  const dirLabel = branchLabel ?? getDirectionLabel(city, mode, direction, routeId);
   const destLabel = destinationLabel.trim().length > 0 ? destinationLabel : 'Selected stop';
 
   const badge = (
@@ -3317,6 +3524,7 @@ function StyleMockLed({preset, routeColor, routeLabel, destinationLabel, active,
   const timeText = (
     <Text style={[styles.mockTimeText, {opacity: textOpacity}]}>3m</Text>
   );
+  const mockUpcomingTimes = buildNextArrivalTimes(3, nextStops);
   const arrivalChip = (label: string) => (
     <View style={[styles.mockMiniTag, {opacity: textOpacity}]}>
       <Text style={styles.mockMiniTagText}>{label}</Text>
@@ -3346,9 +3554,9 @@ function StyleMockLed({preset, routeColor, routeLabel, destinationLabel, active,
         <View style={styles.mockCol}>
           {destText}
           <View style={styles.mockMiniTags}>
-            {arrivalChip('3m')}
-            {arrivalChip('5m')}
-            {nextStops >= 3 ? arrivalChip('8m') : null}
+            {mockUpcomingTimes.map(label => (
+              <React.Fragment key={`dest-upcoming-${label}`}>{arrivalChip(label)}</React.Fragment>
+            ))}
           </View>
         </View>
         {timeText}
@@ -3361,9 +3569,9 @@ function StyleMockLed({preset, routeColor, routeLabel, destinationLabel, active,
         <View style={styles.mockCol}>
           {dirText}
           <View style={styles.mockMiniTags}>
-            {arrivalChip('3m')}
-            {arrivalChip('5m')}
-            {nextStops >= 3 ? arrivalChip('8m') : null}
+            {mockUpcomingTimes.map(label => (
+              <React.Fragment key={`dir-upcoming-${label}`}>{arrivalChip(label)}</React.Fragment>
+            ))}
           </View>
         </View>
         {timeText}
@@ -3381,6 +3589,7 @@ function StyleMockLed({preset, routeColor, routeLabel, destinationLabel, active,
 // ─── Wizard: LED Style Picker Step ───────────────────────────────────────────
 // Tap = preview on fixed LED above. Confirm button locks in and advances.
 function LedStylePickerStep({
+  city,
   displayType,
   line,
   selectedRoute,
@@ -3389,6 +3598,7 @@ function LedStylePickerStep({
   onPreview,
   onSelect,
 }: {
+  city: CityId;
   displayType: number;
   line: LinePick;
   selectedRoute: Route | undefined;
@@ -3419,14 +3629,19 @@ function LedStylePickerStep({
     onSelect(localPreset);
   };
 
-  const routeLabel = selectedRoute?.label ?? line.routeId.replace(/^[a-z]+-/, '').toUpperCase().slice(0, 3);
+  const routeLabel = selectedRoute?.label ?? line.routeId;
   const routeColor = selectedRoute?.color ?? '#1C3A2A';
   const selectedStopLabel = selectedStation?.name?.trim() || 'Selected stop';
   const activeNextStops = line.nextStops >= 2 ? line.nextStops : 2;
   const isNycRail = isNycRailMode(line.mode);
   const isCommuterRail = line.mode === 'commuter-rail';
+  const isChicagoTrain = city === 'chicago' && line.mode === 'train';
+  const isPhillyRail = city === 'philadelphia' && line.mode === 'train';
+  const isRailPreviewMode = isRailLinePreviewMode(city, line.mode);
+  const routeBadgeLabel = getLocalRouteBadgeLabel(city, line.mode, line.routeId, routeLabel);
+  const linePreviewLabel = getRailPreviewRouteLabel(city, line.mode, routeLabel, line.routeId);
   const getOptionLabel = (id: number, defaultLabel: string) =>
-    getPresetLabelForMode(line.mode, id, defaultLabel);
+    getPresetLabelForMode(city, line.mode, id, defaultLabel);
 
   return (
     <View style={styles.stepSection}>
@@ -3446,16 +3661,18 @@ function LedStylePickerStep({
                   {getOptionLabel(option.id, option.label)}
                 </Text>
                 <StyleMockLed
+                  city={city}
                   preset={option.id}
                   routeColor={routeColor}
-                  routeLabel={routeLabel}
+                  routeLabel={routeBadgeLabel}
+                  routeId={line.routeId}
                   destinationLabel={selectedStopLabel}
                   active={isActive}
                   mode={line.mode}
                   direction={line.direction}
                   nextStops={isActive ? activeNextStops : 2}
-                  branchLabel={isNycRail ? getRailPreviewRouteLabel(line.mode, routeLabel) : undefined}
-                  badgeShape={isNycRail ? 'pill' : isCommuterRail ? 'rail' : 'circle'}
+                  branchLabel={isRailPreviewMode ? linePreviewLabel : undefined}
+                  badgeShape={isNycRail || isChicagoTrain || isPhillyRail || (city === 'boston' && line.mode === 'train') || (city === 'boston' && line.mode === 'ferry') ? 'pill' : isCommuterRail ? 'rail' : 'circle'}
                   hideBadgeLabel={isNycRail}
                 />
                 {showCountPicker ? (
@@ -3491,6 +3708,7 @@ function LedStylePickerStep({
 // Step 4 — name, review summary, settings, save via SaveBar
 // The LED preview is fixed above (in the parent), so no internal preview here.
 function WizardReviewStep({
+  city,
   line,
   displayPreset,
   presetConfirmed,
@@ -3518,6 +3736,7 @@ function WizardReviewStep({
   onExpandToTwoStops,
   onRemoveStop,
 }: {
+  city: CityId;
   line: LinePick;
   displayPreset: number;
   presetConfirmed: boolean;
@@ -3546,7 +3765,7 @@ function WizardReviewStep({
   onRemoveStop: () => void;
 }) {
   const presetOption = DISPLAY_PRESET_OPTIONS.find(o => o.id === displayPreset);
-  const directionLabel = getDirectionSummaryLabel(line.mode, line.direction);
+  const directionLabel = getDirectionSummaryLabel(city, line.mode, line.direction, line.routeId);
   const activePresetBehavior = getPresetBehavior(displayPreset);
 
   return (

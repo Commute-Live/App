@@ -1,8 +1,9 @@
 import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react';
-import {Alert, Modal, PanResponder, Pressable, ScrollView, StyleSheet, Text, View} from 'react-native';
+import {Alert, Modal, Pressable, ScrollView, StyleSheet, Text, View} from 'react-native';
 import {GestureHandlerRootView} from 'react-native-gesture-handler';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
 import {Ionicons} from '@expo/vector-icons';
+import Slider from '@react-native-community/slider';
 import {useRouter} from 'expo-router';
 import {useFocusEffect} from 'expo-router';
 import {useLocalSearchParams} from 'expo-router';
@@ -392,17 +393,14 @@ export default function PresetsScreen() {
     }, [deviceId, queryClient, status]),
   );
 
-  const visibleDisplays = useMemo(() => {
-    const filtered = displays.filter(display => {
-      const city = providerToCity(display.config.lines?.[0]?.provider ?? null);
-      return city === selectedCity;
-    });
-    return sortDisplaysForCarousel(filtered, activeDisplayId);
-  }, [activeDisplayId, displays, selectedCity]);
+  const visibleDisplays = useMemo(
+    () => sortDisplaysForCarousel(displays, activeDisplayId),
+    [activeDisplayId, displays],
+  );
   const safeIndex = visibleDisplays.length > 0 ? Math.min(carouselIndex, visibleDisplays.length - 1) : 0;
   const currentDisplay = visibleDisplays[safeIndex] ?? null;
-
-  const brand = CITY_BRANDS[selectedCity];
+  const currentDisplayCity = providerToCity(currentDisplay?.config.lines?.[0]?.provider ?? null) ?? selectedCity;
+  const brand = CITY_BRANDS[currentDisplayCity];
   const currentBrightness = currentDisplay
     ? brightnessOverrides[currentDisplay.displayId] ?? currentDisplay.config.brightness ?? 60
     : 60;
@@ -560,7 +558,7 @@ export default function PresetsScreen() {
               </Pressable>
               <Pressable
                 style={styles.addBtn}
-                onPress={() => router.push({pathname: '/preset-editor', params: {city: selectedCity, from: 'presets', mode: 'new'}})}>
+                onPress={() => router.push({pathname: '/preset-editor', params: {city: currentDisplayCity, from: 'presets', mode: 'new'}})}>
                 <Ionicons name="add" size={18} color={colors.accent} />
               </Pressable>
             </View>
@@ -593,7 +591,7 @@ export default function PresetsScreen() {
                     onSelectSlot={() =>
                       router.push({
                         pathname: '/preset-editor',
-                        params: {city: selectedCity, from: 'presets', mode: 'edit', displayId: currentDisplay.displayId},
+                        params: {city: currentDisplayCity, from: 'presets', mode: 'edit', displayId: currentDisplay.displayId},
                       })
                     }
                     onReorderSlot={() => {}}
@@ -612,7 +610,7 @@ export default function PresetsScreen() {
                       onPress={() =>
                         router.push({
                           pathname: '/preset-editor',
-                          params: {city: selectedCity, from: 'presets', mode: 'edit', displayId: currentDisplay.displayId},
+                          params: {city: currentDisplayCity, from: 'presets', mode: 'edit', displayId: currentDisplay.displayId},
                         })
                       }>
                       <Ionicons name="pencil-outline" size={14} color={colors.text} />
@@ -635,7 +633,10 @@ export default function PresetsScreen() {
                         <Ionicons name="chevron-back" size={15} color={colors.textMuted} />
                       </Pressable>
                     ) : null}
-                    <Text style={styles.navDisplayName} numberOfLines={1}>{currentDisplay.name}</Text>
+                    <View style={styles.navTitleBlock}>
+                      <Text style={styles.navDisplayName} numberOfLines={1}>{currentDisplay.name}</Text>
+                      <Text style={styles.navDisplayCity}>{CITY_LABELS[currentDisplayCity]}</Text>
+                    </View>
                     {visibleDisplays.length > 1 ? (
                       <Pressable
                         style={[styles.arrowBtn, safeIndex === visibleDisplays.length - 1 && styles.arrowBtnDisabled]}
@@ -660,7 +661,9 @@ export default function PresetsScreen() {
                   <View style={styles.settingItem}>
                     <View style={styles.settingItemRow}>
                       <Text style={styles.settingItemLabel}>Brightness</Text>
-                      <Text style={styles.settingItemValue}>{currentBrightness}%</Text>
+                      <View style={styles.brightnessValueBadge}>
+                        <Text style={styles.brightnessValueText}>{currentBrightness}%</Text>
+                      </View>
                     </View>
                     <BrightnessSlider
                       value={currentBrightness}
@@ -845,62 +848,41 @@ function BrightnessSlider({
   onChange: (value: number) => void;
   onCommit: (value: number) => void;
 }) {
-  const trackWidthRef = useRef(0);
-  const [trackWidth, setTrackWidth] = useState(0);
-
-  // Keep refs so panResponder never needs to be recreated mid-drag
-  const minRef = useRef(min);
-  const maxRef = useRef(max);
-  const onChangeRef = useRef(onChange);
-  const onCommitRef = useRef(onCommit);
-  minRef.current = min;
-  maxRef.current = max;
-  onChangeRef.current = onChange;
-  onCommitRef.current = onCommit;
-
-  const valueFromLocation = useCallback((locationX: number) => {
-    const w = trackWidthRef.current;
-    if (w <= 0) return null;
-    const ratio = Math.max(0, Math.min(1, locationX / w));
-    const raw = minRef.current + ratio * (maxRef.current - minRef.current);
-    return Math.max(minRef.current, Math.min(maxRef.current, Math.round(raw)));
-  }, []);
-
-  const panResponder = useMemo(
-    () =>
-      PanResponder.create({
-        onStartShouldSetPanResponder: () => true,
-        onMoveShouldSetPanResponder: () => true,
-        onPanResponderGrant: event => {
-          const v = valueFromLocation(event.nativeEvent.locationX);
-          if (v !== null) onChangeRef.current(v);
-        },
-        onPanResponderMove: event => {
-          const v = valueFromLocation(event.nativeEvent.locationX);
-          if (v !== null) onChangeRef.current(v);
-        },
-        onPanResponderRelease: event => {
-          const v = valueFromLocation(event.nativeEvent.locationX);
-          if (v !== null) onCommitRef.current(v);
-        },
-      }),
-    [valueFromLocation],
-  );
-
-  const ratio = (value - min) / (max - min);
-  const fillWidth = Math.max(0, Math.min(trackWidth, ratio * trackWidth));
-  const thumbLeft = trackWidth > 0 ? Math.max(0, Math.min(trackWidth - 16, ratio * trackWidth - 8)) : 0;
+  const adjust = (delta: number) => {
+    const nextValue = Math.max(min, Math.min(max, value + delta));
+    onChange(nextValue);
+  };
 
   return (
-    <View
-      style={styles.sliderTrack}
-      onLayout={event => {
-        trackWidthRef.current = event.nativeEvent.layout.width;
-        setTrackWidth(event.nativeEvent.layout.width);
-      }}
-      {...panResponder.panHandlers}>
-      <View style={[styles.sliderFill, {width: fillWidth}]} />
-      <View style={[styles.sliderThumb, {left: thumbLeft}]} />
+    <View style={styles.brightnessControl}>
+      <View style={styles.brightnessControlRow}>
+        <Pressable style={styles.brightnessAdjustButton} onPress={() => adjust(-5)}>
+          <Ionicons name="remove" size={16} color={colors.text} />
+        </Pressable>
+        <View style={styles.brightnessSliderWrap}>
+          <View style={styles.sliderTrack}>
+            <Slider
+              style={styles.sliderNative}
+              minimumValue={min}
+              maximumValue={max}
+              step={1}
+              value={value}
+              minimumTrackTintColor={colors.accent}
+              maximumTrackTintColor={colors.border}
+              thumbTintColor={colors.accent}
+              onValueChange={onChange}
+              onSlidingComplete={onCommit}
+            />
+          </View>
+        </View>
+        <Pressable style={styles.brightnessAdjustButton} onPress={() => adjust(5)}>
+          <Ionicons name="add" size={16} color={colors.text} />
+        </Pressable>
+      </View>
+      <View style={styles.brightnessScaleRow}>
+        <Text style={styles.brightnessScaleText}>Dim</Text>
+        <Text style={styles.brightnessScaleText}>Bright</Text>
+      </View>
     </View>
   );
 }
@@ -1101,7 +1083,7 @@ const styles = StyleSheet.create({
   pageTitle: {
     color: colors.text,
     fontSize: typography.pageTitle,
-    fontWeight: '900',
+    fontWeight: '800',
     letterSpacing: -0.8,
     lineHeight: 33,
   },
@@ -1233,6 +1215,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  navTitleBlock: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 2,
+    flexShrink: 1,
+  },
   navDisplayName: {
     color: colors.text,
     fontSize: 13,
@@ -1240,6 +1228,12 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     flexShrink: 1,
     paddingHorizontal: 4,
+  },
+  navDisplayCity: {
+    color: colors.textMuted,
+    fontSize: 11,
+    fontWeight: '700',
+    textAlign: 'center',
   },
   arrowBtn: {
     width: layout.iconButton,
@@ -1280,6 +1274,22 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '800',
   },
+  brightnessValueBadge: {
+    minWidth: 52,
+    minHeight: 28,
+    paddingHorizontal: spacing.sm,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.card,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  brightnessValueText: {
+    color: colors.text,
+    fontSize: 13,
+    fontWeight: '800',
+  },
   settingItemSub: {
     color: colors.text,
     fontSize: 13,
@@ -1288,35 +1298,52 @@ const styles = StyleSheet.create({
   },
 
   // ─── Brightness Slider ────────────────────────────────────────────────────
+  brightnessControl: {
+    gap: spacing.xxs,
+  },
+  brightnessControlRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  brightnessAdjustButton: {
+    width: layout.iconButton,
+    height: layout.iconButton,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  brightnessSliderWrap: {
+    flex: 1,
+    gap: spacing.xxs,
+  },
   sliderTrack: {
-    height: 20,
-    borderRadius: 10,
+    height: 36,
+    borderRadius: radii.md,
     backgroundColor: colors.card,
     borderWidth: 1,
     borderColor: colors.border,
     justifyContent: 'center',
-    overflow: 'hidden',
+    paddingHorizontal: spacing.xxs,
   },
-  sliderFill: {
-    position: 'absolute',
-    top: 3,
-    bottom: 3,
-    left: 3,
-    borderRadius: 6,
-    backgroundColor: colors.accentMuted,
+  sliderNative: {
+    width: '100%',
+    height: 36,
   },
-  sliderThumb: {
-    position: 'absolute',
-    width: 16,
-    height: 16,
-    borderRadius: 8,
-    backgroundColor: colors.accent,
-    borderWidth: 2,
-    borderColor: colors.background,
-    shadowColor: '#000',
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
-    shadowOffset: {width: 0, height: 1},
+  brightnessScaleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingLeft: layout.iconButton + spacing.sm,
+    paddingRight: layout.iconButton + spacing.sm,
+  },
+  brightnessScaleText: {
+    color: colors.textMuted,
+    fontSize: 11,
+    fontWeight: '600',
   },
 
   // ─── Schedule Editor ──────────────────────────────────────────────────────

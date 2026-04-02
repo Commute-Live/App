@@ -14,15 +14,12 @@ const navItems: BottomNavItem[] = [
   {key: 'settings', label: 'Settings', icon: 'settings-outline', route: '/settings'},
 ];
 import {useAppState} from '../../../state/appState';
-import {CITY_BRANDS, CITY_LABELS, CITY_OPTIONS} from '../../../constants/cities';
 
-
-type SectionKey = 'Account' | 'Session' | 'Device' | 'City' | 'Time Format' | 'Notifications' | 'Privacy';
+type SectionKey = 'Account' | 'Session' | 'Device' | 'Time Format' | 'Notifications' | 'Privacy';
 
 const SECTIONS: {key: SectionKey; label: string; icon: keyof typeof Ionicons.glyphMap; iconBg: string; iconColor: string}[] = [
   {key: 'Account',       label: 'Account',        icon: 'person-outline',          iconBg: '#1A2744', iconColor: '#6EA8FE'},
   {key: 'Device',        label: 'Device',          icon: 'hardware-chip-outline',   iconBg: '#1A2B1A', iconColor: '#6EE7B7'},
-  {key: 'City',          label: 'City',            icon: 'map-outline',             iconBg: '#2B1F0E', iconColor: '#FCD34D'},
   {key: 'Time Format',   label: 'Time Format',     icon: 'time-outline',            iconBg: '#1E1A2B', iconColor: '#C4B5FD'},
   {key: 'Notifications', label: 'Notifications',   icon: 'notifications-outline',   iconBg: '#2B1A1A', iconColor: '#FCA5A5'},
   {key: 'Privacy',       label: 'Privacy & Legal', icon: 'shield-checkmark-outline',iconBg: '#1A2428', iconColor: '#67E8F9'},
@@ -33,7 +30,7 @@ export default function SettingsScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const {deviceId, disconnectDevice, signOut, deleteAccount, user, currentProvider} = useAuth();
-  const {state: appState, setSelectedCity} = useAppState();
+  const {state: appState} = useAppState();
   const [openSection, setOpenSection] = useState<SectionKey | null>(null);
   const [isSigningOut, setIsSigningOut] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -107,7 +104,6 @@ export default function SettingsScreen() {
       case 'Account': return user?.email ?? '-';
       case 'Session': return 'Manage';
       case 'Device': return currentDeviceId ? 'Paired' : 'Not paired';
-      case 'City': return CITY_LABELS[appState.selectedCity];
       case 'Time Format': return timeFormat === 'ampm' ? 'AM / PM' : '24-hour';
       case 'Notifications': return 'Enabled';
       case 'Privacy': return 'View';
@@ -216,43 +212,6 @@ export default function SettingsScreen() {
                       </>
                     )}
 
-                    {section.key === 'City' && (
-                      <>
-                        <View style={styles.pillRow}>
-                          {CITY_OPTIONS.map(city => {
-                            const active = city.id === appState.selectedCity;
-                            return (
-                              <Pressable
-                                key={city.id}
-                                style={[styles.pill, active && styles.pillActive]}
-                                onPress={() => setSelectedCity(city.id)}>
-                                <Text style={[styles.pillText, active && styles.pillTextActive]}>{city.shortLabel}</Text>
-                              </Pressable>
-                            );
-                          })}
-                        </View>
-                        <View style={styles.cityGrid}>
-                          {CITY_OPTIONS.map(city => {
-                            const active = city.id === appState.selectedCity;
-                            const brand = CITY_BRANDS[city.id];
-                            return (
-                              <Pressable
-                                key={`${city.id}-preview`}
-                                style={[styles.cityCard, active && styles.cityCardActive]}
-                                onPress={() => setSelectedCity(city.id)}>
-                                <View style={[styles.cityBadge, {backgroundColor: brand.badgeBg, borderColor: brand.badgeBorder}]}>
-                                  <Text style={[styles.cityBadgeText, {color: brand.badgeText}]}>{city.agencyCode}</Text>
-                                </View>
-                                <Text style={styles.cityCardTitle}>{city.label}</Text>
-                                <Text style={styles.cityCardBody} numberOfLines={2}>{city.description}</Text>
-                                <View style={[styles.cityCardAccent, {backgroundColor: brand.accent}]} />
-                              </Pressable>
-                            );
-                          })}
-                        </View>
-                      </>
-                    )}
-
                     {section.key === 'Time Format' && (
                       <View style={styles.pillRow}>
                         <Pressable
@@ -332,7 +291,7 @@ const styles = StyleSheet.create({
   pageTitle: {
     color: colors.text,
     fontSize: typography.pageTitle,
-    fontWeight: '900',
+    fontWeight: '800',
     letterSpacing: -0.8,
     lineHeight: 33,
   },

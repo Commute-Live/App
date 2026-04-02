@@ -70,5 +70,8 @@ export interface TransitApi {
     uiMode: TransitUiMode,
     stopId: string,
     lineIds: readonly string[],
+    options?: {
+      direction?: string;
+    },
   ): Promise<TransitArrivalGroup>;
 }

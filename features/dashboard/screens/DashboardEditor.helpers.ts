@@ -1,6 +1,7 @@
 import {normalizeCityId, type CityId} from '../../../constants/cities';
 import {CITY_LINE_COLORS, FALLBACK_ROUTE_COLORS} from '../../../lib/lineColors';
 import {getGlobalTransitLines, getTransitArrivals, getTransitLines, getTransitStations, getTransitStopsForLine} from '../../../lib/transitApi';
+import {formatLocalRoutePickerLabel, getLocalModeLabel, serializeUiDirection} from '../../../lib/transitUi';
 import type {DisplayContent, DisplayFormat, TransitArrival, TransitUiMode} from '../../../types/transit';
 
 type ModeId = 'train' | 'bus' | 'trolley' | 'lirr' | 'mnr' | 'commuter-rail' | 'ferry';
@@ -90,14 +91,7 @@ export function getAvailableModes(city: CityId): ModeId[] {
 }
 
 export function getModeLabel(city: CityId, mode: ModeId) {
-  if (mode === 'train') return city === 'philadelphia' ? 'Rail' : 'Subway';
-  if (mode === 'bus') return 'Bus';
-  if (mode === 'trolley') return 'Trolley';
-  if (mode === 'ferry') return 'Ferry';
-  if (mode === 'lirr') return 'LIRR';
-  if (mode === 'mnr') return 'Metro-North';
-  if (mode === 'commuter-rail') return 'Commuter Rail';
-  return 'Commuter Rail';
+  return getLocalModeLabel(city, mode);
 }
 
 function hasMode(city: CityId, mode: ModeId) {
@@ -307,11 +301,7 @@ function resolveRouteTextColor(city: CityId, mode: ModeId, lineId: string, label
 }
 
 export function formatRoutePickerLabel(city: CityId, mode: ModeId, route: Route) {
-  if (city === 'new-york' && mode === 'bus') {
-    return route.label.replace(/-?SBS\b/gi, '+').replace(/\s+/g, '');
-  }
-
-  return route.label;
+  return formatLocalRoutePickerLabel(city, mode, route.id, route.label);
 }
 
 export function isNycBusBadge(city: CityId, mode: ModeId) {
@@ -384,10 +374,85 @@ function sortRoutesForPicker(routes: Route[]): Route[] {
   });
 }
 
+function sortRoutesAlphabetically(routes: Route[]): Route[] {
+  return [...routes].sort((left, right) => {
+    const labelCompare = naturalRouteLabelCompare(left.label, right.label);
+    if (labelCompare !== 0) return labelCompare;
+    return naturalRouteLabelCompare(left.id, right.id);
+  });
+}
+
+function getChicagoTrainOrder(route: Route) {
+  const normalizedId = route.id.trim().toUpperCase();
+  const normalizedLabel = route.label.replace(/\s+LINE$/i, '').trim().toUpperCase();
+  const order = ['RED', 'BLUE', 'BRN', 'BROWN', 'G', 'GREEN', 'ORG', 'ORANGE', 'PINK', 'P', 'PURPLE', 'Y', 'YELLOW'];
+  const idIndex = order.indexOf(normalizedId);
+  if (idIndex !== -1) return idIndex;
+  const labelIndex = order.indexOf(normalizedLabel);
+  if (labelIndex !== -1) return labelIndex;
+  return 999;
+}
+
+function sortRoutesForChicagoTrainPicker(routes: Route[]) {
+  return [...routes].sort((left, right) => {
+    const leftOrder = getChicagoTrainOrder(left);
+    const rightOrder = getChicagoTrainOrder(right);
+    if (leftOrder !== rightOrder) return leftOrder - rightOrder;
+    return naturalRouteLabelCompare(left.label, right.label);
+  });
+}
+
+function getBostonTrainOrder(route: Route) {
+  const normalized = route.id.trim().toUpperCase();
+  const order = ['RED', 'ORANGE', 'BLUE', 'GREEN-B', 'GREEN-C', 'GREEN-D', 'GREEN-E', 'MATTAPAN'];
+  const index = order.indexOf(normalized);
+  return index === -1 ? 999 : index;
+}
+
+function sortRoutesForBostonTrainPicker(routes: Route[]) {
+  return [...routes].sort((left, right) => {
+    const leftOrder = getBostonTrainOrder(left);
+    const rightOrder = getBostonTrainOrder(right);
+    if (leftOrder !== rightOrder) return leftOrder - rightOrder;
+    return naturalRouteLabelCompare(left.label, right.label);
+  });
+}
+
+function getPhillyTrolleyOrder(route: Route) {
+  const normalized = route.id.trim().toUpperCase();
+  const order = ['T1', 'T2', 'T3', 'G1', 'T4', 'T5', 'D1', 'D2', 'T BUS', 'T5 BUS'];
+  const index = order.indexOf(normalized);
+  return index === -1 ? 999 : index;
+}
+
+function sortRoutesForPhillyTrolleyPicker(routes: Route[]) {
+  return [...routes].sort((left, right) => {
+    const leftOrder = getPhillyTrolleyOrder(left);
+    const rightOrder = getPhillyTrolleyOrder(right);
+    if (leftOrder !== rightOrder) return leftOrder - rightOrder;
+    return naturalRouteLabelCompare(left.label, right.label);
+  });
+}
+
 export function prepareRouteEntriesForPicker(city: CityId, mode: ModeId, routes: Route[]) {
   const deduped = dedupeRoutesForPicker(routes);
   if (city === 'new-york' && mode === 'train') {
     return buildNycTrainPickerEntries(deduped);
+  }
+  if (city === 'chicago' && mode === 'train') {
+    return sortRoutesForChicagoTrainPicker(deduped).map(route => routeToPickerItem(route, city, mode));
+  }
+  if (city === 'boston' && mode === 'train') {
+    return sortRoutesForBostonTrainPicker(deduped).map(route => routeToPickerItem(route, city, mode));
+  }
+  if (city === 'boston' && (mode === 'commuter-rail' || mode === 'ferry')) {
+    return sortRoutesAlphabetically(deduped).map(route => routeToPickerItem(route, city, mode));
+  }
+  if (city === 'philadelphia' && mode === 'train') {
+    return sortRoutesAlphabetically(deduped).map(route => routeToPickerItem(route, city, mode));
+  }
+  if (city === 'philadelphia' && mode === 'trolley') {
+    return sortRoutesForPhillyTrolleyPicker(deduped).map(route => routeToPickerItem(route, city, mode));
   }
   if (city === 'new-york' && mode === 'bus') {
     return sortRoutesForNycBusPicker(deduped).map(route => routeToPickerItem(route, city, mode));
@@ -473,6 +538,21 @@ export function buildRouteGroups(city: CityId, mode: ModeId, routes: RoutePicker
   }
   if (city === 'new-york' && mode === 'bus') {
     return buildNycBusRouteGroups(routes);
+  }
+  if (city === 'chicago' && mode === 'train') {
+    return routes.length > 0 ? [{key: 'cta-train', routes}] : [];
+  }
+  if (city === 'boston' && (mode === 'train' || mode === 'ferry')) {
+    return routes.length > 0 ? [{key: `boston-${mode}`, routes}] : [];
+  }
+  if (mode === 'commuter-rail') {
+    return routes.length > 0 ? [{key: 'commuter-rail', routes}] : [];
+  }
+  if (city === 'philadelphia' && mode === 'train') {
+    return routes.length > 0 ? [{key: 'septa-rail', routes}] : [];
+  }
+  if (city === 'philadelphia' && mode === 'trolley') {
+    return routes.length > 0 ? [{key: 'septa-trolley', routes}] : [];
   }
 
   const groups: Array<{key: string; routes: RoutePickerItem[]}> = [];
@@ -644,9 +724,22 @@ function statusFromArrival(arrival: TransitArrival): Arrival['status'] {
   return 'GOOD';
 }
 
+function getArrivalDirectionParam(city: CityId, line: LinePick): string | undefined {
+  if (city === 'philadelphia' && line.mode === 'train') {
+    return undefined;
+  }
+  return serializeUiDirection(city, line.mode, line.direction);
+}
+
 export async function loadArrivalForSelection(city: CityId, line: LinePick): Promise<Omit<Arrival, 'lineId'> | null> {
   if (!line.stationId.trim() || !line.routeId.trim()) return null;
-  const response = await getTransitArrivals(city, toTransitUiMode(line.mode), line.stationId, [line.routeId]);
+  const response = await getTransitArrivals(
+    city,
+    toTransitUiMode(line.mode),
+    line.stationId,
+    [line.routeId],
+    {direction: getArrivalDirectionParam(city, line)},
+  );
   if (response.arrivals.length === 0) return null;
 
   const matched = response.arrivals.filter(arrival => arrival.lineId === line.routeId);
@@ -875,10 +968,10 @@ function normalizeHexColor(value: string | undefined | null): string | null {
 export function buildNextArrivalTimes(firstMinutes: number, count: number): string[] {
   const safeCount = clampNextStops(count);
   const times: string[] = [];
-  let current = Math.max(1, Math.round(firstMinutes));
+  let current = Math.max(1, Math.round(firstMinutes)) + 2;
   for (let idx = 0; idx < safeCount; idx += 1) {
     times.push(`${current}m`);
-    current += idx % 2 === 0 ? 2 : 3;
+    current += 2;
   }
   return times;
 }

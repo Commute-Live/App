@@ -1,5 +1,6 @@
 import React from 'react';
-import {Image, StyleSheet, Text, View} from 'react-native';
+import {Image, Pressable, StyleSheet, Text, View} from 'react-native';
+import {usePathname, useRouter} from 'expo-router';
 import {colors, layout, spacing} from '../theme';
 
 type Props = {
@@ -7,7 +8,10 @@ type Props = {
 };
 
 export function AppBrandHeader({email}: Props) {
+  const router = useRouter();
+  const pathname = usePathname();
   const initial = email?.trim().charAt(0).toUpperCase();
+  const canOpenSettings = Boolean(initial) && pathname !== '/settings';
 
   return (
     <View style={styles.header}>
@@ -19,9 +23,22 @@ export function AppBrandHeader({email}: Props) {
       </View>
       <View style={styles.rightWrap}>
         {initial ? (
-          <View style={styles.avatar}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Open settings"
+            hitSlop={8}
+            disabled={!canOpenSettings}
+            onPress={() => {
+              if (!canOpenSettings) return;
+              router.push('/settings');
+            }}
+            style={({pressed}) => [
+              styles.avatar,
+              !canOpenSettings && styles.avatarDisabled,
+              pressed && canOpenSettings && styles.avatarPressed,
+            ]}>
             <Text style={styles.avatarText}>{initial}</Text>
-          </View>
+          </Pressable>
         ) : (
           <View style={styles.placeholder} />
         )}
@@ -59,7 +76,7 @@ const styles = StyleSheet.create({
   wordmark: {
     color: colors.text,
     fontSize: 20,
-    fontWeight: '900',
+    fontWeight: '800',
     letterSpacing: -0.5,
   },
   rightWrap: {
@@ -77,6 +94,13 @@ const styles = StyleSheet.create({
     backgroundColor: colors.accentMuted,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  avatarPressed: {
+    transform: [{scale: 0.96}],
+    opacity: 0.88,
+  },
+  avatarDisabled: {
+    opacity: 0.92,
   },
   avatarText: {
     color: colors.accent,
