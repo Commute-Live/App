@@ -248,6 +248,7 @@ function resolveRouteColor(city: CityId, mode: ModeId, lineId: string, label: st
   const appearance = cityModule?.resolveRouteAppearance?.(mode, lineId, label);
   if (appearance) return appearance.color;
 
+  if (city === 'chicago' && apiColor) return apiColor;
   const mapped = resolveMappedRouteAppearance(city, mode, lineId, label);
   if (mapped) return mapped.color;
   if (apiColor) return apiColor;
@@ -259,6 +260,7 @@ function resolveRouteTextColor(city: CityId, mode: ModeId, lineId: string, label
   const appearance = cityModule?.resolveRouteAppearance?.(mode, lineId, label);
   if (appearance) return appearance.textColor;
 
+  if (city === 'chicago' && apiTextColor) return apiTextColor;
   const mapped = resolveMappedRouteAppearance(city, mode, lineId, label);
   if (mapped) return mapped.textColor;
   if (apiTextColor) return apiTextColor;

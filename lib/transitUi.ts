@@ -102,7 +102,12 @@ export const getDefaultUiDirection = (
   city: CityId,
   mode: LocalMode,
   route?: LocalRouteRef,
-): UiDirection => getLocalDirectionOptions(city, mode, route)[0] ?? 'uptown';
+): UiDirection => {
+  const first = getLocalDirectionOptions(city, mode, route)[0];
+  if (first) return first;
+  if (city === 'chicago') return 'dir0';
+  return 'uptown';
+};
 
 export const inferMbtaMode = (stopId: string | null | undefined, lineId?: string | null): LocalMode => {
   const normalizedStopId = (stopId ?? '').trim();
@@ -213,7 +218,7 @@ export const getLocalDirectionLabel = (
 export const serializeUiDirection = (city: CityId, mode: LocalMode, direction: UiDirection) => {
   const cityModule = getTransitCityModule(city);
   const serialized = cityModule?.serializeDirection(mode, direction);
-  if (serialized) return serialized;
+  if (serialized !== null && serialized !== undefined) return serialized;
   if (
     direction === 'downtown' ||
     direction === 'southbound' ||

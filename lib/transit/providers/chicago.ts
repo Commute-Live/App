@@ -8,46 +8,46 @@ import type {
 } from '../frontendTypes';
 
 type ChicagoMode = Extract<ModeId, 'train' | 'bus'>;
-type ChicagoDirection = Extract<UiDirection, 'uptown' | 'downtown'>;
+type ChicagoDirection = Extract<UiDirection, 'dir0' | 'dir1'>;
 
 type DirectionCopy = Record<ChicagoDirection, Record<DirectionVariant, string>>;
 
 const CTA_TRAIN_DIRECTION_COPY: Record<string, DirectionCopy> = {
   BLUE: {
-    uptown: {toggle: "O'Hare", bound: "O'Hare-bound", summary: "O'Hare"},
-    downtown: {toggle: 'Forest Park', bound: 'Forest Park-bound', summary: 'Forest Park'},
+    dir0: {toggle: "O'Hare", bound: "O'Hare-bound", summary: "O'Hare"},
+    dir1: {toggle: 'Forest Park', bound: 'Forest Park-bound', summary: 'Forest Park'},
   },
   RED: {
-    uptown: {toggle: 'Howard', bound: 'Howard-bound', summary: 'Howard'},
-    downtown: {toggle: '95th', bound: '95th-bound', summary: '95th'},
+    dir0: {toggle: 'Howard', bound: 'Howard-bound', summary: 'Howard'},
+    dir1: {toggle: '95th', bound: '95th-bound', summary: '95th'},
   },
   BRN: {
-    uptown: {toggle: 'Kimball', bound: 'Kimball-bound', summary: 'Kimball'},
-    downtown: {toggle: 'Loop', bound: 'Loop-bound', summary: 'Loop'},
+    dir0: {toggle: 'Kimball', bound: 'Kimball-bound', summary: 'Kimball'},
+    dir1: {toggle: 'Loop', bound: 'Loop-bound', summary: 'Loop'},
   },
   G: {
-    uptown: {toggle: 'Harlem/Lake', bound: 'Harlem/Lake-bound', summary: 'Harlem/Lake'},
-    downtown: {
+    dir0: {toggle: 'Harlem/Lake', bound: 'Harlem/Lake-bound', summary: 'Harlem/Lake'},
+    dir1: {
       toggle: 'Ashland/63rd or Cottage Grove',
       bound: 'Ashland/63rd or Cottage Grove',
       summary: 'Ashland/63rd or Cottage Grove',
     },
   },
   ORG: {
-    uptown: {toggle: 'Loop', bound: 'Loop-bound', summary: 'Loop'},
-    downtown: {toggle: 'Midway', bound: 'Midway-bound', summary: 'Midway'},
+    dir0: {toggle: 'Loop', bound: 'Loop-bound', summary: 'Loop'},
+    dir1: {toggle: 'Midway', bound: 'Midway-bound', summary: 'Midway'},
   },
   P: {
-    uptown: {toggle: 'Linden', bound: 'Linden-bound', summary: 'Linden'},
-    downtown: {toggle: 'Loop', bound: 'Loop-bound', summary: 'Loop'},
+    dir0: {toggle: 'Linden', bound: 'Linden-bound', summary: 'Linden'},
+    dir1: {toggle: 'Loop', bound: 'Loop-bound', summary: 'Loop'},
   },
   PINK: {
-    uptown: {toggle: 'Loop', bound: 'Loop-bound', summary: 'Loop'},
-    downtown: {toggle: '54th/Cermak', bound: '54th/Cermak-bound', summary: '54th/Cermak'},
+    dir0: {toggle: 'Loop', bound: 'Loop-bound', summary: 'Loop'},
+    dir1: {toggle: '54th/Cermak', bound: '54th/Cermak-bound', summary: '54th/Cermak'},
   },
   Y: {
-    uptown: {toggle: 'Skokie', bound: 'Skokie-bound', summary: 'Skokie'},
-    downtown: {toggle: 'Howard', bound: 'Howard-bound', summary: 'Howard'},
+    dir0: {toggle: 'Skokie', bound: 'Skokie-bound', summary: 'Skokie'},
+    dir1: {toggle: 'Howard', bound: 'Howard-bound', summary: 'Howard'},
   },
 };
 
@@ -131,10 +131,31 @@ export const getChicagoDirectionLabel = (
   variant: DirectionVariant = 'bound',
 ) => {
   if (mode !== 'train') return null;
-  if (direction !== 'uptown' && direction !== 'downtown') return null;
+  if (direction !== 'dir0' && direction !== 'dir1') return null;
   const copy = CTA_TRAIN_DIRECTION_COPY[normalizeToken(routeId)];
   if (!copy) return null;
   return copy[direction][variant];
+};
+
+export const serializeChicagoDirection = (
+  mode: ChicagoMode,
+  direction: UiDirection,
+) => {
+  if (mode === 'bus') return '';
+  if (direction === 'dir1') return '5';
+  return '1';
+};
+
+export const deserializeChicagoDirection = (
+  mode: ChicagoMode,
+  value: string | null | undefined,
+): UiDirection | null => {
+  if (mode === 'bus') return 'dir0';
+
+  const normalized = normalizeToken(value);
+  if (normalized === '5' || normalized === 'S' || normalized === 'DIR1') return 'dir1';
+  if (normalized === '1' || normalized === 'N' || normalized === 'DIR0') return 'dir0';
+  return 'dir0';
 };
 
 export const prepareChicagoRouteEntries = (
