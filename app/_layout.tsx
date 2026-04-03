@@ -2,6 +2,7 @@ import React, {useEffect} from 'react';
 import {Stack, useRouter} from 'expo-router';
 import {StatusBar} from 'expo-status-bar';
 import {useFonts} from 'expo-font';
+import {FlatList, ScrollView, SectionList} from 'react-native';
 import {SafeAreaProvider} from 'react-native-safe-area-context';
 import {QueryClientProvider} from '@tanstack/react-query';
 import {GoogleSignin} from '../lib/googleSignIn';
@@ -12,6 +13,26 @@ import {queryClient} from '../lib/queryClient';
 import {AuthProvider, useAuth} from '../state/authProvider';
 import '../lib/fontPatch';
 import 'react-native-reanimated';
+
+type ScrollIndicatorDefaultsComponent = {
+  defaultProps?: Record<string, unknown>;
+};
+
+const hiddenScrollIndicatorDefaults = {
+  showsHorizontalScrollIndicator: false,
+  showsVerticalScrollIndicator: false,
+};
+
+function hideScrollIndicatorsByDefault(component: ScrollIndicatorDefaultsComponent) {
+  component.defaultProps = {
+    ...component.defaultProps,
+    ...hiddenScrollIndicatorDefaults,
+  };
+}
+
+hideScrollIndicatorsByDefault(ScrollView as ScrollIndicatorDefaultsComponent);
+hideScrollIndicatorsByDefault(FlatList as ScrollIndicatorDefaultsComponent);
+hideScrollIndicatorsByDefault(SectionList as ScrollIndicatorDefaultsComponent);
 
 GoogleSignin.configure({
   webClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
