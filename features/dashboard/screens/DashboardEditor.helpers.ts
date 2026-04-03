@@ -1,13 +1,27 @@
 import {normalizeCityId, type CityId} from '../../../constants/cities';
 import {CITY_LINE_COLORS, FALLBACK_ROUTE_COLORS} from '../../../lib/lineColors';
 import {getGlobalTransitLines, getTransitArrivals, getTransitLines, getTransitStations, getTransitStopsForLine} from '../../../lib/transitApi';
-import {formatLocalRoutePickerLabel, getLocalModeLabel, serializeUiDirection} from '../../../lib/transitUi';
-import type {DisplayContent, DisplayFormat, TransitArrival, TransitUiMode} from '../../../types/transit';
+import type {
+  ModeId,
+  TransitRouteGroup,
+  TransitRoutePickerItem,
+  TransitRouteRecord,
+  UiDirection,
+} from '../../../lib/transit/frontendTypes';
+import {
+  getCityModeOrder,
+  getTransitCityModule,
+  isSupportedTransitCity,
+  resolveBackendProviderId,
+  resolveCityModeFromBackendProvider,
+  SUPPORTED_TRANSIT_CITIES,
+} from '../../../lib/transit/registry';
+import {formatLocalRoutePickerLabel, getDefaultUiDirection, getLocalDirectionOptions, getLocalModeLabel, serializeUiDirection} from '../../../lib/transitUi';
+import type {DisplayContent, DisplayFormat, TransitArrival, TransitStationLine, TransitUiMode} from '../../../types/transit';
 
-type ModeId = 'train' | 'bus' | 'trolley' | 'lirr' | 'mnr' | 'commuter-rail' | 'ferry';
-type Direction = 'uptown' | 'downtown';
-type Station = {id: string; name: string; area: string; lines: string[]};
-type Route = {id: string; label: string; color: string; textColor?: string};
+type Station = {id: string; name: string; area: string; lines: TransitStationLine[]};
+type Direction = UiDirection;
+type Route = TransitRouteRecord;
 type Arrival = {lineId: string; minutes: number; status: 'GOOD' | 'DELAYS'; destination: string | null};
 type LinePick = {
   id: string;
@@ -25,56 +39,24 @@ type LinePick = {
 };
 type StationsByMode = Partial<Record<ModeId, Station[]>>;
 type RoutesByStation = Record<string, Route[]>;
-type RoutePickerItem = {id: string; label: string; displayLabel: string; color: string; textColor?: string; routes: Route[]};
-type RouteGroup = {key: string; title?: string; routes: RoutePickerItem[]};
+type RoutePickerItem = TransitRoutePickerItem;
+type RouteGroup = TransitRouteGroup;
 
 const DEFAULT_TEXT_COLOR = '#E9ECEF';
 const DEFAULT_NEXT_STOPS = 3;
 const MIN_NEXT_STOPS = 1;
 const MAX_NEXT_STOPS = 5;
 const TIME_OPTIONS = ['00:00', '05:00', '06:00', '07:00', '08:00', '09:00', '10:00', '17:00', '18:00', '20:00', '22:00', '23:00'];
-const MODE_ORDER: ModeId[] = ['train', 'bus', 'trolley', 'lirr', 'mnr', 'commuter-rail', 'ferry'];
-const LIVE_SUPPORTED_CITIES: CityId[] = ['new-york', 'philadelphia', 'boston', 'chicago'];
-const CITY_MODE_ORDER: Record<CityId, ModeId[]> = {
-  'new-york': ['train', 'bus', 'lirr', 'mnr'],
-  philadelphia: ['train', 'trolley', 'bus'],
-  boston: ['train', 'bus', 'commuter-rail', 'ferry'],
-  chicago: ['train', 'bus'],
-};
 
 export function resolveBackendProvider(c: CityId, mode: ModeId): string {
-  if (c === 'new-york') {
-    if (mode === 'bus') return 'mta-bus';
-    if (mode === 'lirr') return 'mta-lirr';
-    if (mode === 'mnr') return 'mta-mnr';
-    return 'mta-subway';
+  if (!isSupportedTransitCity(c)) {
+    throw new Error(`Transit provider lookup does not support city "${c}".`);
   }
-  if (c === 'philadelphia') {
-    if (mode === 'bus') return 'septa-bus';
-    if (mode === 'trolley') return 'septa-trolley';
-    return 'septa-rail';
-  }
-  if (c === 'chicago') {
-    if (mode === 'bus') return 'cta-bus';
-    return 'cta-subway';
-  }
-  return 'mbta';
+  return resolveBackendProviderId(c, mode);
 }
 
 export function cityModeFromProvider(provider: string): {city: CityId; mode: ModeId} | null {
-  const map: Record<string, {city: CityId; mode: ModeId}> = {
-    'mta-subway': {city: 'new-york', mode: 'train'},
-    'mta-bus': {city: 'new-york', mode: 'bus'},
-    'mta-lirr': {city: 'new-york', mode: 'lirr'},
-    'mta-mnr': {city: 'new-york', mode: 'mnr'},
-    'septa-rail': {city: 'philadelphia', mode: 'train'},
-    'septa-bus': {city: 'philadelphia', mode: 'bus'},
-    'septa-trolley': {city: 'philadelphia', mode: 'trolley'},
-    mbta: {city: 'boston', mode: 'train'},
-    'cta-subway': {city: 'chicago', mode: 'train'},
-    'cta-bus': {city: 'chicago', mode: 'bus'},
-  };
-  return map[provider] ?? null;
+  return resolveCityModeFromBackendProvider(provider);
 }
 
 export function normalizeCityIdParam(value: string | undefined): CityId {
@@ -82,12 +64,11 @@ export function normalizeCityIdParam(value: string | undefined): CityId {
 }
 
 export function isLiveCitySupported(city: CityId) {
-  return LIVE_SUPPORTED_CITIES.includes(city);
+  return SUPPORTED_TRANSIT_CITIES.includes(city);
 }
 
 export function getAvailableModes(city: CityId): ModeId[] {
-  const order = CITY_MODE_ORDER[city] ?? MODE_ORDER;
-  return order.filter(mode => hasMode(city, mode));
+  return getCityModeOrder(city) as ModeId[];
 }
 
 export function getModeLabel(city: CityId, mode: ModeId) {
@@ -95,8 +76,7 @@ export function getModeLabel(city: CityId, mode: ModeId) {
 }
 
 function hasMode(city: CityId, mode: ModeId) {
-  const order = CITY_MODE_ORDER[city] ?? MODE_ORDER;
-  return order.includes(mode);
+  return getAvailableModes(city).includes(mode);
 }
 
 export function normalizeMode(city: CityId, mode: ModeId): ModeId {
@@ -157,12 +137,12 @@ function buildAreaFromName(name: string) {
 }
 
 export function normalizeSavedStationId(provider: string, stopId: string) {
-  const normalizedProvider = provider.trim().toLowerCase();
-  const normalizedStopId = stopId.trim().toUpperCase();
-  if (normalizedProvider === 'mta-subway' && /[NS]$/.test(normalizedStopId)) {
-    return normalizedStopId.slice(0, -1);
+  const mapping = cityModeFromProvider(provider);
+  if (mapping?.city) {
+    const cityModule = getTransitCityModule(mapping.city);
+    if (cityModule) return cityModule.normalizeSavedStationId(provider, stopId);
   }
-  return normalizedStopId;
+  return stopId.trim().toUpperCase();
 }
 
 export function describePresetBehavior(displayPreset: number) {
@@ -247,11 +227,14 @@ export async function loadStationsForCityMode(city: CityId, mode: ModeId): Promi
   })));
 }
 
-function resolveMappedRouteAppearance(city: CityId, lineId: string, label?: string | null) {
+function resolveMappedRouteAppearance(city: CityId, mode: ModeId, lineId: string, label?: string | null) {
   const map = CITY_LINE_COLORS[city];
   if (!map) return null;
 
-  const candidates = [lineId, label ?? '', lineId.toUpperCase(), (label ?? '').toUpperCase()].filter(Boolean);
+  const preferLabelFirst = city === 'new-york' && (mode === 'lirr' || mode === 'mnr');
+  const candidates = preferLabelFirst
+    ? [label ?? '', (label ?? '').toUpperCase(), lineId, lineId.toUpperCase()].filter(Boolean)
+    : [lineId, label ?? '', lineId.toUpperCase(), (label ?? '').toUpperCase()].filter(Boolean);
   for (const candidate of candidates) {
     const appearance = map[candidate];
     if (appearance) return appearance;
@@ -260,41 +243,23 @@ function resolveMappedRouteAppearance(city: CityId, lineId: string, label?: stri
   return null;
 }
 
-function resolveNycBusAppearance(lineId: string, label?: string | null) {
-  const normalized = `${lineId} ${label ?? ''}`.toUpperCase();
-
-  if (normalized.includes('SBS') || normalized.includes('SELECT BUS')) {
-    return {color: '#00A1DE', textColor: '#FFFFFF'};
-  }
-
-  if (normalized.includes('LTD') || normalized.includes('LIMITED')) {
-    return {color: '#EE352E', textColor: '#FFFFFF'};
-  }
-
-  if (normalized.startsWith('BM') || normalized.startsWith('QM') || normalized.startsWith('X') || normalized.startsWith('SIM')) {
-    return {color: '#006B3F', textColor: '#FFFFFF'};
-  }
-
-  return {color: '#0039A6', textColor: '#FFFFFF'};
-}
-
 function resolveRouteColor(city: CityId, mode: ModeId, lineId: string, label: string | null, apiColor: string | null): string {
-  if (city === 'new-york' && mode === 'bus') {
-    return resolveNycBusAppearance(lineId, label).color;
-  }
+  const cityModule = getTransitCityModule(city);
+  const appearance = cityModule?.resolveRouteAppearance?.(mode, lineId, label);
+  if (appearance) return appearance.color;
 
-  const mapped = resolveMappedRouteAppearance(city, lineId, label);
+  const mapped = resolveMappedRouteAppearance(city, mode, lineId, label);
   if (mapped) return mapped.color;
   if (apiColor) return apiColor;
   return lineColorFor(lineId);
 }
 
 function resolveRouteTextColor(city: CityId, mode: ModeId, lineId: string, label: string | null, apiTextColor: string | null): string {
-  if (city === 'new-york' && mode === 'bus') {
-    return resolveNycBusAppearance(lineId, label).textColor;
-  }
+  const cityModule = getTransitCityModule(city);
+  const appearance = cityModule?.resolveRouteAppearance?.(mode, lineId, label);
+  if (appearance) return appearance.textColor;
 
-  const mapped = resolveMappedRouteAppearance(city, lineId, label);
+  const mapped = resolveMappedRouteAppearance(city, mode, lineId, label);
   if (mapped) return mapped.textColor;
   if (apiTextColor) return apiTextColor;
   return '#FFFFFF';
@@ -305,7 +270,7 @@ export function formatRoutePickerLabel(city: CityId, mode: ModeId, route: Route)
 }
 
 export function isNycBusBadge(city: CityId, mode: ModeId) {
-  return city === 'new-york' && mode === 'bus';
+  return getTransitCityModule(city)?.isBusBadge?.(mode) ?? false;
 }
 
 export async function loadRoutesForStation(city: CityId, mode: ModeId, stopId: string): Promise<Route[]> {
@@ -315,6 +280,9 @@ export async function loadRoutesForStation(city: CityId, mode: ModeId, stopId: s
     label: line.label || line.id,
     color: resolveRouteColor(city, mode, line.id, line.label, line.color),
     textColor: resolveRouteTextColor(city, mode, line.id, line.label, line.textColor),
+    headsign0: line.headsign0,
+    headsign1: line.headsign1,
+    directions: line.directions,
   }));
 }
 
@@ -325,6 +293,9 @@ export async function loadGlobalLinesForCityMode(city: CityId, mode: ModeId): Pr
     label: line.label || line.id,
     color: resolveRouteColor(city, mode, line.id, line.label, line.color),
     textColor: resolveRouteTextColor(city, mode, line.id, line.label, line.textColor),
+    headsign0: line.headsign0,
+    headsign1: line.headsign1,
+    directions: line.directions,
   }));
 }
 
@@ -382,81 +353,11 @@ function sortRoutesAlphabetically(routes: Route[]): Route[] {
   });
 }
 
-function getChicagoTrainOrder(route: Route) {
-  const normalizedId = route.id.trim().toUpperCase();
-  const normalizedLabel = route.label.replace(/\s+LINE$/i, '').trim().toUpperCase();
-  const order = ['RED', 'BLUE', 'BRN', 'BROWN', 'G', 'GREEN', 'ORG', 'ORANGE', 'PINK', 'P', 'PURPLE', 'Y', 'YELLOW'];
-  const idIndex = order.indexOf(normalizedId);
-  if (idIndex !== -1) return idIndex;
-  const labelIndex = order.indexOf(normalizedLabel);
-  if (labelIndex !== -1) return labelIndex;
-  return 999;
-}
-
-function sortRoutesForChicagoTrainPicker(routes: Route[]) {
-  return [...routes].sort((left, right) => {
-    const leftOrder = getChicagoTrainOrder(left);
-    const rightOrder = getChicagoTrainOrder(right);
-    if (leftOrder !== rightOrder) return leftOrder - rightOrder;
-    return naturalRouteLabelCompare(left.label, right.label);
-  });
-}
-
-function getBostonTrainOrder(route: Route) {
-  const normalized = route.id.trim().toUpperCase();
-  const order = ['RED', 'ORANGE', 'BLUE', 'GREEN-B', 'GREEN-C', 'GREEN-D', 'GREEN-E', 'MATTAPAN'];
-  const index = order.indexOf(normalized);
-  return index === -1 ? 999 : index;
-}
-
-function sortRoutesForBostonTrainPicker(routes: Route[]) {
-  return [...routes].sort((left, right) => {
-    const leftOrder = getBostonTrainOrder(left);
-    const rightOrder = getBostonTrainOrder(right);
-    if (leftOrder !== rightOrder) return leftOrder - rightOrder;
-    return naturalRouteLabelCompare(left.label, right.label);
-  });
-}
-
-function getPhillyTrolleyOrder(route: Route) {
-  const normalized = route.id.trim().toUpperCase();
-  const order = ['T1', 'T2', 'T3', 'G1', 'T4', 'T5', 'D1', 'D2', 'T BUS', 'T5 BUS'];
-  const index = order.indexOf(normalized);
-  return index === -1 ? 999 : index;
-}
-
-function sortRoutesForPhillyTrolleyPicker(routes: Route[]) {
-  return [...routes].sort((left, right) => {
-    const leftOrder = getPhillyTrolleyOrder(left);
-    const rightOrder = getPhillyTrolleyOrder(right);
-    if (leftOrder !== rightOrder) return leftOrder - rightOrder;
-    return naturalRouteLabelCompare(left.label, right.label);
-  });
-}
-
 export function prepareRouteEntriesForPicker(city: CityId, mode: ModeId, routes: Route[]) {
   const deduped = dedupeRoutesForPicker(routes);
-  if (city === 'new-york' && mode === 'train') {
-    return buildNycTrainPickerEntries(deduped);
-  }
-  if (city === 'chicago' && mode === 'train') {
-    return sortRoutesForChicagoTrainPicker(deduped).map(route => routeToPickerItem(route, city, mode));
-  }
-  if (city === 'boston' && mode === 'train') {
-    return sortRoutesForBostonTrainPicker(deduped).map(route => routeToPickerItem(route, city, mode));
-  }
-  if (city === 'boston' && (mode === 'commuter-rail' || mode === 'ferry')) {
-    return sortRoutesAlphabetically(deduped).map(route => routeToPickerItem(route, city, mode));
-  }
-  if (city === 'philadelphia' && mode === 'train') {
-    return sortRoutesAlphabetically(deduped).map(route => routeToPickerItem(route, city, mode));
-  }
-  if (city === 'philadelphia' && mode === 'trolley') {
-    return sortRoutesForPhillyTrolleyPicker(deduped).map(route => routeToPickerItem(route, city, mode));
-  }
-  if (city === 'new-york' && mode === 'bus') {
-    return sortRoutesForNycBusPicker(deduped).map(route => routeToPickerItem(route, city, mode));
-  }
+  const cityModule = getTransitCityModule(city);
+  const prepared = cityModule?.prepareRouteEntries(mode, deduped);
+  if (prepared) return prepared;
   return sortRoutesForPicker(deduped).map(route => routeToPickerItem(route, city, mode));
 }
 
@@ -471,251 +372,31 @@ function routeToPickerItem(route: Route, city: CityId, mode: ModeId): RoutePicke
   };
 }
 
-function getNycTrainGroupOrder() {
-  const groups = [
-    ['1', '2', '3'],
-    ['A', 'C', 'E'],
-    ['4', '5', '6', '6X'],
-    ['N', 'Q', 'R', 'W'],
-    ['B', 'D', 'F', 'M'],
-    ['7', '7X'],
-    ['G', 'J', 'Z', 'L', 'S', 'FS', 'GS', 'SI'],
-  ];
-
-  const order = new Map<string, number>();
-  groups.forEach((labels, index) => {
-    labels.forEach(label => order.set(label, index));
-  });
-  return order;
-}
-
-function getNycTrainBaseLabel(route: Route) {
-  const label = normalizeRoutePickerLabel(route);
-  if (label === 'FX') return 'F';
-  if (label.endsWith('X') && /^\d/.test(label)) return label.slice(0, -1);
-  return label;
-}
-
-function buildNycTrainPickerEntries(routes: Route[]) {
-  const grouped = new Map<string, Route[]>();
-
-  for (const route of routes) {
-    const key = getNycTrainBaseLabel(route);
-    const current = grouped.get(key) ?? [];
-    current.push(route);
-    grouped.set(key, current);
-  }
-
-  return [...grouped.entries()]
-    .map(([key, variants]) => {
-      const sortedVariants = [...variants].sort((left, right) => {
-        const leftPriority = isExpressVariant(left) ? 1 : 0;
-        const rightPriority = isExpressVariant(right) ? 1 : 0;
-        if (leftPriority !== rightPriority) return leftPriority - rightPriority;
-        return naturalRouteLabelCompare(left.label, right.label);
-      });
-      const primary = sortedVariants[0];
-      return {
-        id: key,
-        label: key,
-        displayLabel: key,
-        color: primary.color,
-        textColor: primary.textColor,
-        routes: sortedVariants,
-      };
-    })
-    .sort((left, right) => {
-      const leftGroup = getNycTrainGroupOrder().get(left.label.toUpperCase()) ?? 999;
-      const rightGroup = getNycTrainGroupOrder().get(right.label.toUpperCase()) ?? 999;
-      if (leftGroup !== rightGroup) return leftGroup - rightGroup;
-      return naturalRouteLabelCompare(left.label, right.label);
-    });
-}
-
 export function buildRouteGroups(city: CityId, mode: ModeId, routes: RoutePickerItem[]): RouteGroup[] {
-  if (city === 'new-york' && mode === 'train') {
-    return buildNycTrainRouteGroups(routes);
-  }
-  if (city === 'new-york' && mode === 'bus') {
-    return buildNycBusRouteGroups(routes);
-  }
-  if (city === 'chicago' && mode === 'train') {
-    return routes.length > 0 ? [{key: 'cta-train', routes}] : [];
-  }
-  if (city === 'boston' && (mode === 'train' || mode === 'ferry')) {
-    return routes.length > 0 ? [{key: `boston-${mode}`, routes}] : [];
-  }
-  if (mode === 'commuter-rail') {
-    return routes.length > 0 ? [{key: 'commuter-rail', routes}] : [];
-  }
-  if (city === 'philadelphia' && mode === 'train') {
-    return routes.length > 0 ? [{key: 'septa-rail', routes}] : [];
-  }
-  if (city === 'philadelphia' && mode === 'trolley') {
-    return routes.length > 0 ? [{key: 'septa-trolley', routes}] : [];
-  }
+  const cityModule = getTransitCityModule(city);
+  const cityGroups = cityModule?.buildRouteGroups(mode, routes);
+  if (cityGroups) return cityGroups;
 
-  const groups: Array<{key: string; routes: RoutePickerItem[]}> = [];
+  const fallbackGroups: Array<{key: string; routes: RoutePickerItem[]}> = [];
 
   for (const route of routes) {
-    const current = groups[groups.length - 1];
+    const current = fallbackGroups[fallbackGroups.length - 1];
     if (!current || current.key !== route.color) {
-      groups.push({key: route.color, routes: [route]});
+      fallbackGroups.push({key: route.color, routes: [route]});
       continue;
     }
     current.routes.push(route);
   }
 
-  return groups;
-}
-
-function buildNycTrainRouteGroups(routes: RoutePickerItem[]): RouteGroup[] {
-  const rows = [
-    {key: 'row-1', labels: ['1', '2', '3']},
-    {key: 'row-2', labels: ['4', '5', '6', '6X', '7', '7X']},
-    {key: 'row-3', labels: ['A', 'C', 'E']},
-    {key: 'row-4', labels: ['N', 'Q', 'R', 'W']},
-    {key: 'row-5', labels: ['B', 'D', 'F', 'M']},
-    {key: 'row-6', labels: ['L', 'G', 'J', 'Z', 'S', 'FS', 'GS', 'SI']},
-  ];
-
-  return rows
-    .map(row => {
-      const order = new Map(row.labels.map((label, index) => [label, index]));
-      const rowRoutes = routes.filter(route => order.has(normalizeRoutePickerLabel(route)));
-      return {
-        key: row.key,
-        routes: [...rowRoutes].sort((left, right) => {
-          const leftOrder = order.get(normalizeRoutePickerLabel(left)) ?? 999;
-          const rightOrder = order.get(normalizeRoutePickerLabel(right)) ?? 999;
-          if (leftOrder !== rightOrder) return leftOrder - rightOrder;
-          return naturalRouteLabelCompare(left.label, right.label);
-        }),
-      };
-    })
-    .filter(group => group.routes.length > 0);
-}
-
-function normalizeBusLabel(route: {label: string}) {
-  return normalizeRoutePickerLabel(route).replace(/\s+/g, '');
-}
-
-function getNycBusGroupKey(route: {label: string}) {
-  const label = normalizeBusLabel(route);
-  if (label.startsWith('BX')) return 'bronx';
-  if (label.startsWith('B')) return 'brooklyn';
-  if (label.startsWith('M')) return 'manhattan';
-  if (label.startsWith('Q')) return 'queens';
-  if (label.startsWith('S')) return 'staten-island';
-  return 'other';
-}
-
-function getNycBusGroupTitle(key: string) {
-  switch (key) {
-    case 'bronx':
-      return 'Bronx';
-    case 'brooklyn':
-      return 'Brooklyn';
-    case 'manhattan':
-      return 'Manhattan';
-    case 'queens':
-      return 'Queens';
-    case 'staten-island':
-      return 'Staten Island';
-    default:
-      return 'Other';
-  }
-}
-
-function getNycBusGroupOrder(key: string) {
-  switch (key) {
-    case 'bronx':
-      return 0;
-    case 'brooklyn':
-      return 1;
-    case 'manhattan':
-      return 2;
-    case 'queens':
-      return 3;
-    case 'staten-island':
-      return 4;
-    default:
-      return 5;
-  }
-}
-
-function getBusRouteSortParts(route: {label: string}) {
-  const label = normalizeBusLabel(route);
-  const match = label.match(/^([A-Z]+)(\d+)?([A-Z]*)$/);
-  if (!match) {
-    return {prefix: label, number: Number.MAX_SAFE_INTEGER, suffix: ''};
-  }
-
-  return {
-    prefix: match[1],
-    number: match[2] ? Number(match[2]) : Number.MAX_SAFE_INTEGER,
-    suffix: match[3] ?? '',
-  };
-}
-
-function sortRoutesForNycBusPicker(routes: Route[]) {
-  return [...routes].sort((left, right) => {
-    const leftGroup = getNycBusGroupOrder(getNycBusGroupKey(left));
-    const rightGroup = getNycBusGroupOrder(getNycBusGroupKey(right));
-    if (leftGroup !== rightGroup) return leftGroup - rightGroup;
-
-    const leftParts = getBusRouteSortParts(left);
-    const rightParts = getBusRouteSortParts(right);
-
-    const prefixCompare = naturalRouteLabelCompare(leftParts.prefix, rightParts.prefix);
-    if (prefixCompare !== 0) return prefixCompare;
-
-    if (leftParts.number !== rightParts.number) return leftParts.number - rightParts.number;
-
-    const suffixCompare = naturalRouteLabelCompare(leftParts.suffix, rightParts.suffix);
-    if (suffixCompare !== 0) return suffixCompare;
-
-    return naturalRouteLabelCompare(left.label, right.label);
-  });
-}
-
-function buildNycBusRouteGroups(routes: RoutePickerItem[]): RouteGroup[] {
-  const grouped = new Map<string, RoutePickerItem[]>();
-
-  for (const route of routes) {
-    const key = getNycBusGroupKey(route);
-    const current = grouped.get(key) ?? [];
-    current.push(route);
-    grouped.set(key, current);
-  }
-
-  return [...grouped.entries()]
-    .sort((left, right) => getNycBusGroupOrder(left[0]) - getNycBusGroupOrder(right[0]))
-    .map(([key, groupRoutes]) => ({
-      key,
-      title: getNycBusGroupTitle(key),
-      routes: [...groupRoutes].sort((left, right) => {
-        const leftParts = getBusRouteSortParts(left);
-        const rightParts = getBusRouteSortParts(right);
-        const prefixCompare = naturalRouteLabelCompare(leftParts.prefix, rightParts.prefix);
-        if (prefixCompare !== 0) return prefixCompare;
-        if (leftParts.number !== rightParts.number) return leftParts.number - rightParts.number;
-        const suffixCompare = naturalRouteLabelCompare(leftParts.suffix, rightParts.suffix);
-        if (suffixCompare !== 0) return suffixCompare;
-        return naturalRouteLabelCompare(left.label, right.label);
-      }),
-    }))
-    .filter(group => group.routes.length > 0);
-}
-
-export function isExpressVariant(route: {label: string}) {
-  const label = normalizeRoutePickerLabel(route);
-  return label.endsWith('X') || label === 'FX';
+  return fallbackGroups;
 }
 
 export function isExpressRouteBadge(city: CityId, mode: ModeId, route: RoutePickerItem) {
-  if (city !== 'new-york' || mode !== 'train') return false;
-  return route.routes.length === 1 && isExpressVariant(route.routes[0]);
+  return getTransitCityModule(city)?.isExpressRouteBadge?.(mode, route) ?? false;
+}
+
+export function isExpressVariant(route: Route) {
+  return getTransitCityModule('new-york')?.isExpressVariant?.('train', route) ?? false;
 }
 
 function statusFromArrival(arrival: TransitArrival): Arrival['status'] {
@@ -788,7 +469,7 @@ function newLine(
       mode: safeMode,
       stationId: firstStation?.id ?? '',
       routeId: firstRoute?.id ?? '',
-      direction: 'uptown',
+      direction: getDefaultUiDirection(city, safeMode, firstRoute),
       label: '',
       secondaryLabel: '',
       textColor: DEFAULT_TEXT_COLOR,
@@ -815,10 +496,14 @@ export function normalizeLine(
 
   const routeKey = resolvedStationId ? routeLookupKey(safeMode, resolvedStationId) : null;
   const routes = routeKey ? (routesByStation[routeKey] ?? []) : [];
-  const allowedRoutes = station && station.lines.length > 0 ? routes.filter(route => station.lines.includes(route.id)) : routes;
+  const stationLineIds = station ? station.lines.map(l => l.id) : [];
+  const allowedRoutes = station && stationLineIds.length > 0 ? routes.filter(route => stationLineIds.includes(route.id)) : routes;
   const routesLoaded = routes.length > 0;
   const routeMatch = allowedRoutes.find(item => item.id === line.routeId);
   const resolvedRouteId = routeMatch?.id ?? (routesLoaded ? (allowedRoutes[0]?.id ?? routes[0]?.id ?? line.routeId) : line.routeId);
+  const resolvedRoute = routeMatch ?? (routesLoaded ? (allowedRoutes[0] ?? routes[0]) : undefined);
+  const directionOptions = getLocalDirectionOptions(city, safeMode, resolvedRoute);
+  const resolvedDirection = directionOptions.includes(line.direction) ? line.direction : (directionOptions[0] ?? line.direction);
   const displayFormat = normalizeDisplayFormat(line.displayFormat);
 
   return {
@@ -826,7 +511,7 @@ export function normalizeLine(
     mode: safeMode,
     stationId: resolvedStationId,
     routeId: resolvedRouteId,
-    direction: line.direction === 'downtown' ? 'downtown' : 'uptown',
+    direction: resolvedDirection,
     label: normalizeCustomLabel(line.label),
     secondaryLabel: normalizeCustomLabel(line.secondaryLabel),
     textColor: normalizeHexColor(line.textColor) ?? DEFAULT_TEXT_COLOR,
@@ -915,9 +600,12 @@ export function normalizePrimaryContent(
   value: DisplayContent | undefined | null,
   legacyFormat?: string | null,
 ): DisplayContent {
-  if (value === 'direction' || value === 'custom' || value === 'destination') return value;
+  if (value === 'direction' || value === 'custom' || value === 'destination' || value === 'headsign') return value;
   if (legacyFormat === 'direction-single' || legacyFormat === 'both-single' || legacyFormat === 'direction-multi') {
     return 'direction';
+  }
+  if (legacyFormat === 'headsign-single' || legacyFormat === 'headsign-multi') {
+    return 'headsign';
   }
   return 'destination';
 }
@@ -928,7 +616,7 @@ export function normalizeSecondaryContent(
   legacyFormat?: string | null,
 ): DisplayContent {
   if (displayFormat !== 'two-line') return 'direction';
-  if (value === 'direction' || value === 'custom' || value === 'destination') return value;
+  if (value === 'direction' || value === 'custom' || value === 'destination' || value === 'headsign') return value;
   if (legacyFormat === 'both-single') return 'destination';
   if (legacyFormat === 'both-single-flip') return 'direction';
   return 'direction';
@@ -938,9 +626,11 @@ export function resolveDisplayContent(
   content: DisplayContent,
   destinationLabel: string,
   directionLabel: string,
+  headsignLabel: string,
   customLabel: string,
 ) {
   if (content === 'direction') return directionLabel;
+  if (content === 'headsign') return headsignLabel || directionLabel || destinationLabel;
   if (content === 'custom') return customLabel || destinationLabel;
   return destinationLabel;
 }

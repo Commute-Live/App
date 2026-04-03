@@ -32,7 +32,7 @@ export const CITY_LINE_COLORS: Partial<Record<CityId, Record<string, {color: str
     // BMT
     'J':  {color: '#996633', textColor: '#FFFFFF'},
     'Z':  {color: '#996633', textColor: '#FFFFFF'},
-    'L':  {color: '#808183', textColor: '#FFFFFF'},
+    'L':  {color: '#A7A9AC', textColor: '#FFFFFF'},
     'N':  {color: '#FCCC0A', textColor: '#000000'},
     'Q':  {color: '#FCCC0A', textColor: '#000000'},
     'R':  {color: '#FCCC0A', textColor: '#000000'},
@@ -44,17 +44,33 @@ export const CITY_LINE_COLORS: Partial<Record<CityId, Record<string, {color: str
     'SI': {color: '#0039A6', textColor: '#FFFFFF'},
     // LIRR branches — official MTA colors, keyed by API label
     'Babylon Branch':        {color: '#00985F', textColor: '#FFFFFF'},
-    'City Terminal Zone':    {color: '#4D5357', textColor: '#FFFFFF'},
-    'Far Rockaway Branch':   {color: '#6E3219', textColor: '#FFFFFF'},
-    'Greenport Service':     {color: '#006983', textColor: '#FFFFFF'},
+    'Belmont Branch':        {color: '#60269E', textColor: '#FFFFFF'},
+    'Belmont Park':          {color: '#60269E', textColor: '#FFFFFF'},
+    'Belmont Park Spur':     {color: '#805DA7', textColor: '#FFFFFF'},
     'Hempstead Branch':      {color: '#CE8E00', textColor: '#FFFFFF'},
-    'Long Beach Branch':     {color: '#FF6319', textColor: '#FFFFFF'},
-    'Montauk Branch':        {color: '#006983', textColor: '#FFFFFF'},
     'Oyster Bay Branch':     {color: '#00AF3F', textColor: '#FFFFFF'},
-    'Port Jefferson Branch': {color: '#0039A6', textColor: '#FFFFFF'},
-    'Port Washington Branch':{color: '#C60C30', textColor: '#FFFFFF'},
     'Ronkonkoma Branch':     {color: '#A626AA', textColor: '#FFFFFF'},
+    'Montauk Branch':        {color: '#006983', textColor: '#FFFFFF'},
+    'Long Beach Branch':     {color: '#FF6319', textColor: '#FFFFFF'},
+    'Far Rockaway Branch':   {color: '#6E3219', textColor: '#FFFFFF'},
     'West Hempstead Branch': {color: '#00A1DE', textColor: '#FFFFFF'},
+    'Port Washington Branch':{color: '#C60C30', textColor: '#FFFFFF'},
+    'Port Jefferson Branch': {color: '#0039A6', textColor: '#FFFFFF'},
+    'City Terminal Zone':    {color: '#4D5357', textColor: '#FFFFFF'},
+    'Greenport Service':     {color: '#A626AA', textColor: '#FFFFFF'},
+    // MNR branches — keyed by both label and numeric route ID
+    'Hudson':            {color: '#009B3A', textColor: '#FFFFFF'},
+    'Hudson Line':       {color: '#009B3A', textColor: '#FFFFFF'},
+    'Harlem':            {color: '#0039A6', textColor: '#FFFFFF'},
+    'Harlem Line':       {color: '#0039A6', textColor: '#FFFFFF'},
+    'New Haven':         {color: '#EE0034', textColor: '#FFFFFF'},
+    'New Haven Line':    {color: '#EE0034', textColor: '#FFFFFF'},
+    'New Canaan':        {color: '#EE0034', textColor: '#FFFFFF'},
+    'New Canaan Branch': {color: '#EE0034', textColor: '#FFFFFF'},
+    'Danbury':           {color: '#EE0034', textColor: '#FFFFFF'},
+    'Danbury Branch':    {color: '#EE0034', textColor: '#FFFFFF'},
+    'Waterbury':         {color: '#EE0034', textColor: '#FFFFFF'},
+    'Waterbury Branch':  {color: '#EE0034', textColor: '#FFFFFF'},
   },
   chicago: {
     // CTA L lines — keyed by both longName-derived keys and actual API IDs (uppercase)
@@ -153,6 +169,53 @@ const BAY_AREA_LINE_COLORS: Record<string, {color: string; textColor: string}> =
   'SF:N':    {color: '#BA0016', textColor: '#FFFFFF'},
   'SF:T':    {color: '#BA0016', textColor: '#FFFFFF'},
 };
+
+// LIRR/MNR use numeric route IDs that collide with subway line numbers,
+// so they need a separate provider-scoped lookup.
+const LIRR_ROUTE_COLORS: Record<string, {color: string; textColor: string}> = {
+  '1':  {color: '#00985F', textColor: '#FFFFFF'}, // Babylon
+  '2':  {color: '#CE8E00', textColor: '#FFFFFF'}, // Hempstead
+  '3':  {color: '#00AF3F', textColor: '#FFFFFF'}, // Oyster Bay
+  '4':  {color: '#A626AA', textColor: '#FFFFFF'}, // Ronkonkoma
+  '5':  {color: '#006983', textColor: '#FFFFFF'}, // Montauk
+  '6':  {color: '#FF6319', textColor: '#FFFFFF'}, // Long Beach
+  '7':  {color: '#6E3219', textColor: '#FFFFFF'}, // Far Rockaway
+  '8':  {color: '#00A1DE', textColor: '#FFFFFF'}, // West Hempstead
+  '9':  {color: '#C60C30', textColor: '#FFFFFF'}, // Port Washington
+  '10': {color: '#0039A6', textColor: '#FFFFFF'}, // Port Jefferson
+  '12': {color: '#4D5357', textColor: '#FFFFFF'}, // City Terminal Zone
+  '13': {color: '#A626AA', textColor: '#FFFFFF'}, // Greenport
+};
+
+const MNR_ROUTE_COLORS: Record<string, {color: string; textColor: string}> = {
+  '1': {color: '#009B3A', textColor: '#FFFFFF'}, // Hudson
+  '2': {color: '#0039A6', textColor: '#FFFFFF'}, // Harlem
+  '3': {color: '#EE0034', textColor: '#FFFFFF'}, // New Haven
+  '4': {color: '#EE0034', textColor: '#FFFFFF'}, // New Canaan
+  '5': {color: '#EE0034', textColor: '#FFFFFF'}, // Danbury
+  '6': {color: '#EE0034', textColor: '#FFFFFF'}, // Waterbury
+};
+
+const PROVIDER_COLOR_OVERRIDES: Record<string, Record<string, {color: string; textColor: string}>> = {
+  'mta-lirr': LIRR_ROUTE_COLORS,
+  'mta-mnr': MNR_ROUTE_COLORS,
+};
+
+/**
+ * Resolve line color using provider context. Handles LIRR/MNR numeric IDs
+ * that would otherwise collide with subway line numbers in the city map.
+ */
+export function resolveProviderLineColor(
+  provider: string,
+  lineId: string,
+): {color: string; textColor: string} | null {
+  const overrideMap = PROVIDER_COLOR_OVERRIDES[provider];
+  if (overrideMap) {
+    const result = overrideMap[lineId] ?? overrideMap[lineId.toUpperCase()];
+    if (result) return result;
+  }
+  return null;
+}
 
 const PROVIDER_TO_CITY: Record<OnboardingProvider, CityId | null> = {
   MTA: 'new-york',

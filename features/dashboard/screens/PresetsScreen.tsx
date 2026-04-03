@@ -29,7 +29,7 @@ import {
   type DisplaySavePayload,
   type DeviceDisplay,
 } from '../../../lib/displays';
-import {CITY_LINE_COLORS, hashLineColor} from '../../../lib/lineColors';
+import {CITY_LINE_COLORS, hashLineColor, resolveProviderLineColor} from '../../../lib/lineColors';
 import {getTransitStationName} from '../../../lib/transitApi';
 import {queryKeys} from '../../../lib/queryKeys';
 import {cycleTimeOption} from './DashboardOverview.time';
@@ -134,8 +134,9 @@ const getReorderLineBadgeColors = (display: DeviceDisplay, label: string) => {
   );
   const provider = matchedLine?.provider ?? display.config.lines?.[0]?.provider ?? null;
   const city = providerToCity(provider);
+  const providerColor = provider ? resolveProviderLineColor(provider, label) : null;
   const lineColors = city ? (CITY_LINE_COLORS[city] ?? {}) : {};
-  return lineColors[label] ?? hashLineColor(label);
+  return providerColor ?? lineColors[label] ?? hashLineColor(label);
 };
 
 const isReorderLineBus = (display: DeviceDisplay, label: string) => {

@@ -5,13 +5,33 @@ export type DisplayFormat =
     | 'two-line'      // [BADGE] [Woodlawn/Uptown]  [2m]
     | 'times-line';   // [BADGE] [Woodlawn/5,10m]   [2m]
 
-export type DisplayContent = 'destination' | 'direction' | 'custom';
+export type DisplayContent = 'destination' | 'direction' | 'headsign' | 'custom';
 export type SupportedTransitCity = 'new-york' | 'philadelphia' | 'boston' | 'chicago';
 
 export type TransitUiMode = 'train' | 'bus' | 'lirr' | 'mnr' | 'commuter-rail' | 'trolley' | 'ferry';
+export type TransitUiDirection =
+  | 'uptown'
+  | 'downtown'
+  | 'dir0'
+  | 'dir1'
+  | 'westbound'
+  | 'eastbound'
+  | 'outbound'
+  | 'inbound';
 
 export type TransitProvider = 'mta' | 'septa' | 'cta' | 'mbta';
 export type TransitBackendMode = 'subway' | 'bus' | 'lirr' | 'mnr' | 'rail' | 'trolley' | 'ferry';
+export type TransitBackendProviderId =
+  | 'mta-subway'
+  | 'mta-bus'
+  | 'mta-lirr'
+  | 'mta-mnr'
+  | 'septa-rail'
+  | 'septa-bus'
+  | 'septa-trolley'
+  | 'mbta'
+  | 'cta-subway'
+  | 'cta-bus';
 export type TransitProviderMode = `${TransitProvider}/${TransitBackendMode}`;
 
 export type TransitModeMapping = {
@@ -29,7 +49,13 @@ export type TransitStation = {
   id: string;
   name: string;
   area: string | null;
-  lines: string[];
+  lines: TransitStationLine[];
+};
+
+export type TransitStationLine = {
+  id: string;
+  shortName: string;
+  label: string;
 };
 
 export type TransitLine = {
@@ -37,6 +63,19 @@ export type TransitLine = {
   label: string;
   color: string | null;
   textColor: string | null;
+  headsign0: string | null;
+  headsign1: string | null;
+  directions: TransitLineDirection[];
+};
+
+export type TransitLineDirection = {
+  id: string;
+  uiKey: TransitUiDirection;
+  label: string;
+  terminal: string | null;
+  boundLabel: string;
+  toggleLabel: string;
+  summaryLabel: string;
 };
 
 export type TransitArrival = {

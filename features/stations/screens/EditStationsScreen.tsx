@@ -6,6 +6,7 @@ import {ScreenHeader} from '../../../components/ScreenHeader';
 import {colors, layout, radii, spacing, typography} from '../../../theme';
 import {useAppState} from '../../../state/appState';
 import {CITY_LABELS, CITY_OPTIONS, type CityId} from '../../../constants/cities';
+import {getCityModeOrder, SUPPORTED_TRANSIT_CITIES} from '../../../lib/transit/providerRegistry';
 import {getTransitStations} from '../../../lib/transitApi';
 import {queryKeys} from '../../../lib/queryKeys';
 import type {TransitUiMode} from '../../../types/transit';
@@ -16,7 +17,7 @@ type StationSearchResult = {
   area: string;
 };
 
-const SUPPORTED_LIVE_CITIES: CityId[] = ['new-york', 'philadelphia', 'boston', 'chicago'];
+const SUPPORTED_LIVE_CITIES: CityId[] = [...SUPPORTED_TRANSIT_CITIES];
 
 export default function EditStationsScreen() {
   const {state, addStation, removeStation} = useAppState();
@@ -147,11 +148,8 @@ async function fetchLiveStations(city: CityId, query: string): Promise<StationSe
 }
 
 function getModesForCity(city: CityId): TransitUiMode[] {
-  if (city === 'new-york') return ['train', 'bus', 'lirr', 'mnr'];
-  if (city === 'philadelphia') return ['train', 'bus', 'trolley'];
-  if (city === 'boston') return ['train', 'bus', 'commuter-rail', 'ferry'];
-  if (city === 'chicago') return ['train', 'bus'];
-  return ['train'];
+  const modes = getCityModeOrder(city);
+  return modes.length > 0 ? modes : ['train'];
 }
 
 function normalizeStation(row: {id: string; name: string; area: string | null}): StationSearchResult | null {

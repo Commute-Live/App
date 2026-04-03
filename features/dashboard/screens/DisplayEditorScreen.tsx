@@ -7,13 +7,22 @@ import {colors} from '../../../theme';
 import DashboardPreviewSection from '../components/DashboardPreviewSection';
 import {useAppState} from '../../../state/appState';
 import {CITY_BRANDS, CITY_LABELS, CITY_OPTIONS, type CityId} from '../../../constants/cities';
-import type {DisplayContent, DisplayFormat} from '../../../types/transit';
+import type {DisplayContent, DisplayFormat, TransitStationLine} from '../../../types/transit';
 import type {Display3DSlot} from '../components/Display3DPreview';
 import {apiFetch} from '../../../lib/api';
 import {queryKeys} from '../../../lib/queryKeys';
+import type {
+  ModeId,
+  TransitRouteGroup as RouteGroup,
+  TransitRoutePickerItem as RoutePickerItem,
+  TransitRouteRecord as Route,
+  UiDirection as Direction,
+} from '../../../lib/transit/frontendTypes';
 import {
   deserializeUiDirection,
   getLocalDirectionLabel,
+  getLocalDirectionOptions,
+  getLocalDirectionTerminal,
   getLocalLineLabel,
   getLocalRouteBadgeLabel,
   isRailLinePreviewMode,
@@ -67,10 +76,7 @@ import {
 } from './DashboardEditor.helpers';
 import {styles} from './DisplayEditor.styles';
 
-type ModeId = 'train' | 'bus' | 'trolley' | 'lirr' | 'mnr' | 'commuter-rail' | 'ferry';
-type Direction = 'uptown' | 'downtown';
-type Station = {id: string; name: string; area: string; lines: string[]};
-type Route = {id: string; label: string; color: string; textColor?: string};
+type Station = {id: string; name: string; area: string; lines: TransitStationLine[]};
 type Arrival = {lineId: string; minutes: number; status: 'GOOD' | 'DELAYS'; destination: string | null};
 type LinePick = {
   id: string;
@@ -89,8 +95,6 @@ type LinePick = {
 type StationsByMode = Partial<Record<ModeId, Station[]>>;
 type RoutesByStation = Record<string, Route[]>;
 type EditorStep = 'city' | 'format' | 'lines' | 'stops' | 'done';
-type RoutePickerItem = {id: string; label: string; displayLabel: string; color: string; textColor?: string; routes: Route[]};
-type RouteGroup = {key: string; title?: string; routes: RoutePickerItem[]};
 
 const DEFAULT_TEXT_COLOR = '#E9ECEF';
 const BOROUGH_ORDER = ['Manhattan', 'Bronx', 'Brooklyn', 'Queens', 'Staten Island'];
@@ -148,14 +152,40 @@ const getMockStopName = (city: CityId, mode: ModeId) => {
 };
 
 const DISPLAY_PRESET_OPTIONS = [
-  {id: 1, label: 'Destination', description: 'Stop name on the left, next arrival on the right.'},
-  {id: 2, label: 'Direction', description: 'Travel direction on the left, next arrival on the right.'},
-  {id: 3, label: 'Destination + Direction', description: 'Stop name and direction stacked in a single row.'},
-  {id: 4, label: 'Destination + Upcoming Trains', description: 'Stop name with upcoming arrivals.'},
+  {id: 1, label: 'Your Station', description: 'The selected station on the left, next arrival on the right.'},
+  {id: 2, label: 'Direction', description: 'Uptown or Downtown on the left, next arrival on the right.'},
+  {id: 3, label: 'Destination', description: 'Route destination on the left, next arrival on the right.'},
+  {id: 4, label: 'Your Station + Upcoming Trains', description: 'Selected station with upcoming arrivals.'},
   {id: 5, label: 'Direction + Upcoming Trains', description: 'Travel direction with upcoming arrivals.'},
+  {id: 6, label: 'Destination + Upcoming Trains', description: 'Route destination with upcoming arrivals.'},
 ] as const;
 const PRESET_CAROUSEL_ITEM_WIDTH = 292;
 const Haptics = {selectionAsync: async () => {}, notificationAsync: async (_: any) => {}};
+
+const isNewYorkRailDestinationOnlyMode = (city: CityId, mode: ModeId) =>
+  city === 'new-york' && (mode === 'lirr' || mode === 'mnr');
+
+const getDisplayPresetOptionsForMode = (city: CityId, mode: ModeId) =>
+  isNewYorkRailDestinationOnlyMode(city, mode)
+    ? DISPLAY_PRESET_OPTIONS.filter(option => option.id !== 2 && option.id !== 5)
+    : DISPLAY_PRESET_OPTIONS;
+
+const getPresetDescriptionForMode = (
+  city: CityId,
+  mode: ModeId,
+  presetId: number,
+  defaultDescription: string,
+) => {
+  if (city === 'new-york' && mode === 'bus') {
+    if (presetId === 2) return 'Trip destination on the left, next arrival on the right.';
+    if (presetId === 5) return 'Trip destination with upcoming arrivals.';
+  }
+  if (city === 'new-york' && mode === 'mnr') {
+    if (presetId === 2) return 'Inbound or Outbound terminal on the left, next arrival on the right.';
+    if (presetId === 5) return 'Inbound or Outbound terminal with upcoming arrivals.';
+  }
+  return defaultDescription;
+};
 
 const formatSaveErrorMessage = (message: string) => {
   const normalized = message.trim();
@@ -184,10 +214,13 @@ const formatSaveErrorMessage = (message: string) => {
   return normalized;
 };
 
-const getPresetIdForOffset = (offsetX: number) => {
+const getPresetIdForOffset = (
+  offsetX: number,
+  presetOptions: readonly (typeof DISPLAY_PRESET_OPTIONS)[number][] = DISPLAY_PRESET_OPTIONS,
+) => {
   const nextIndex = Math.round(offsetX / PRESET_CAROUSEL_ITEM_WIDTH);
-  const safeIndex = Math.max(0, Math.min(DISPLAY_PRESET_OPTIONS.length - 1, nextIndex));
-  return DISPLAY_PRESET_OPTIONS[safeIndex]?.id ?? DISPLAY_PRESET_OPTIONS[0].id;
+  const safeIndex = Math.max(0, Math.min(presetOptions.length - 1, nextIndex));
+  return presetOptions[safeIndex]?.id ?? presetOptions[0]?.id ?? DISPLAY_PRESET_OPTIONS[0].id;
 };
 
 const getPresetBehavior = (presetId: number) => {
@@ -195,14 +228,49 @@ const getPresetBehavior = (presetId: number) => {
     case 2:
       return {displayFormat: 'single-line' as DisplayFormat, primaryContent: 'direction' as DisplayContent, secondaryContent: 'direction' as DisplayContent, supportsBottomCustom: false};
     case 3:
-      return {displayFormat: 'two-line' as DisplayFormat, primaryContent: 'destination' as DisplayContent, secondaryContent: 'direction' as DisplayContent, supportsBottomCustom: true};
+      return {displayFormat: 'single-line' as DisplayFormat, primaryContent: 'headsign' as DisplayContent, secondaryContent: 'headsign' as DisplayContent, supportsBottomCustom: false};
     case 4:
       return {displayFormat: 'times-line' as DisplayFormat, primaryContent: 'destination' as DisplayContent, secondaryContent: 'direction' as DisplayContent, supportsBottomCustom: false};
     case 5:
       return {displayFormat: 'times-line' as DisplayFormat, primaryContent: 'direction' as DisplayContent, secondaryContent: 'direction' as DisplayContent, supportsBottomCustom: false};
+    case 6:
+      return {displayFormat: 'times-line' as DisplayFormat, primaryContent: 'headsign' as DisplayContent, secondaryContent: 'headsign' as DisplayContent, supportsBottomCustom: false};
     case 1:
     default:
       return {displayFormat: 'single-line' as DisplayFormat, primaryContent: 'destination' as DisplayContent, secondaryContent: 'direction' as DisplayContent, supportsBottomCustom: false};
+  }
+};
+
+const getPersistedDisplayType = (presetId: number) => {
+  switch (presetId) {
+    case 2:
+      return 2;
+    case 3:
+      return 1;
+    case 4:
+      return 4;
+    case 5:
+      return 5;
+    case 6:
+      return 4;
+    case 1:
+    default:
+      return 1;
+  }
+};
+
+const getDisplayPresetFromPersistedType = (displayType: number) => {
+  switch (displayType) {
+    case 2:
+      return 2;
+    case 4:
+      return 4;
+    case 5:
+      return 5;
+    case 1:
+    case 3:
+    default:
+      return 1;
   }
 };
 
@@ -210,22 +278,109 @@ const inferDisplayPreset = (
   line: Pick<LinePick, 'displayFormat' | 'primaryContent' | 'secondaryContent'>,
   fallbackPreset = DEFAULT_DISPLAY_PRESET,
 ) => {
-  if (line.displayFormat === 'two-line') return 3;
+  if (line.displayFormat === 'two-line') {
+    return line.secondaryContent === 'headsign' ? 3 : 1;
+  }
   if (line.displayFormat === 'times-line') {
+    if (line.primaryContent === 'headsign') return 6;
     return line.primaryContent === 'direction' ? 5 : 4;
   }
+  if (line.primaryContent === 'headsign') return 3;
   if (line.primaryContent === 'direction') return 2;
   return fallbackPreset;
 };
 
 const isNycRailMode = (mode: ModeId) => mode === 'lirr' || mode === 'mnr';
 
-const getDirectionLabel = (city: CityId, mode: ModeId, direction: Direction, routeId?: string) => {
-  return getLocalDirectionLabel(city, mode, direction, routeId, 'bound');
+const trimRouteHeadsign = (value: string | null | undefined) => {
+  const trimmed = value?.trim() ?? '';
+  return trimmed.length > 0 ? trimmed : null;
 };
 
-const getDirectionSummaryLabel = (city: CityId, mode: ModeId, direction: Direction, routeId?: string) => {
-  return getLocalDirectionLabel(city, mode, direction, routeId, 'summary');
+const getRouteId = (route: Route | string | undefined) => (typeof route === 'string' ? route : route?.id);
+
+const getRouteHeadsign = (
+  city: CityId,
+  mode: ModeId,
+  route: Route | string | undefined,
+  direction: Direction,
+) => {
+  if (!route || typeof route === 'string') return null;
+  const metadataTerminal = getLocalDirectionTerminal(route, direction);
+  if (metadataTerminal) return trimRouteHeadsign(metadataTerminal);
+  if (city === 'new-york') return null;
+  return trimRouteHeadsign(direction === 'downtown' ? route.headsign1 : route.headsign0);
+};
+
+const getDirectionCueLabel = (
+  city: CityId,
+  mode: ModeId,
+  direction: Direction,
+  route?: Route | string,
+) => {
+  return getLocalDirectionLabel(city, mode, direction, route, 'bound');
+};
+
+const getHeadsignLabel = (
+  city: CityId,
+  mode: ModeId,
+  direction: Direction,
+  route?: Route | string,
+  routeLabel = '',
+) => {
+  const headsign = getRouteHeadsign(city, mode, route, direction);
+  if (headsign) return headsign;
+  if (city === 'new-york') return '--';
+  if (isRailLinePreviewMode(city, mode)) {
+    const routeId = getRouteId(route);
+    const safeRouteLabel =
+      typeof route === 'string'
+        ? routeLabel || route
+        : route?.label?.trim() || routeLabel || routeId || 'Route';
+    return getRailPreviewRouteLabel(city, mode, safeRouteLabel, routeId);
+  }
+  return getDirectionCueLabel(city, mode, direction, route);
+};
+
+const getSignedDirectionLabel = (
+  city: CityId,
+  mode: ModeId,
+  direction: Direction,
+  route?: Route | string,
+) => {
+  const summaryLabel = getLocalDirectionLabel(city, mode, direction, route, 'summary');
+  if (summaryLabel) return summaryLabel;
+  const cue = getDirectionCueLabel(city, mode, direction, route);
+  const headsign = getRouteHeadsign(city, mode, route, direction);
+  if (!headsign) return cue;
+  return `${cue} · ${headsign}`;
+};
+
+const getDirectionLabel = (
+  city: CityId,
+  mode: ModeId,
+  direction: Direction,
+  route?: Route | string,
+) => getDirectionCueLabel(city, mode, direction, route);
+
+const getDirectionToggleLabel = (
+  city: CityId,
+  mode: ModeId,
+  direction: Direction,
+  route?: Route | string,
+) => {
+  const toggleLabel = getLocalDirectionLabel(city, mode, direction, route, 'toggle');
+  if (toggleLabel) return toggleLabel;
+  const cue = getDirectionCueLabel(city, mode, direction, route);
+  if (city === 'new-york' && mode === 'train') {
+    const headsign = getRouteHeadsign(city, mode, route, direction);
+    if (headsign) return `${cue}: ${headsign}`;
+  }
+  return cue;
+};
+
+const getDirectionSummaryLabel = (city: CityId, mode: ModeId, direction: Direction, route?: Route | string) => {
+  return getSignedDirectionLabel(city, mode, direction, route);
 };
 
 const getRailPreviewRouteLabel = (city: CityId, mode: ModeId, routeLabel: string, routeId?: string) => {
@@ -234,28 +389,7 @@ const getRailPreviewRouteLabel = (city: CityId, mode: ModeId, routeLabel: string
   return getLocalLineLabel(city, mode, routeId ?? trimmed, trimmed || (routeId ?? 'Route'));
 };
 
-const getPreviewSecondaryLabel = (
-  city: CityId,
-  mode: ModeId,
-  routeLabel: string,
-  direction: Direction,
-  routeId?: string,
-) => {
-  if (isRailLinePreviewMode(city, mode)) {
-    return getRailPreviewRouteLabel(city, mode, routeLabel, routeId);
-  }
-  return getDirectionLabel(city, mode, direction, routeId);
-};
-
-const getPresetLabelForMode = (city: CityId, mode: ModeId, presetId: number, defaultLabel: string) => {
-  if (mode === 'lirr') {
-    return {2: 'Branch', 3: 'Destination + Branch', 5: 'Branch + Upcoming Trains'}[presetId] ?? defaultLabel;
-  }
-  if (mode === 'mnr' || mode === 'commuter-rail' || (city === 'philadelphia' && mode === 'train')) {
-    return {2: 'Line', 3: 'Destination + Line', 5: 'Line + Upcoming Trains'}[presetId] ?? defaultLabel;
-  }
-  return defaultLabel;
-};
+const getPresetLabelForMode = (_city: CityId, _mode: ModeId, _presetId: number, defaultLabel: string) => defaultLabel;
 
 export default function DisplayEditorScreen() {
   const queryClient = useQueryClient();
@@ -563,7 +697,7 @@ export default function DisplayEditorScreen() {
         const savedLines: Array<any> = Array.isArray(sourceDisplay?.config?.lines) ? sourceDisplay.config.lines : [];
         const savedDisplayType = Number(sourceDisplay?.config?.displayType);
         const fallbackDisplayPreset = Number.isFinite(savedDisplayType)
-          ? Math.max(1, Math.min(5, Math.trunc(savedDisplayType)))
+          ? getDisplayPresetFromPersistedType(Math.trunc(savedDisplayType))
           : DEFAULT_DISPLAY_PRESET;
         const citySavedLines = savedLines.filter((saved: any) => cityModeFromProvider(saved.provider)?.city === city);
         const nextLayoutSlots = citySavedLines.length > 1 ? 2 : 1;
@@ -673,9 +807,10 @@ export default function DisplayEditorScreen() {
           const nextDisplayPresets = nextLines.reduce<Record<string, number>>((acc, line, index) => {
             const savedLine = citySavedLines[index];
             const lineDisplayType = Number(savedLine?.displayType);
-            acc[line.id] = Number.isFinite(lineDisplayType)
-              ? Math.max(1, Math.min(5, Math.trunc(lineDisplayType)))
-              : inferDisplayPreset(line, fallbackDisplayPreset);
+            const lineFallbackPreset = Number.isFinite(lineDisplayType)
+              ? getDisplayPresetFromPersistedType(Math.trunc(lineDisplayType))
+              : fallbackDisplayPreset;
+            acc[line.id] = inferDisplayPreset(line, lineFallbackPreset);
             return acc;
           }, {});
           setDisplayPresetsByLine(nextDisplayPresets);
@@ -837,20 +972,30 @@ export default function DisplayEditorScreen() {
   const draftPayload = useMemo(() => {
     const payloadLines = lines
       .filter(line => line.stationId && line.routeId)
-      .map(line => ({
-        provider: resolveBackendProvider(city, line.mode),
-        line: line.routeId,
-        stop: line.stationId,
-        ...(line.direction ? {direction: serializeUiDirection(city, line.mode, line.direction)} : {}),
-        displayType: displayPresetsByLine[line.id] ?? inferDisplayPreset(line),
-        label: line.label.trim() || undefined,
-        secondaryLabel: line.secondaryLabel.trim() || undefined,
-        textColor: line.textColor || undefined,
-        nextStops: line.displayFormat === 'times-line' ? line.nextStops : undefined,
-        displayFormat: line.displayFormat,
-        primaryContent: line.primaryContent,
-        secondaryContent: line.displayFormat === 'two-line' ? line.secondaryContent : undefined,
-      }));
+      .map(line => {
+        const normalizedMode = normalizeMode(city, line.mode);
+        const route =
+          (routesByStation[routeLookupKey(normalizedMode, line.stationId)] ?? []).find(item => item.id === line.routeId) ??
+          (linesByMode[normalizedMode] ?? []).find(item => item.id === line.routeId);
+
+        return {
+          provider: resolveBackendProvider(city, line.mode),
+          line: line.routeId,
+          stop: line.stationId,
+          ...(line.direction ? {direction: serializeUiDirection(city, line.mode, line.direction)} : {}),
+          headsign0: route?.headsign0 ?? undefined,
+          headsign1: route?.headsign1 ?? undefined,
+          directions: route?.directions ?? undefined,
+          displayType: getPersistedDisplayType(displayPresetsByLine[line.id] ?? inferDisplayPreset(line)),
+          label: line.label.trim() || undefined,
+          secondaryLabel: line.secondaryLabel.trim() || undefined,
+          textColor: line.textColor || undefined,
+          nextStops: line.displayFormat === 'times-line' ? line.nextStops : undefined,
+          displayFormat: line.displayFormat,
+          primaryContent: line.primaryContent,
+          secondaryContent: line.displayFormat === 'two-line' ? line.secondaryContent : undefined,
+        };
+      });
 
     return {
       name: presetName.trim() || 'Display 1',
@@ -862,13 +1007,13 @@ export default function DisplayEditorScreen() {
       scheduleDays: customDisplayScheduleEnabled ? displayDays : [],
       config: {
         brightness: displayMetadata.brightness,
-        displayType: displayPresetsByLine['line-1'] ?? DEFAULT_DISPLAY_PRESET,
+        displayType: getPersistedDisplayType(displayPresetsByLine['line-1'] ?? DEFAULT_DISPLAY_PRESET),
         scrolling: displayMetadata.scrolling,
         arrivalsToDisplay: Math.max(1, Math.min(3, payloadLines.length)),
         lines: payloadLines,
       },
     };
-  }, [city, customDisplayScheduleEnabled, displayDays, displayMetadata.brightness, displayMetadata.paused, displayMetadata.priority, displayMetadata.scrolling, displayMetadata.sortOrder, displayPresetsByLine, displaySchedule.end, displaySchedule.start, lines, presetName]);
+  }, [city, customDisplayScheduleEnabled, displayDays, displayMetadata.brightness, displayMetadata.paused, displayMetadata.priority, displayMetadata.scrolling, displayMetadata.sortOrder, displayPresetsByLine, displaySchedule.end, displaySchedule.start, lines, linesByMode, presetName, routesByStation]);
 
   const displayValidationError = useMemo(() => validateDisplayDraft(draftPayload), [draftPayload]);
   const canAutoConfirmCurrentPreset =
@@ -894,7 +1039,7 @@ export default function DisplayEditorScreen() {
             ...draftPayload,
             config: {
               ...draftPayload.config,
-              displayType: saveDisplayPresetsByLine['line-1'] ?? DEFAULT_DISPLAY_PRESET,
+              displayType: getPersistedDisplayType(saveDisplayPresetsByLine['line-1'] ?? DEFAULT_DISPLAY_PRESET),
             },
           },
     [displayPresetsByLine, draftPayload, saveDisplayPresetsByLine],
@@ -1027,9 +1172,10 @@ export default function DisplayEditorScreen() {
             const route = routes.find(item => item.id === line.routeId);
             const arrival = arrivals.find(item => item.lineId === line.id);
             const stationName = resolveSelectedStationForLine(line, city, stationsByMode, stationsByLine)?.name;
+            const directionDestination = getRouteHeadsign(city, mode, route, line.direction);
             return {
               line: route?.label ?? line.routeId,
-              destination: arrival?.destination ?? stationName ?? (line.label.trim() || 'Selected stop'),
+              destination: arrival?.destination ?? directionDestination ?? stationName ?? (line.label.trim() || 'Selected stop'),
               minutes: arrival?.minutes ?? 0,
             };
           })
@@ -1272,20 +1418,25 @@ export default function DisplayEditorScreen() {
           ? buildNextArrivalTimes(3, line.nextStops).join(', ')
           : buildNextArrivalTimes(etaMinutes ?? 2, line.nextStops).join(', ');
         const routePreviewLabel = route?.label ?? line.routeId ?? '';
-        const directionLabel = getPreviewSecondaryLabel(city, safeMode, routePreviewLabel, line.direction, line.routeId);
+        const directionLabel = getDirectionCueLabel(city, safeMode, line.direction, route ?? line.routeId);
+        const headsignLabel = getHeadsignLabel(city, safeMode, line.direction, route ?? line.routeId, routePreviewLabel);
         const stopName = station?.name ?? (mockEta ? getMockStopName(city, safeMode) : '');
-        const primaryPreviewText = resolveDisplayContent(line.primaryContent, stopName, directionLabel, line.label);
-        const secondaryPreviewText = resolveDisplayContent(line.secondaryContent, stopName, directionLabel, line.secondaryLabel || (mockEta ? directionLabel : ''));
+        const primaryPreviewText = resolveDisplayContent(line.primaryContent, stopName, directionLabel, headsignLabel, line.label);
+        const secondaryPreviewText = resolveDisplayContent(
+          line.secondaryContent,
+          stopName,
+          directionLabel,
+          headsignLabel,
+          line.secondaryLabel || (mockEta ? (line.secondaryContent === 'headsign' ? headsignLabel : directionLabel) : ''),
+        );
         const previewTitle = stopName ? primaryPreviewText : '';
         const previewSubLine =
           !stopName
             ? undefined
-            : displayPreset === 3
-              ? secondaryPreviewText
-              : displayPreset === 4 || displayPreset === 5
+            : displayPreset === 4 || displayPreset === 5 || displayPreset === 6
                 ? etaListText
                 : undefined;
-        const previewSubLineColor = displayPreset === 4 || displayPreset === 5 ? '#E5C15A' : undefined;
+        const previewSubLineColor = displayPreset === 4 || displayPreset === 5 || displayPreset === 6 ? '#E5C15A' : undefined;
 
         const isBusBadge = city === 'new-york' && safeMode === 'bus';
         const isChicagoTrainBadge = city === 'chicago' && safeMode === 'train';
@@ -1295,11 +1446,14 @@ export default function DisplayEditorScreen() {
         const isRailLineBadge = isNycRailMode(safeMode);
         const isCommuterRailBadge = safeMode === 'commuter-rail';
 
-        const badgeShape: Display3DSlot['badgeShape'] = (isBusBadge || isRailLineBadge || isChicagoTrainBadge || isBostonTrainBadge || isBostonFerryBadge || isPhillyRailBadge)
-          ? 'pill'
-          : isCommuterRailBadge
-            ? 'rail'
-            : 'circle';
+        const badgeShape: Display3DSlot['badgeShape'] =
+          city === 'new-york' && (safeMode === 'lirr' || safeMode === 'mnr')
+            ? 'bar'
+            : (isBusBadge || isRailLineBadge || isChicagoTrainBadge || isBostonTrainBadge || isBostonFerryBadge || isPhillyRailBadge)
+                ? 'pill'
+                : isCommuterRailBadge
+                  ? 'rail'
+                  : 'circle';
 
         return {
           id: line.id,
@@ -1466,7 +1620,7 @@ export default function DisplayEditorScreen() {
           <Animated.View style={[styles.wizardFixedPreview, previewAnimatedStyle]}>
             <DashboardPreviewSection
               slots={previewSlots}
-              displayType={liveDisplayType}
+              displayType={getPersistedDisplayType(liveDisplayType)}
               onSelectSlot={handleSelectSlotForEdit}
               onReorderSlot={reorderLineByHold}
               onDragStateChange={setPreviewDragging}
@@ -2040,29 +2194,6 @@ function RouteGridPicker({
   );
 }
 
-function DirectionToggle({value, onChange}: {value: Direction; onChange: (direction: Direction) => void}) {
-  return (
-    <View style={styles.sectionBlock}>
-      <Text style={styles.sectionLabel}>Direction</Text>
-      <View style={styles.segmented}>
-        {(['uptown', 'downtown'] as Direction[]).map(direction => {
-          const active = direction === value;
-          return (
-            <Pressable
-              key={direction}
-              style={[styles.segment, active && styles.segmentActive]}
-              onPress={() => onChange(direction)}>
-              <Text style={[styles.segmentText, active && styles.segmentTextActive]}>
-                {direction === 'uptown' ? 'Uptown / North' : 'Downtown / South'}
-              </Text>
-            </Pressable>
-          );
-        })}
-      </View>
-    </View>
-  );
-}
-
 function ScheduleTimingEditor({
   start,
   end,
@@ -2265,11 +2396,17 @@ function DisplayPresetPickerStep({
   onChangeLine: (next: Partial<LinePick>) => void;
   onSelect: (preset: number) => void;
 }) {
+  const presetOptions = getDisplayPresetOptionsForMode(city, line.mode);
+  const visibleSelectedPreset =
+    typeof selectedPreset === 'number' && presetOptions.some(option => option.id === selectedPreset)
+      ? selectedPreset
+      : (presetOptions[0]?.id ?? DEFAULT_DISPLAY_PRESET);
   const carouselRef = useRef<ScrollView | null>(null);
-  const [visiblePresetId, setVisiblePresetId] = useState<number>(selectedPreset ?? DISPLAY_PRESET_OPTIONS[0].id);
+  const [visiblePresetId, setVisiblePresetId] = useState<number>(visibleSelectedPreset);
   const routeLabel = selectedRoute?.label ?? line.routeId ?? '?';
   const routeBadgeLabel = getLocalRouteBadgeLabel(city, line.mode, line.routeId, routeLabel);
-  const directionLabel = getPreviewSecondaryLabel(city, line.mode, routeLabel, line.direction, line.routeId);
+  const directionLabel = getDirectionCueLabel(city, line.mode, line.direction, selectedRoute ?? line.routeId);
+  const headsignLabel = getHeadsignLabel(city, line.mode, line.direction, selectedRoute ?? line.routeId, routeLabel);
   const routeColor = selectedRoute?.color ?? '#0C7A59';
   const routeTextColor = selectedRoute?.textColor ?? '#E8FFF8';
   const stopLabel = selectedStation?.name?.trim() || 'Selected stop';
@@ -2279,11 +2416,11 @@ function DisplayPresetPickerStep({
   const etaText = arrival ? `${Math.max(0, Math.round(arrival.minutes))}m` : '3m';
   const etaListText = buildNextArrivalTimes(arrival?.minutes ?? 3, line.nextStops).join(', ');
   useEffect(() => {
-    const index = Math.max(0, DISPLAY_PRESET_OPTIONS.findIndex(option => option.id === selectedPreset));
-    const presetId = DISPLAY_PRESET_OPTIONS[index]?.id ?? DISPLAY_PRESET_OPTIONS[0].id;
+    const index = Math.max(0, presetOptions.findIndex(option => option.id === visibleSelectedPreset));
+    const presetId = presetOptions[index]?.id ?? presetOptions[0]?.id ?? DEFAULT_DISPLAY_PRESET;
     setVisiblePresetId(presetId);
     carouselRef.current?.scrollTo({x: index * PRESET_CAROUSEL_ITEM_WIDTH, animated: true});
-  }, [selectedPreset]);
+  }, [visibleSelectedPreset, presetOptions]);
 
   return (
     <View style={styles.stepSection}>
@@ -2296,19 +2433,21 @@ function DisplayPresetPickerStep({
         snapToInterval={PRESET_CAROUSEL_ITEM_WIDTH}
         decelerationRate="fast"
         onScroll={event => {
-          const nextPresetId = getPresetIdForOffset(event.nativeEvent.contentOffset.x);
+          const nextPresetId = getPresetIdForOffset(event.nativeEvent.contentOffset.x, presetOptions);
           setVisiblePresetId(prev => (prev === nextPresetId ? prev : nextPresetId));
         }}
         scrollEventThrottle={16}
         contentContainerStyle={styles.presetCarousel}>
-        {DISPLAY_PRESET_OPTIONS.map((option, index) => {
+        {presetOptions.map((option, index) => {
           const behavior = getPresetBehavior(option.id);
           const optionLabel = getPresetLabelForMode(city, line.mode, option.id, option.label);
+          const optionDescription = getPresetDescriptionForMode(city, line.mode, option.id, option.description);
           const primaryText =
             resolveDisplayContent(
               line.label.trim().length > 0 ? 'custom' : behavior.primaryContent,
               stopLabel,
               directionLabel,
+              headsignLabel,
               line.label,
             ) || routeLabel || 'Preview';
           const secondaryText =
@@ -2316,6 +2455,7 @@ function DisplayPresetPickerStep({
               behavior.supportsBottomCustom && line.secondaryLabel.trim().length > 0 ? 'custom' : behavior.secondaryContent,
               secondaryStopLabel,
               directionLabel,
+              headsignLabel,
               line.secondaryLabel,
             ) || routeLabel || 'Preview';
 
@@ -2324,8 +2464,9 @@ function DisplayPresetPickerStep({
               key={option.id}
               option={option}
               optionLabel={optionLabel}
+              optionDescription={optionDescription}
               index={index}
-              active={option.id === selectedPreset}
+              active={option.id === visibleSelectedPreset}
               routeLabel={routeBadgeLabel}
               routeColor={routeColor}
               routeTextColor={routeTextColor}
@@ -2339,13 +2480,13 @@ function DisplayPresetPickerStep({
         })}
       </ScrollView>
       <View style={styles.presetCarouselIndicators}>
-        {DISPLAY_PRESET_OPTIONS.map(option => {
+        {presetOptions.map(option => {
           const active = option.id === visiblePresetId;
           return <View key={option.id} style={[styles.presetCarouselIndicator, active && styles.presetCarouselIndicatorActive]} />;
         })}
       </View>
       <View style={styles.customTextEditor}>
-        {getPresetBehavior(selectedPreset ?? visiblePresetId).displayFormat === 'times-line' ? (
+        {getPresetBehavior(visibleSelectedPreset ?? visiblePresetId).displayFormat === 'times-line' ? (
           <View style={styles.sectionBlock}>
             <Text style={styles.sectionLabel}>Additional Times</Text>
             <View style={styles.segmented}>
@@ -2424,6 +2565,7 @@ function BuilderProgress({
 function PresetChoiceCard({
   option,
   optionLabel,
+  optionDescription,
   index,
   active,
   routeLabel,
@@ -2437,6 +2579,7 @@ function PresetChoiceCard({
 }: {
   option: (typeof DISPLAY_PRESET_OPTIONS)[number];
   optionLabel: string;
+  optionDescription: string;
   index: number;
   active: boolean;
   routeLabel: string;
@@ -2516,7 +2659,7 @@ function PresetChoiceCard({
             {active ? <Text style={styles.choiceRowCheckText}>✓</Text> : null}
           </View>
         </View>
-        <Text style={styles.presetChoiceDescription}>{option.description}</Text>
+        <Text style={styles.presetChoiceDescription}>{optionDescription}</Text>
         <PresetDiagram
           presetId={option.id}
           routeLabel={routeLabel}
@@ -2551,9 +2694,8 @@ function PresetDiagram({
   etaText?: string;
   etaListText?: string;
 }) {
-  const isDirection = presetId === 2 || presetId === 5;
-  const isDualLabel = presetId === 3;
-  const hasSecondaryEtaLine = presetId === 4 || presetId === 5;
+  const isDualLabel = false;
+  const hasSecondaryEtaLine = presetId === 4 || presetId === 5 || presetId === 6;
 
   return (
     <View style={styles.presetDiagramFrame}>
@@ -2974,13 +3116,24 @@ function LinePickerStep({
                       return (
                         <Pressable
                           key={route.id}
-                          style={[styles.lirrBranchRow, isSelected && styles.lirrBranchRowSelected]}
+                          style={[
+                            styles.lirrBranchRow,
+                            {backgroundColor: route.color, borderColor: isSelected ? '#FFFFFF' : route.color},
+                            isSelected && styles.lirrBranchRowSelected,
+                          ]}
                           onPress={() => handleSelectLine(route)}>
-                          <View style={[styles.lirrBranchAccent, {backgroundColor: route.color}]} />
-                          <Text style={[styles.lirrBranchName, isSelected && styles.lirrBranchNameSelected]}>
+                          <Text
+                            style={[
+                              styles.lirrBranchName,
+                              {color: route.textColor || '#FFFFFF'},
+                              isSelected && styles.lirrBranchNameSelected,
+                            ]}
+                            numberOfLines={1}
+                            adjustsFontSizeToFit
+                            minimumFontScale={0.8}>
                             {route.displayLabel}
                           </Text>
-                          {isSelected && <Text style={[styles.lirrBranchCheck, {color: route.color}]}>✓</Text>}
+                          {isSelected && <Text style={[styles.lirrBranchCheck, {color: route.textColor || '#FFFFFF'}]}>✓</Text>}
                         </Pressable>
                       );
                     })}
@@ -3122,6 +3275,12 @@ function StopPickerStep({
   const term = search.trim().toLowerCase();
   const isBusGrouped = city === 'new-york' && selectedMode === 'bus';
   const isChicagoTrainMode = city === 'chicago' && selectedMode === 'train';
+  const isNycSubwayMode = city === 'new-york' && selectedMode === 'train';
+  const isNycLirrMode = city === 'new-york' && selectedMode === 'lirr';
+  const isNycBusMode = city === 'new-york' && selectedMode === 'bus';
+  const isNycMnrMode = city === 'new-york' && selectedMode === 'mnr';
+  const useWideDirectionToggle = isChicagoTrainMode || isNycSubwayMode || isNycLirrMode || isNycBusMode || isNycMnrMode;
+  const directionOptions = getLocalDirectionOptions(city, selectedMode, selectedRoute ?? selectedRouteId);
 
   const filtered = useMemo(() => {
     if (!term) return stations;
@@ -3147,27 +3306,26 @@ function StopPickerStep({
   return (
     <View style={[styles.stepContainer, styles.stopPickerStepFull]}>
       <View style={styles.stopPickerHeader}>
-        <View style={{flex: 1}} />
-        <View style={[styles.stopPickerDirRow, isChicagoTrainMode && styles.stopPickerDirRowChicagoTrain]}>
-          {(['uptown', 'downtown'] as Direction[]).map(dir => {
+        <View style={[styles.stopPickerDirRow, useWideDirectionToggle && styles.stopPickerDirRowChicagoTrain]}>
+          {directionOptions.map(dir => {
             const active = selectedDirection === dir;
-            const label = getLocalDirectionLabel(city, selectedMode, dir, selectedRouteId, 'toggle');
+            const label = getDirectionToggleLabel(city, selectedMode, dir, selectedRoute ?? selectedRouteId);
             return (
               <Pressable
                 key={dir}
                 style={[
                   styles.stopPickerDirPill,
-                  isChicagoTrainMode && styles.stopPickerDirPillChicagoTrain,
+                  useWideDirectionToggle && styles.stopPickerDirPillChicagoTrain,
                   active && styles.stopPickerDirPillActive,
                 ]}
                 onPress={() => onSelectDirection(dir)}>
                 <Text
                   style={[
                     styles.stopPickerDirText,
-                    isChicagoTrainMode && styles.stopPickerDirTextChicagoTrain,
+                    useWideDirectionToggle && styles.stopPickerDirTextChicagoTrain,
                     active && styles.stopPickerDirTextActive,
                   ]}
-                  numberOfLines={isChicagoTrainMode ? 2 : 1}>
+                  numberOfLines={useWideDirectionToggle ? 2 : 1}>
                   {label}
                 </Text>
               </Pressable>
@@ -3237,6 +3395,16 @@ function StopPickerStep({
   );
 }
 
+function formatStationLineSummary(lines: TransitStationLine[]) {
+  const labels = lines
+    .map(line => (line.shortName || line.id).trim())
+    .filter(label => label.length > 0);
+  if (labels.length === 0) return null;
+  const visible = labels.slice(0, 6);
+  const suffix = labels.length > visible.length ? ` +${labels.length - visible.length}` : '';
+  return visible.join(' · ') + suffix;
+}
+
 function StopRow({
   station,
   selected,
@@ -3252,12 +3420,15 @@ function StopRow({
   showDot: boolean;
   onPress: () => void;
 }) {
+  const lineSummary = formatStationLineSummary(station.lines);
+
   return (
     <Pressable style={[styles.stopRow, selected && styles.stopRowSelected]} onPress={onPress}>
       {showDot && routeColor ? <View style={[styles.stopLineDot, {backgroundColor: routeColor}]} /> : <View style={styles.stopLineDotEmpty} />}
       <View style={styles.stopRowInfo}>
         <Text style={styles.stationName}>{station.name}</Text>
         {station.area ? <Text style={styles.stationMeta}>{station.area}</Text> : null}
+        {lineSummary ? <Text style={styles.stationLineSummary}>Serves {lineSummary}</Text> : null}
       </View>
       {selected ? (
         <Animated.View style={[styles.stopCheckmark, {transform: [{scale: checkAnim}]}]}>
@@ -3299,7 +3470,7 @@ function DoneStep({
   const liveStatusText = '';
   const presetOption = DISPLAY_PRESET_OPTIONS.find(option => option.id === displayPreset);
   const presetLabel = getPresetLabelForMode(city, line.mode, displayPreset, presetOption?.label ?? `Display Type ${displayPreset}`);
-  const directionLabel = getDirectionSummaryLabel(city, line.mode, line.direction, line.routeId);
+  const directionLabel = getDirectionSummaryLabel(city, line.mode, line.direction, selectedRoute ?? line.routeId);
 
   return (
     <View style={styles.doneStepContainer}>
@@ -3388,14 +3559,16 @@ function ReviewDoneStep({
 }) {
   const presetOption = DISPLAY_PRESET_OPTIONS.find(option => option.id === displayPreset);
   const presetLabel = getPresetLabelForMode(city, line.mode, displayPreset, presetOption?.label ?? `Display Type ${displayPreset}`);
-  const directionLabel = getDirectionSummaryLabel(city, line.mode, line.direction, line.routeId);
+  const directionLabel = getDirectionSummaryLabel(city, line.mode, line.direction, selectedRoute ?? line.routeId);
   const activePresetBehavior = getPresetBehavior(displayPreset);
   const routeLabel = selectedRoute?.label ?? line.routeId ?? 'Route';
-  const previewDirectionLabel = getPreviewSecondaryLabel(city, line.mode, routeLabel, line.direction, line.routeId);
+  const previewDirectionLabel = getDirectionCueLabel(city, line.mode, line.direction, selectedRoute ?? line.routeId);
+  const previewHeadsignLabel = getHeadsignLabel(city, line.mode, line.direction, selectedRoute ?? line.routeId, routeLabel);
   const topPlaceholder = resolveDisplayContent(
     activePresetBehavior.primaryContent,
     selectedStation?.name?.trim() || 'Selected stop',
     previewDirectionLabel,
+    previewHeadsignLabel,
     '',
   );
   const bottomPlaceholder = resolveDisplayContent(
@@ -3404,6 +3577,7 @@ function ReviewDoneStep({
       ? getRailPreviewRouteLabel(city, line.mode, routeLabel, line.routeId)
       : selectedStation?.area?.trim() || selectedStation?.name?.trim() || routeLabel || 'Route',
     previewDirectionLabel,
+    previewHeadsignLabel,
     '',
   );
 
@@ -3476,23 +3650,25 @@ function ReviewRow({label, value, onClear}: {label: string; value: string; onCle
 }
 
 // ─── Mini LED mockup inside each style row ────────────────────────────────────
-function StyleMockLed({city, preset, routeColor, routeLabel, routeId, destinationLabel, active, mode, direction, nextStops = 2, branchLabel, badgeShape = 'circle', hideBadgeLabel = false}: {
+function StyleMockLed({city, preset, routeColor, routeLabel, routeId, route, destinationLabel, active, mode, direction, nextStops = 2, branchLabel, badgeShape = 'circle', hideBadgeLabel = false}: {
   city: CityId;
   preset: number;
   routeColor: string;
   routeLabel: string;
   routeId?: string;
+  route?: Route;
   destinationLabel: string;
   active: boolean;
   mode: ModeId;
   direction: Direction;
   nextStops?: number;
   branchLabel?: string;
-  badgeShape?: 'circle' | 'pill' | 'rail';
+  badgeShape?: 'circle' | 'pill' | 'rail' | 'bar';
   hideBadgeLabel?: boolean;
 }) {
   const textOpacity = active ? 1 : 0.55;
-  const dirLabel = branchLabel ?? getDirectionLabel(city, mode, direction, routeId);
+  const dirLabel = getDirectionLabel(city, mode, direction, route ?? routeId);
+  const headsignLabel = branchLabel ?? getHeadsignLabel(city, mode, direction, route ?? routeId, routeLabel);
   const destLabel = destinationLabel.trim().length > 0 ? destinationLabel : 'Selected stop';
 
   const badge = (
@@ -3501,9 +3677,10 @@ function StyleMockLed({city, preset, routeColor, routeLabel, routeId, destinatio
         styles.mockBadge,
         badgeShape === 'pill' && styles.mockBadgePill,
         badgeShape === 'rail' && styles.mockBadgeRail,
+        badgeShape === 'bar' && styles.mockBadgeBar,
         {backgroundColor: routeColor, opacity: active ? 1 : 0.65},
       ]}>
-      {!hideBadgeLabel ? (
+      {!hideBadgeLabel && badgeShape !== 'bar' ? (
         <Text
           style={[
             styles.mockBadgeText,
@@ -3521,6 +3698,9 @@ function StyleMockLed({city, preset, routeColor, routeLabel, routeId, destinatio
   const dirText = (
     <Text style={[styles.mockText, {opacity: textOpacity}]} numberOfLines={1}>{dirLabel}</Text>
   );
+  const headsignText = (
+    <Text style={[styles.mockText, {opacity: textOpacity}]} numberOfLines={1}>{headsignLabel}</Text>
+  );
   const timeText = (
     <Text style={[styles.mockTimeText, {opacity: textOpacity}]}>3m</Text>
   );
@@ -3532,22 +3712,13 @@ function StyleMockLed({city, preset, routeColor, routeLabel, routeId, destinatio
   );
 
   const layout: Record<number, React.ReactNode> = {
-    // Destination: badge · stop name · arrival time
+    // Your Station: badge · stop name · arrival time
     1: <>{badge}<View style={styles.mockFlex}>{destText}</View>{timeText}</>,
     // Direction: badge · direction · arrival time
     2: <>{badge}<View style={styles.mockFlex}>{dirText}</View>{timeText}</>,
-    // Destination + Direction: badge · [stop name / direction] · arrival time
-    3: (
-      <>
-        {badge}
-        <View style={styles.mockCol}>
-          {destText}
-          {dirText}
-        </View>
-        {timeText}
-      </>
-    ),
-    // Destination + Upcoming Trains: badge · [stop name / arrival chips] · next arrival
+    // Headsign: badge · destination · arrival time
+    3: <>{badge}<View style={styles.mockFlex}>{headsignText}</View>{timeText}</>,
+    // Your Station + Upcoming Trains: badge · [stop name / arrival chips] · next arrival
     4: (
       <>
         {badge}
@@ -3577,10 +3748,25 @@ function StyleMockLed({city, preset, routeColor, routeLabel, routeId, destinatio
         {timeText}
       </>
     ),
+    // Headsign + Upcoming Trains: badge · [headsign / arrival chips] · next arrival
+    6: (
+      <>
+        {badge}
+        <View style={styles.mockCol}>
+          {headsignText}
+          <View style={styles.mockMiniTags}>
+            {mockUpcomingTimes.map(label => (
+              <React.Fragment key={`headsign-upcoming-${label}`}>{arrivalChip(label)}</React.Fragment>
+            ))}
+          </View>
+        </View>
+        {timeText}
+      </>
+    ),
   };
 
   return (
-    <View style={[styles.mockScreen, (preset >= 3) && styles.mockScreenTall, active && styles.mockScreenActive]}>
+    <View style={[styles.mockScreen, [4, 5, 6].includes(preset) && styles.mockScreenTall, active && styles.mockScreenActive]}>
       {layout[preset] ?? layout[1]}
     </View>
   );
@@ -3607,8 +3793,17 @@ function LedStylePickerStep({
   onPreview: (preset: number) => void;
   onSelect: (preset: number) => void;
 }) {
-  const [localPreset, setLocalPreset] = useState(displayType || DEFAULT_DISPLAY_PRESET);
+  const presetOptions = getDisplayPresetOptionsForMode(city, line.mode);
+  const visibleDisplayType =
+    presetOptions.some(option => option.id === displayType)
+      ? displayType
+      : (presetOptions[0]?.id ?? DEFAULT_DISPLAY_PRESET);
+  const [localPreset, setLocalPreset] = useState(visibleDisplayType);
   const isTrainCountPreset = (id: number) => getPresetBehavior(id).displayFormat === 'times-line';
+
+  useEffect(() => {
+    setLocalPreset(visibleDisplayType);
+  }, [visibleDisplayType]);
 
   const handleTap = (id: number) => {
     onPreview(id);
@@ -3638,6 +3833,7 @@ function LedStylePickerStep({
   const isChicagoTrain = city === 'chicago' && line.mode === 'train';
   const isPhillyRail = city === 'philadelphia' && line.mode === 'train';
   const isRailPreviewMode = isRailLinePreviewMode(city, line.mode);
+  const shouldUseRailBranchLabel = isRailPreviewMode && !(city === 'new-york' && isNycRail);
   const routeBadgeLabel = getLocalRouteBadgeLabel(city, line.mode, line.routeId, routeLabel);
   const linePreviewLabel = getRailPreviewRouteLabel(city, line.mode, routeLabel, line.routeId);
   const getOptionLabel = (id: number, defaultLabel: string) =>
@@ -3647,7 +3843,7 @@ function LedStylePickerStep({
     <View style={styles.stepSection}>
       <Text style={styles.mockPreviewNote}>Note: Previews use sample data for illustration only.</Text>
       <View style={styles.styleRowList}>
-        {DISPLAY_PRESET_OPTIONS.map(option => {
+        {presetOptions.map(option => {
           const isActive = option.id === localPreset;
           const showCountPicker = isActive && isTrainCountPreset(option.id);
           return (
@@ -3666,13 +3862,20 @@ function LedStylePickerStep({
                   routeColor={routeColor}
                   routeLabel={routeBadgeLabel}
                   routeId={line.routeId}
+                  route={selectedRoute}
                   destinationLabel={selectedStopLabel}
                   active={isActive}
                   mode={line.mode}
                   direction={line.direction}
                   nextStops={isActive ? activeNextStops : 2}
-                  branchLabel={isRailPreviewMode ? linePreviewLabel : undefined}
-                  badgeShape={isNycRail || isChicagoTrain || isPhillyRail || (city === 'boston' && line.mode === 'train') || (city === 'boston' && line.mode === 'ferry') ? 'pill' : isCommuterRail ? 'rail' : 'circle'}
+                  branchLabel={shouldUseRailBranchLabel ? linePreviewLabel : undefined}
+                  badgeShape={city === 'new-york' && (line.mode === 'lirr' || line.mode === 'mnr')
+                    ? 'bar'
+                    : isNycRail || isChicagoTrain || isPhillyRail || (city === 'boston' && line.mode === 'train') || (city === 'boston' && line.mode === 'ferry')
+                      ? 'pill'
+                      : isCommuterRail
+                        ? 'rail'
+                        : 'circle'}
                   hideBadgeLabel={isNycRail}
                 />
                 {showCountPicker ? (
@@ -3765,7 +3968,7 @@ function WizardReviewStep({
   onRemoveStop: () => void;
 }) {
   const presetOption = DISPLAY_PRESET_OPTIONS.find(o => o.id === displayPreset);
-  const directionLabel = getDirectionSummaryLabel(city, line.mode, line.direction, line.routeId);
+  const directionLabel = getDirectionSummaryLabel(city, line.mode, line.direction, selectedRoute ?? line.routeId);
   const activePresetBehavior = getPresetBehavior(displayPreset);
 
   return (

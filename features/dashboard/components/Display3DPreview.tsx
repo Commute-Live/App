@@ -7,7 +7,7 @@ export type Display3DSlot = {
   color: string;
   textColor: string;
   routeLabel: string;
-  badgeShape?: 'circle' | 'pill' | 'rail';
+  badgeShape?: 'circle' | 'pill' | 'rail' | 'bar';
   selected: boolean;
   stopName: string;
   subLine?: string;
@@ -105,32 +105,38 @@ export default function Display3DPreview({
               onTouchMove={(event: GestureResponderEvent) => handleTouchMove(slot.id, event.nativeEvent.pageY)}
               onPressOut={endDrag}
               delayLongPress={260}>
-              <View
-                style={[
-                  styles.routeBadge,
-                  compact && styles.routeBadgeCompact,
-                  slot.badgeShape === 'pill' && styles.routeBadgePill,
-                  compact && slot.badgeShape === 'pill' && styles.routeBadgePillCompact,
-                  slot.badgeShape === 'rail' && styles.routeBadgeRail,
-                  compact && slot.badgeShape === 'rail' && styles.routeBadgeRailCompact,
-                  {backgroundColor: slot.color},
-                ]}>
-                <Text
-                  adjustsFontSizeToFit
-                  minimumFontScale={0.72}
-                  numberOfLines={1}
+              {slot.badgeShape === 'bar' ? (
+                <View style={[styles.routeBadgeBarWrap, compact && styles.routeBadgeBarWrapCompact]}>
+                  <View style={[styles.routeBadgeBar, compact && styles.routeBadgeBarCompact, {backgroundColor: slot.color}]} />
+                </View>
+              ) : (
+                <View
                   style={[
-                    styles.routeBadgeText,
-                    slot.badgeShape === 'pill' && styles.routeBadgeTextPill,
-                    compact && styles.routeBadgeTextCompact,
-                    compact && slot.badgeShape === 'pill' && styles.routeBadgeTextPillCompact,
-                    slot.badgeShape === 'rail' && styles.routeBadgeTextRail,
-                    compact && slot.badgeShape === 'rail' && styles.routeBadgeTextRailCompact,
-                    {color: slot.textColor},
+                    styles.routeBadge,
+                    compact && styles.routeBadgeCompact,
+                    slot.badgeShape === 'pill' && styles.routeBadgePill,
+                    compact && slot.badgeShape === 'pill' && styles.routeBadgePillCompact,
+                    slot.badgeShape === 'rail' && styles.routeBadgeRail,
+                    compact && slot.badgeShape === 'rail' && styles.routeBadgeRailCompact,
+                    {backgroundColor: slot.color},
                   ]}>
-                  {slot.routeLabel}
-                </Text>
-              </View>
+                  <Text
+                    adjustsFontSizeToFit
+                    minimumFontScale={0.72}
+                    numberOfLines={1}
+                    style={[
+                      styles.routeBadgeText,
+                      slot.badgeShape === 'pill' && styles.routeBadgeTextPill,
+                      compact && styles.routeBadgeTextCompact,
+                      compact && slot.badgeShape === 'pill' && styles.routeBadgeTextPillCompact,
+                      slot.badgeShape === 'rail' && styles.routeBadgeTextRail,
+                      compact && slot.badgeShape === 'rail' && styles.routeBadgeTextRailCompact,
+                      {color: slot.textColor},
+                    ]}>
+                    {slot.routeLabel}
+                  </Text>
+                </View>
+              )}
               <View style={styles.slotBody}>
                 {slot.stopName ? (
                   <Text
@@ -289,6 +295,10 @@ const styles = StyleSheet.create({
   routeBadgePillCompact: {minWidth: 44, height: 26, borderRadius: 8, paddingHorizontal: 6},
   routeBadgeRail: {width: 58, height: 48, borderRadius: 12, paddingHorizontal: 5},
   routeBadgeRailCompact: {width: 40, height: 30, borderRadius: 8, paddingHorizontal: 3},
+  routeBadgeBarWrap: {width: 48, height: 48, alignItems: 'center', justifyContent: 'center'},
+  routeBadgeBarWrapCompact: {width: 30, height: 30},
+  routeBadgeBar: {width: 14, height: 44, borderRadius: 4},
+  routeBadgeBarCompact: {width: 10, height: 28, borderRadius: 3},
   routeBadgeText: {fontSize: 20, fontWeight: '900'},
   routeBadgeTextPill: {fontSize: 15, lineHeight: 18, textAlign: 'center', includeFontPadding: false},
   routeBadgeTextCompact: {fontSize: 13},

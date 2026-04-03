@@ -1,148 +1,96 @@
 import type {CityId} from '../constants/cities';
-import type {TransitUiMode} from '../types/transit';
+import type {TransitLineDirection, TransitUiMode} from '../types/transit';
+import type {DirectionVariant, TransitRouteRecord, UiDirection} from './transit/frontendTypes';
+import {getTransitCityModule, resolveCityModeFromBackendProvider} from './transit/registry';
 
-export type UiDirection = 'uptown' | 'downtown';
-type DirectionVariant = 'toggle' | 'bound' | 'summary';
 type LocalMode = TransitUiMode;
+type LocalRouteRef =
+  | string
+  | {
+      id?: string;
+      label?: string;
+      headsign0?: string | null;
+      headsign1?: string | null;
+      directions?: TransitLineDirection[] | null;
+    }
+  | null
+  | undefined;
 
-const SEPTA_TROLLEY_ROUTE_LABELS: Record<string, string> = {
-  D1: '101',
-  D2: '102',
-  G1: '15',
-  T1: '10',
-  T2: '11',
-  T3: '13',
-  T4: '34',
-  T5: '36',
-  'T BUS': 'T Bus',
-  'T5 BUS': '36 Bus',
-};
-
-const BOSTON_SUBWAY_BADGE_LABELS: Record<string, string> = {
-  RED: 'RED',
-  ORANGE: 'ORG',
-  BLUE: 'BLU',
-  GREEN: 'GRN',
-  'GREEN-B': 'B',
-  'GREEN-C': 'C',
-  'GREEN-D': 'D',
-  'GREEN-E': 'E',
-  MATTAPAN: 'MAT',
-};
-
-const BOSTON_COMMUTER_RAIL_BADGE_LABELS: Record<string, string> = {
-  CAPEFLYER: 'CAPE',
-  'CR-FAIRMOUNT': 'FAIR',
-  'CR-FITCHBURG': 'FITCH',
-  'CR-FOXBORO': 'FOXB',
-  'CR-FRANKLIN': 'FRAN',
-  'CR-GREENBUSH': 'GRNB',
-  'CR-HAVERHILL': 'HAVE',
-  'CR-KINGSTON': 'KING',
-  'CR-LOWELL': 'LOWE',
-  'CR-NEEDHAM': 'NEED',
-  'CR-NEWBEDFORD': 'NBED',
-  'CR-NEWBURYPORT': 'NBPT',
-  'CR-PROVIDENCE': 'PROV',
-  'CR-WORCESTER': 'WORC',
-};
-
-const BOSTON_FERRY_BADGE_LABELS: Record<string, string> = {
-  'BOAT-EASTBOSTON': 'EB',
-  'BOAT-F1': 'F1',
-  'BOAT-F4': 'F4',
-  'BOAT-F6': 'F6',
-  'BOAT-F7': 'F7',
-  'BOAT-F8': 'F8',
-  'BOAT-LYNN': 'LYNN',
-};
-
-const MTA_MNR_LINE_LABELS: Record<string, string> = {
-  '1': 'Hudson',
-  '2': 'Harlem',
-  '3': 'New Haven',
-  '4': 'New Canaan',
-  '5': 'Danbury',
-  '6': 'Waterbury',
-};
-
-const CTA_TRAIN_DIRECTION_COPY: Record<
-  string,
-  Record<UiDirection, Record<DirectionVariant, string>>
-> = {
-  BLUE: {
-    uptown: {toggle: "O'Hare", bound: "O'Hare-bound", summary: "O'Hare"},
-    downtown: {toggle: 'Forest Park', bound: 'Forest Park-bound', summary: 'Forest Park'},
-  },
-  RED: {
-    uptown: {toggle: 'Howard', bound: 'Howard-bound', summary: 'Howard'},
-    downtown: {toggle: '95th', bound: '95th-bound', summary: '95th'},
-  },
-  BRN: {
-    uptown: {toggle: 'Kimball', bound: 'Kimball-bound', summary: 'Kimball'},
-    downtown: {toggle: 'Loop', bound: 'Loop-bound', summary: 'Loop'},
-  },
-  G: {
-    uptown: {toggle: 'Harlem/Lake', bound: 'Harlem/Lake-bound', summary: 'Harlem/Lake'},
-    downtown: {
-      toggle: 'Ashland/63rd or Cottage Grove',
-      bound: 'Ashland/63rd or Cottage Grove',
-      summary: 'Ashland/63rd or Cottage Grove',
-    },
-  },
-  ORG: {
-    uptown: {toggle: 'Loop', bound: 'Loop-bound', summary: 'Loop'},
-    downtown: {toggle: 'Midway', bound: 'Midway-bound', summary: 'Midway'},
-  },
-  P: {
-    uptown: {toggle: 'Linden', bound: 'Linden-bound', summary: 'Linden'},
-    downtown: {toggle: 'Loop', bound: 'Loop-bound', summary: 'Loop'},
-  },
-  PINK: {
-    uptown: {toggle: 'Loop', bound: 'Loop-bound', summary: 'Loop'},
-    downtown: {toggle: '54th/Cermak', bound: '54th/Cermak-bound', summary: '54th/Cermak'},
-  },
-  Y: {
-    uptown: {toggle: 'Skokie', bound: 'Skokie-bound', summary: 'Skokie'},
-    downtown: {toggle: 'Howard', bound: 'Howard-bound', summary: 'Howard'},
-  },
-};
+export type {UiDirection};
 
 const normalizeToken = (value: string | null | undefined) => value?.trim().toUpperCase() ?? '';
 
-const trimLineSuffix = (value: string) => value.replace(/\s+Line$/i, '').trim();
-
-const stripBostonRoutePrefix = (value: string) => value.replace(/^CR-/i, '').trim();
-
-const compactBostonCommuterRailLabel = (value: string) =>
-  value
-    .replace(/\s+Line$/i, '')
-    .replace(/\s+Event Service$/i, '')
-    .trim();
-
-const compactBostonFerryLabel = (routeId: string, label: string) => {
-  const normalizedId = normalizeToken(routeId);
-  if (normalizedId === 'BOAT-EASTBOSTON') return 'East Boston';
-  if (normalizedId === 'BOAT-LYNN') return 'Lynn';
-  if (/^BOAT-F\d+$/i.test(normalizedId)) return normalizedId.replace(/^BOAT-/i, '');
-  return label.trim();
-};
-
-const compactSeptaRailLabel = (routeLabel: string) => trimLineSuffix(routeLabel).trim();
-
-const resolveSeptaTrolleyLabel = (routeId: string, routeLabel: string) => {
-  const mapped = SEPTA_TROLLEY_ROUTE_LABELS[normalizeToken(routeId)];
-  if (mapped) return mapped;
-  const routeNumber = routeLabel.match(/^Route\s+(\d+)/i)?.[1];
-  return routeNumber ?? routeLabel.trim();
-};
-
 const defaultDirectionLabel = (direction: UiDirection, variant: DirectionVariant) => {
+  if (direction === 'westbound') return 'Westbound';
+  if (direction === 'eastbound') return 'Eastbound';
+  if (direction === 'outbound') return 'Outbound';
+  if (direction === 'inbound') return 'Inbound';
+  if (direction === 'dir0') return variant === 'summary' ? 'Direction 0' : 'Direction 0';
+  if (direction === 'dir1') return variant === 'summary' ? 'Direction 1' : 'Direction 1';
   if (variant === 'summary') {
     return direction === 'downtown' ? 'Downtown / South' : 'Uptown / North';
   }
   return direction === 'downtown' ? 'Downtown' : 'Uptown';
 };
+
+const getRouteId = (route: LocalRouteRef) => (typeof route === 'string' ? route : route?.id);
+
+export const getLocalDirectionMetadata = (
+  route: LocalRouteRef,
+  direction: UiDirection,
+) => {
+  if (!route || typeof route === 'string' || !Array.isArray(route.directions)) return null;
+  return route.directions.find(entry => entry.uiKey === direction) ?? null;
+};
+
+const getRouteDirectionMetadataLabel = (
+  route: LocalRouteRef,
+  direction: UiDirection,
+  variant: DirectionVariant,
+) => {
+  const metadata = getLocalDirectionMetadata(route, direction);
+  if (!metadata) return null;
+  if (variant === 'toggle') return metadata.toggleLabel;
+  if (variant === 'summary') return metadata.summaryLabel;
+  return metadata.boundLabel;
+};
+
+export const getLocalDirectionTerminal = (
+  route: LocalRouteRef,
+  direction: UiDirection,
+) => getLocalDirectionMetadata(route, direction)?.terminal ?? null;
+
+const NEW_YORK_DIRECTION_OPTIONS: Partial<Record<LocalMode, UiDirection[]>> = {
+  train: ['uptown', 'downtown'],
+  bus: ['dir0', 'dir1'],
+  lirr: ['westbound', 'eastbound'],
+  mnr: ['outbound', 'inbound'],
+};
+
+const DEFAULT_DIRECTION_OPTIONS: UiDirection[] = ['uptown', 'downtown'];
+
+export const getLocalDirectionOptions = (
+  city: CityId,
+  mode: LocalMode,
+  route?: LocalRouteRef,
+): UiDirection[] => {
+  if (route && typeof route !== 'string' && Array.isArray(route.directions)) {
+    const fromMetadata = route.directions.map(entry => entry.uiKey).filter((value, index, values) => values.indexOf(value) === index);
+    if (fromMetadata.length > 0) return fromMetadata;
+  }
+
+  if (city === 'new-york') {
+    return NEW_YORK_DIRECTION_OPTIONS[mode] ?? DEFAULT_DIRECTION_OPTIONS;
+  }
+
+  return DEFAULT_DIRECTION_OPTIONS;
+};
+
+export const getDefaultUiDirection = (
+  city: CityId,
+  mode: LocalMode,
+  route?: LocalRouteRef,
+): UiDirection => getLocalDirectionOptions(city, mode, route)[0] ?? 'uptown';
 
 export const inferMbtaMode = (stopId: string | null | undefined, lineId?: string | null): LocalMode => {
   const normalizedStopId = (stopId ?? '').trim();
@@ -158,25 +106,12 @@ export const inferUiModeFromProvider = (
   stopId?: string | null,
   lineId?: string | null,
 ): LocalMode | null => {
+  const fixedMapping = resolveCityModeFromBackendProvider(provider);
+  if (fixedMapping && (provider ?? '').trim().toLowerCase() !== 'mbta') {
+    return fixedMapping.mode;
+  }
+
   switch ((provider ?? '').trim().toLowerCase()) {
-    case 'mta-subway':
-      return 'train';
-    case 'mta-bus':
-      return 'bus';
-    case 'mta-lirr':
-      return 'lirr';
-    case 'mta-mnr':
-      return 'mnr';
-    case 'cta-subway':
-      return 'train';
-    case 'cta-bus':
-      return 'bus';
-    case 'septa-rail':
-      return 'train';
-    case 'septa-bus':
-      return 'bus';
-    case 'septa-trolley':
-      return 'trolley';
     case 'mbta':
       return inferMbtaMode(stopId, lineId);
     default:
@@ -185,10 +120,10 @@ export const inferUiModeFromProvider = (
 };
 
 export const getLocalModeLabel = (city: CityId, mode: LocalMode) => {
+  const cityModule = getTransitCityModule(city);
+  const moduleLabel = cityModule?.getModeLabel(mode);
+  if (moduleLabel) return moduleLabel;
   if (mode === 'train') {
-    if (city === 'philadelphia') return 'Regional Rail';
-    if (city === 'chicago') return 'L';
-    if (city === 'boston') return 'T';
     return 'Subway';
   }
   if (mode === 'bus') return 'Bus';
@@ -206,33 +141,9 @@ export const formatLocalRoutePickerLabel = (
   routeId: string,
   routeLabel: string,
 ) => {
-  if (city === 'new-york' && mode === 'bus') {
-    return routeLabel.replace(/-?SBS\b/gi, '+').replace(/\s+/g, '');
-  }
-  if (city === 'chicago' && mode === 'train') {
-    return trimLineSuffix(routeLabel);
-  }
-  if (city === 'boston' && mode === 'train') {
-    return trimLineSuffix(routeLabel).replace(/^Green Line\s+/i, 'Green ');
-  }
-  if (city === 'boston' && mode === 'commuter-rail') {
-    const sourceLabel = !routeLabel || normalizeToken(routeLabel) === normalizeToken(routeId)
-      ? stripBostonRoutePrefix(routeId)
-      : routeLabel;
-    return compactBostonCommuterRailLabel(sourceLabel);
-  }
-  if (city === 'boston' && mode === 'ferry') {
-    const sourceLabel = !routeLabel || normalizeToken(routeLabel) === normalizeToken(routeId)
-      ? routeId
-      : routeLabel;
-    return compactBostonFerryLabel(routeId, sourceLabel);
-  }
-  if (city === 'philadelphia' && mode === 'train') {
-    return compactSeptaRailLabel(routeLabel);
-  }
-  if (city === 'philadelphia' && mode === 'trolley') {
-    return resolveSeptaTrolleyLabel(routeId, routeLabel);
-  }
+  const cityModule = getTransitCityModule(city);
+  const moduleLabel = cityModule?.formatRoutePickerLabel(mode, routeId, routeLabel);
+  if (moduleLabel) return moduleLabel;
   return routeLabel.trim();
 };
 
@@ -242,10 +153,9 @@ export const getLocalLineLabel = (
   routeId: string,
   routeLabel: string,
 ) => {
-  if (mode === 'lirr') return routeLabel.replace(/\s+Branch$/i, '').trim();
-  if (mode === 'mnr') {
-    return MTA_MNR_LINE_LABELS[normalizeToken(routeId)] ?? routeLabel.trim();
-  }
+  const cityModule = getTransitCityModule(city);
+  const moduleLabel = cityModule?.getLineLabel(mode, routeId, routeLabel);
+  if (moduleLabel) return moduleLabel;
   return formatLocalRoutePickerLabel(city, mode, routeId, routeLabel);
 };
 
@@ -255,39 +165,10 @@ export const getLocalRouteBadgeLabel = (
   routeId: string,
   routeLabel?: string | null,
 ) => {
-  const normalizedId = normalizeToken(routeId);
   const safeLabel = (routeLabel ?? routeId).trim();
-
-  if (city === 'new-york' && mode === 'bus') {
-    return formatLocalRoutePickerLabel(city, mode, routeId, safeLabel);
-  }
-  if (city === 'chicago' && mode === 'train') {
-    return normalizedId.slice(0, 4) || trimLineSuffix(safeLabel).toUpperCase().slice(0, 4);
-  }
-  if (city === 'philadelphia' && mode === 'train') {
-    return normalizedId || compactSeptaRailLabel(safeLabel).toUpperCase().slice(0, 4);
-  }
-  if (city === 'philadelphia' && mode === 'trolley') {
-    return resolveSeptaTrolleyLabel(routeId, safeLabel);
-  }
-  if (city === 'boston' && mode === 'train') {
-    return (
-      BOSTON_SUBWAY_BADGE_LABELS[normalizedId] ??
-      BOSTON_SUBWAY_BADGE_LABELS[normalizeToken(trimLineSuffix(safeLabel))] ??
-      trimLineSuffix(safeLabel).toUpperCase().slice(0, 4)
-    );
-  }
-  if (city === 'boston' && mode === 'commuter-rail') {
-    return (
-      BOSTON_COMMUTER_RAIL_BADGE_LABELS[normalizedId] ??
-      BOSTON_COMMUTER_RAIL_BADGE_LABELS[normalizeToken(stripBostonRoutePrefix(routeId))] ??
-      stripBostonRoutePrefix(routeId).toUpperCase().slice(0, 4)
-    );
-  }
-  if (city === 'boston' && mode === 'ferry') {
-    return BOSTON_FERRY_BADGE_LABELS[normalizedId] ?? compactBostonFerryLabel(routeId, safeLabel).toUpperCase().slice(0, 5);
-  }
-  if (mode === 'mnr') return stripBostonRoutePrefix(routeId || safeLabel).toUpperCase().slice(0, 4);
+  const cityModule = getTransitCityModule(city);
+  const moduleLabel = cityModule?.getRouteBadgeLabel(mode, routeId, safeLabel);
+  if (moduleLabel) return moduleLabel;
   return safeLabel.toUpperCase().slice(0, 4);
 };
 
@@ -295,36 +176,36 @@ export const getLocalDirectionLabel = (
   city: CityId,
   mode: LocalMode,
   direction: UiDirection,
-  routeId?: string | null,
+  route?: LocalRouteRef,
   variant: DirectionVariant = 'bound',
 ) => {
-  if (city === 'chicago' && mode === 'train') {
-    const copy = CTA_TRAIN_DIRECTION_COPY[normalizeToken(routeId)];
-    if (copy) return copy[direction][variant];
+  const metadataLabel = getRouteDirectionMetadataLabel(route, direction, variant);
+  if (metadataLabel) return metadataLabel;
+
+  if (city === 'new-york') {
+    if (mode === 'train') {
+      const routeId = getRouteId(route);
+      const cityModule = getTransitCityModule(city);
+      return cityModule?.getDirectionLabel(mode, direction, routeId, variant) ?? defaultDirectionLabel(direction, variant);
+    }
+    return '--';
   }
-  if (city === 'boston') {
-    return direction === 'uptown' ? 'Outbound' : 'Inbound';
-  }
-  if (city === 'philadelphia' && mode === 'train') {
-    return direction === 'uptown' ? 'Northbound' : 'Southbound';
-  }
-  if (city === 'philadelphia' && (mode === 'bus' || mode === 'trolley')) {
-    return direction === 'uptown' ? 'Outbound' : 'Inbound';
-  }
-  if (mode === 'mnr') {
-    return direction === 'uptown' ? 'Outbound' : 'Inbound';
-  }
+
+  const routeId = getRouteId(route);
+  const cityModule = getTransitCityModule(city);
+  const moduleLabel = cityModule?.getDirectionLabel(mode, direction, routeId, variant);
+  if (moduleLabel) return moduleLabel;
   return defaultDirectionLabel(direction, variant);
 };
 
 export const serializeUiDirection = (city: CityId, mode: LocalMode, direction: UiDirection) => {
-  if (city === 'boston') {
-    return direction === 'uptown' ? '0' : '1';
+  const cityModule = getTransitCityModule(city);
+  const serialized = cityModule?.serializeDirection(mode, direction);
+  if (serialized) return serialized;
+  if (direction === 'downtown' || direction === 'eastbound' || direction === 'inbound' || direction === 'dir1') {
+    return 'S';
   }
-  if (city === 'philadelphia' && (mode === 'bus' || mode === 'trolley')) {
-    return direction === 'uptown' ? '0' : '1';
-  }
-  return direction === 'uptown' ? 'N' : 'S';
+  return 'N';
 };
 
 export const deserializeUiDirection = (
@@ -334,12 +215,13 @@ export const deserializeUiDirection = (
   stopId?: string | null,
 ): UiDirection => {
   const normalized = normalizeToken(value);
-  if (city === 'boston') {
-    return normalized === '1' || normalized === 'INBOUND' ? 'downtown' : 'uptown';
-  }
-  if (city === 'philadelphia' && (mode === 'bus' || mode === 'trolley')) {
-    return normalized === '1' ? 'downtown' : 'uptown';
-  }
+  const cityModule = getTransitCityModule(city);
+  const deserialized = cityModule?.deserializeDirection(mode, value, stopId);
+  if (deserialized) return deserialized;
+  if (normalized === '1' || normalized === 'W' || normalized === 'WESTBOUND') return 'westbound';
+  if (normalized === '0' || normalized === 'E' || normalized === 'EASTBOUND') return 'eastbound';
+  if (normalized === 'INBOUND') return 'inbound';
+  if (normalized === 'OUTBOUND') return 'outbound';
   if (normalized === 'S' || normalized === 'SOUTHBOUND' || (!normalized && normalizeToken(stopId).endsWith('S'))) {
     return 'downtown';
   }
