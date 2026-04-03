@@ -268,6 +268,20 @@ const getPersistedDisplayType = (presetId: number) => {
   }
 };
 
+const getPersistedArrivalsToDisplay = (
+  lines: Array<{displayFormat?: string; nextStops?: number}>,
+) => {
+  let maxCount = 1;
+  for (const line of lines) {
+    const count =
+      line.displayFormat === 'times-line'
+        ? Math.max(MIN_NEXT_STOPS, Math.min(3, Math.trunc(line.nextStops || DEFAULT_NEXT_STOPS)))
+        : 1;
+    if (count > maxCount) maxCount = count;
+  }
+  return maxCount;
+};
+
 const getDisplayPresetFromPersistedType = (displayType: number) => {
   switch (displayType) {
     case 2:
@@ -1024,7 +1038,7 @@ export default function DisplayEditorScreen() {
         brightness: displayMetadata.brightness,
         displayType: getPersistedDisplayType(displayPresetsByLine['line-1'] ?? DEFAULT_DISPLAY_PRESET),
         scrolling: displayMetadata.scrolling,
-        arrivalsToDisplay: Math.max(1, Math.min(3, payloadLines.length)),
+        arrivalsToDisplay: getPersistedArrivalsToDisplay(payloadLines),
         lines: payloadLines,
       },
     };
