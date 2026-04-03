@@ -5,8 +5,10 @@ import {providerToCity as resolveProviderCity} from './transit/providerRegistry'
 import type {TransitLineDirection} from '../types/transit';
 import {deserializeUiDirection, getLocalDirectionLabel, getLocalDirectionTerminal, getLocalLineLabel, getLocalRouteBadgeLabel, inferUiModeFromProvider, isRailLinePreviewMode} from './transitUi';
 import {getTransitCityModule} from './transit/registry';
+import {validateScheduleWindow, type DisplayWeekday} from './schedules';
 
-export type DisplayWeekday = 'sun' | 'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat';
+export {DISPLAY_WEEKDAYS} from './schedules';
+export type {DisplayWeekday} from './schedules';
 
 export type LineConfig = {
   provider: string;
@@ -86,10 +88,6 @@ export type DisplaySavePayload = {
   scheduleDays: DisplayWeekday[];
   config: DeviceConfig;
 };
-
-export const DISPLAY_WEEKDAYS: DisplayWeekday[] = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
-
-const CLOCK_RE = /^([01]\d|2[0-3]):([0-5]\d)$/;
 
 const parseError = async (response: Response) => {
   const data = await response.json().catch(() => null);
@@ -542,8 +540,12 @@ export const toPreviewSlots = (
 
 export const validateDisplayDraft = (payload: DisplaySavePayload) => {
   if (!payload.name.trim()) return 'Display name is required';
-  if (payload.scheduleStart && !CLOCK_RE.test(payload.scheduleStart)) return 'Start time must use HH:mm';
-  if (payload.scheduleEnd && !CLOCK_RE.test(payload.scheduleEnd)) return 'End time must use HH:mm';
+  const scheduleError = validateScheduleWindow({
+    start: payload.scheduleStart,
+    end: payload.scheduleEnd,
+    days: payload.scheduleDays,
+  });
+  if (scheduleError) return scheduleError;
 
   const lines = payload.config.lines ?? [];
   if (lines.length === 0) return 'Add at least one line';
