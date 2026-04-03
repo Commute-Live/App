@@ -47,6 +47,7 @@ export default function DashboardOverviewScreen() {
    const [quietHoursEnabled, setQuietHoursEnabled] = useState(true);
    const [quietHours, setQuietHours] = useState({ start: '23:00', end: '05:00' });
    const [quietHoursError, setQuietHoursError] = useState('');
+   const [payloadExpanded, setPayloadExpanded] = useState(false);
 
    const city = appState.selectedCity;
    const cityBrand = CITY_BRANDS[city];
