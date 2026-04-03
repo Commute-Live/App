@@ -3,6 +3,12 @@ import {Alert, Animated, Easing, Keyboard, KeyboardAvoidingView, LayoutAnimation
 import {SafeAreaView} from 'react-native-safe-area-context';
 import {useLocalSearchParams, useRouter} from 'expo-router';
 import {useMutation, useQueryClient} from '@tanstack/react-query';
+import {
+  GestureHandlerRootView,
+  PanGestureHandler,
+  State,
+  type PanGestureHandlerStateChangeEvent,
+} from 'react-native-gesture-handler';
 import {colors} from '../../../theme';
 import DashboardPreviewSection from '../components/DashboardPreviewSection';
 import {useAppState} from '../../../state/appState';
@@ -96,6 +102,7 @@ type LinePick = {
 type StationsByMode = Partial<Record<ModeId, Station[]>>;
 type RoutesByStation = Record<string, Route[]>;
 type EditorStep = 'city' | 'format' | 'lines' | 'stops' | 'done';
+type WizardStepDef = {id: EditorStep; label: string; complete: boolean; reachable: boolean};
 
 const DEFAULT_TEXT_COLOR = '#E9ECEF';
 const BOROUGH_ORDER = ['Manhattan', 'Bronx', 'Brooklyn', 'Queens', 'Staten Island'];
@@ -107,6 +114,7 @@ const DEFAULT_DISPLAY_PRESET = 1;
 const DEFAULT_BRIGHTNESS = 40;
 const MIN_BRIGHTNESS = 10;
 const MAX_BRIGHTNESS = 100;
+const MIN_STEP_SWIPE_DISTANCE = 56;
 const TIME_OPTIONS = ['00:00', '05:00', '06:00', '07:00', '08:00', '09:00', '10:00', '17:00', '18:00', '20:00', '22:00', '23:00'];
 const DAY_OPTIONS = [
   {id: 'mon', label: 'M'},
@@ -401,6 +409,33 @@ const getRailPreviewRouteLabel = (city: CityId, mode: ModeId, routeLabel: string
 };
 
 const getPresetLabelForMode = (_city: CityId, _mode: ModeId, _presetId: number, defaultLabel: string) => defaultLabel;
+
+const getWizardStepDefs = ({
+  step,
+  includeCityStep,
+  hasLine,
+  hasStop,
+  hasPreset,
+  isLirr,
+}: {
+  step: EditorStep;
+  includeCityStep: boolean;
+  hasLine: boolean;
+  hasStop: boolean;
+  hasPreset: boolean;
+  isLirr: boolean;
+}): WizardStepDef[] => [
+  ...(includeCityStep
+    ? [{id: 'city' as const, label: 'City', complete: step !== 'city', reachable: true}]
+    : []),
+  {id: 'lines', label: isLirr ? 'Branch' : 'Line', complete: hasLine, reachable: true},
+  {id: 'stops', label: isLirr ? 'Station' : 'Stop', complete: hasStop, reachable: hasLine},
+  {id: 'format', label: 'Style', complete: hasPreset, reachable: hasLine && hasStop},
+  {id: 'done', label: 'Save', complete: false, reachable: hasLine && hasStop && hasPreset},
+];
+
+const WIZARD_STEP_DEFAULT_COLOR = colors.accent;
+const WIZARD_STEP_ACTIVE_COLOR = '#10B981';
 
 export default function DisplayEditorScreen() {
   const queryClient = useQueryClient();
@@ -1595,13 +1630,62 @@ export default function DisplayEditorScreen() {
       onPress: selectedLine?.routeId && selectedLine?.stationId ? () => setEditorStep('format') : undefined,
     },
   ] as const;
+  const wizardStepDefs = useMemo(
+    () =>
+      getWizardStepDefs({
+        step: editorStep,
+        includeCityStep: isCreateMode,
+        hasLine: !!selectedLine?.routeId,
+        hasStop: !!selectedLine?.stationId,
+        hasPreset: selectedLinePresetConfirmed,
+        isLirr: selectedLine != null && normalizeMode(city, selectedLine.mode) === 'lirr',
+      }),
+    [city, editorStep, isCreateMode, selectedLine, selectedLinePresetConfirmed],
+  );
+  const currentWizardStepIndex = wizardStepDefs.findIndex(item => item.id === editorStep);
+  const previousWizardStepId = currentWizardStepIndex > 0 ? wizardStepDefs[currentWizardStepIndex - 1]?.id ?? null : null;
+  const nextWizardStepId = (() => {
+    if (currentWizardStepIndex < 0) return null;
+    const nextStep = wizardStepDefs[currentWizardStepIndex + 1];
+    return nextStep?.reachable ? nextStep.id : null;
+  })();
+  const canSwipeBetweenSteps = true;
+  const handleSwipeStep = (targetStep: EditorStep | null) => {
+    if (!targetStep) return;
+    setEditorStep(targetStep);
+    void Haptics.selectionAsync();
+  };
+  const handleStepSwipeGesture = ({nativeEvent}: PanGestureHandlerStateChangeEvent) => {
+    if (nativeEvent.state !== State.END) return;
+
+    const {translationX, translationY} = nativeEvent;
+    const horizontalDistance = Math.abs(translationX);
+    const verticalDistance = Math.abs(translationY);
+
+    if (horizontalDistance < MIN_STEP_SWIPE_DISTANCE || horizontalDistance <= verticalDistance * 1.2) {
+      return;
+    }
+
+    if (translationX < 0) {
+      handleSwipeStep(nextWizardStepId);
+      return;
+    }
+
+    handleSwipeStep(previousWizardStepId);
+  };
 
   return (
-    <SafeAreaView style={styles.container} edges={['top', 'left', 'right', 'bottom']}>
-      <KeyboardAvoidingView
-        style={styles.keyboardAvoid}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 12 : 0}>
+    <GestureHandlerRootView style={styles.container}>
+      <PanGestureHandler
+        enabled={canSwipeBetweenSteps && (!!nextWizardStepId || !!previousWizardStepId)}
+        activeOffsetX={[-20, 20]}
+        failOffsetY={[-20, 20]}
+        onHandlerStateChange={handleStepSwipeGesture}>
+          <SafeAreaView style={styles.container} edges={['top', 'left', 'right', 'bottom']}>
+            <KeyboardAvoidingView
+              style={styles.keyboardAvoid}
+              behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+              keyboardVerticalOffset={Platform.OS === 'ios' ? 12 : 0}>
 
         {/* ── Wizard header (fixed, not scrollable) ─────────────────────── */}
         <Animated.View style={[styles.topBarWrap, headerAnimatedStyle]}>
@@ -1786,44 +1870,46 @@ export default function DisplayEditorScreen() {
           ) : null}
         </ScrollView>
         ) : null}
-      </KeyboardAvoidingView>
+            </KeyboardAvoidingView>
 
-      {editorStep === 'done' ? (
-        <SaveBar
-          dirty={isDirty}
-          loading={saving}
-          success={saveDone}
-          disabled={!canSaveToDevice}
-          message={liveStatusText}
-          onPress={handleSave}
-        />
-      ) : null}
-      <ConfirmDiscardModal
-        visible={showDiscardConfirm}
-        onStay={() => setShowDiscardConfirm(false)}
-        onLeave={() => {
-          setShowDiscardConfirm(false);
-          if ((router as any).canGoBack?.()) {
-            router.back();
-            return;
-          }
-          router.replace(fallbackRoute);
-        }}
-      />
-      <LayoutSelectorModal
-        visible={showLayoutSelector}
-        layoutSlots={layoutSlots}
-        onClose={() => setShowLayoutSelector(false)}
-        onSelect={slots => {
-          setShowLayoutSelector(false);
-          if (layoutSlots === 2 && slots === 1 && selectedLineId === 'line-2') {
-            removeStopFromLayout('line-2');
-            return;
-          }
-          applyLayout(slots);
-        }}
-      />
-    </SafeAreaView>
+            {editorStep === 'done' ? (
+              <SaveBar
+                dirty={isDirty}
+                loading={saving}
+                success={saveDone}
+                disabled={!canSaveToDevice}
+                message={liveStatusText}
+                onPress={handleSave}
+              />
+            ) : null}
+            <ConfirmDiscardModal
+              visible={showDiscardConfirm}
+              onStay={() => setShowDiscardConfirm(false)}
+              onLeave={() => {
+                setShowDiscardConfirm(false);
+                if ((router as any).canGoBack?.()) {
+                  router.back();
+                  return;
+                }
+                router.replace(fallbackRoute);
+              }}
+            />
+            <LayoutSelectorModal
+              visible={showLayoutSelector}
+              layoutSlots={layoutSlots}
+              onClose={() => setShowLayoutSelector(false)}
+              onSelect={slots => {
+                setShowLayoutSelector(false);
+                if (layoutSlots === 2 && slots === 1 && selectedLineId === 'line-2') {
+                  removeStopFromLayout('line-2');
+                  return;
+                }
+                applyLayout(slots);
+              }}
+            />
+          </SafeAreaView>
+      </PanGestureHandler>
+    </GestureHandlerRootView>
   );
 }
 
@@ -1992,15 +2078,7 @@ function WizardStepBar({
   isLirr: boolean;
   onGoTo: (step: EditorStep) => void;
 }) {
-  const stepDefs: Array<{id: EditorStep; label: string; complete: boolean; reachable: boolean}> = [
-    ...(includeCityStep
-      ? [{id: 'city' as const, label: 'City', complete: step !== 'city', reachable: true}]
-      : []),
-    {id: 'lines', label: isLirr ? 'Branch' : 'Line', complete: hasLine, reachable: true},
-    {id: 'stops', label: isLirr ? 'Station' : 'Stop', complete: hasStop, reachable: hasLine},
-    {id: 'format', label: 'Style', complete: hasPreset, reachable: hasLine && hasStop},
-    {id: 'done', label: 'Save', complete: false, reachable: hasLine && hasStop && hasPreset},
-  ];
+  const stepDefs = getWizardStepDefs({step, includeCityStep, hasLine, hasStop, hasPreset, isLirr});
 
   const connectorStates = stepDefs.slice(0, -1).map(item => item.complete);
 
@@ -2083,6 +2161,8 @@ function WizardDot({
     wasActive.current = isActive;
   }, [isActive, scaleAnim]);
 
+  const circleColor = isActive ? WIZARD_STEP_ACTIVE_COLOR : WIZARD_STEP_DEFAULT_COLOR;
+
   return (
     <Pressable
       style={styles.stepDotWrapper}
@@ -2091,21 +2171,34 @@ function WizardDot({
       <Animated.View
         style={[
           styles.stepDotCircle,
-          isActive && styles.stepDotCircleActive,
-          isComplete && styles.stepDotCircleComplete,
+          (isActive || isComplete) && {
+            borderColor: circleColor,
+          },
+          isActive && {
+            backgroundColor: withHexAlpha(circleColor, '2A'),
+          },
+          isComplete && {
+            backgroundColor: circleColor,
+          },
           {transform: [{scale: scaleAnim}]},
         ]}>
         {isComplete ? (
           <Text style={styles.stepDotCheckmark}>✓</Text>
         ) : (
-          <Text style={[styles.stepDotNumber, isActive && styles.stepDotNumberActive]}>{num}</Text>
+          <Text
+            style={[
+              styles.stepDotNumber,
+              (isActive || isComplete) && {color: circleColor},
+            ]}>
+            {num}
+          </Text>
         )}
       </Animated.View>
       <Text
         style={[
           styles.stepDotLabel,
-          isActive && styles.stepDotLabelActive,
           isComplete && styles.stepDotLabelComplete,
+          isActive && {color: circleColor},
         ]}>
         {label}
       </Text>
