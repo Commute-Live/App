@@ -300,39 +300,6 @@ export const styles = StyleSheet.create({
   timeFieldButtonText: {color: colors.text, fontSize: 18, fontWeight: '600'},
   timeFieldValue: {color: colors.text, fontSize: 14, fontWeight: '800'},
 
-  // ─── ESP Payload Debug ───────────────────────────────────────────────────
-  debugHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  debugChevron: {color: colors.textMuted, fontSize: 12},
-  debugCopyBtn: {
-    alignSelf: 'flex-end',
-    marginBottom: spacing.xs,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
-    borderRadius: radii.sm,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
-  },
-  debugCopyText: {color: colors.text, fontSize: 12, fontWeight: '700'},
-  debugBox: {
-    backgroundColor: colors.surface,
-    borderRadius: radii.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-    maxHeight: 500,
-  },
-  debugBoxContent: {padding: spacing.sm},
-  debugText: {
-    color: '#34D399',
-    fontSize: 11,
-    fontFamily: 'monospace',
-    lineHeight: 17,
-  },
-
   // ─── Secondary Button ─────────────────────────────────────────────────────
   secondaryButton: {
     borderRadius: radii.md,

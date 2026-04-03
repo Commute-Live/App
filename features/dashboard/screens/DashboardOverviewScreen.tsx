@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Clipboard, PanResponder, Pressable, ScrollView, Text, View } from 'react-native';
+import { ActivityIndicator, PanResponder, Pressable, ScrollView, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -47,7 +47,6 @@ export default function DashboardOverviewScreen() {
    const [quietHoursEnabled, setQuietHoursEnabled] = useState(true);
    const [quietHours, setQuietHours] = useState({ start: '23:00', end: '05:00' });
    const [quietHoursError, setQuietHoursError] = useState('');
-   const [payloadExpanded, setPayloadExpanded] = useState(false);
 
    const city = appState.selectedCity;
    const cityBrand = CITY_BRANDS[city];
@@ -565,42 +564,6 @@ export default function DashboardOverviewScreen() {
                </View>
             )}
 
-            {/* ── ESP Payload Debug ─────────────────────────────────── */}
-            {hasLinkedDevice && (
-               <View style={styles.sectionBlock}>
-                  <Pressable
-                     style={styles.debugHeader}
-                     onPress={() => setPayloadExpanded((v) => !v)}
-                  >
-                     <Text style={styles.sectionBlockLabel}>ESP Payload</Text>
-                     <Text style={styles.debugChevron}>{payloadExpanded ? '▲' : '▼'}</Text>
-                  </Pressable>
-                  {payloadExpanded && (() => {
-                     const text = lastCommandPayload
-                        ? JSON.stringify(lastCommandPayload, null, 2)
-                        : '— no payload yet —';
-                     return (
-                        <View>
-                           <Pressable
-                              style={styles.debugCopyBtn}
-                              onPress={() => Clipboard.setString(text)}
-                           >
-                              <Text style={styles.debugCopyText}>Copy</Text>
-                           </Pressable>
-                           <ScrollView
-                              style={styles.debugBox}
-                              contentContainerStyle={styles.debugBoxContent}
-                              nestedScrollEnabled
-                           >
-                              <Text style={styles.debugText} selectable>
-                                 {text}
-                              </Text>
-                           </ScrollView>
-                        </View>
-                     );
-                  })()}
-               </View>
-            )}
 
          </ScrollView>
 
