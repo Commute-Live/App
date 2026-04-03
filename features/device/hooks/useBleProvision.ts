@@ -36,6 +36,8 @@ export interface BleProvisionState {
   foundDevices: Device[];
   deviceId: string | null;   // esp32-XXXX — set from BLE device name during scan
   errorMsg: string | null;
+  bluetoothState: string | null;
+  bluetoothMessage: string | null;
   wifiNetworks: WifiNetwork[];
   isScanning: boolean;
 }
@@ -53,6 +55,19 @@ type PendingWifiResult = {
 const WIFI_RESULT_TIMEOUT_MS = 45_000;
 const SCAN_TIMEOUT_MS = 20_000;
 const DISCOVERY_SETTLE_MS = 2_500;
+
+const getBluetoothMessage = (bleState: string | null | undefined): string | null => {
+  switch (bleState) {
+    case 'PoweredOff':
+      return 'Bluetooth is off. Turn it on, then try again.';
+    case 'Unauthorized':
+      return 'Bluetooth access is blocked. Allow Bluetooth in Settings, then try again.';
+    case 'Unsupported':
+      return 'Bluetooth is not supported on this device.';
+    default:
+      return null;
+  }
+};
 
 const parseBleStatusPayload = (value: string | null | undefined): BleStatusPayload => {
   if (!value) {
@@ -113,6 +128,8 @@ export function useBleProvision() {
     foundDevices: [],
     deviceId: null,
     errorMsg: null,
+    bluetoothState: null,
+    bluetoothMessage: null,
     wifiNetworks: [],
     isScanning: false,
   });
@@ -122,6 +139,7 @@ export function useBleProvision() {
   const discoveryTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const statusSubscriptionRef = useRef<{remove: () => void} | null>(null);
   const wifiScanSubscriptionRef = useRef<{remove: () => void} | null>(null);
+  const bleStateSubscriptionRef = useRef<{remove: () => void} | null>(null);
   const pendingWifiResultRef = useRef<PendingWifiResult | null>(null);
   const scanChunksRef = useRef<Array<{s: string; r: number; e: number}>>([]);
 
@@ -159,9 +177,66 @@ export function useBleProvision() {
     }
   }, []);
 
-  useEffect(() => {
-    return cleanup;
+  const syncBluetoothState = useCallback((bleState: string | null) => {
+    const bluetoothMessage = getBluetoothMessage(bleState);
+
+    if (bluetoothMessage) {
+      cleanup();
+    }
+
+    setState(prev => {
+      const nextState: BleProvisionState = {
+        ...prev,
+        bluetoothState: bleState,
+        bluetoothMessage,
+      };
+
+      if (
+        !bluetoothMessage &&
+        prev.phase === 'error' &&
+        prev.errorMsg &&
+        prev.errorMsg === prev.bluetoothMessage
+      ) {
+        return {
+          ...nextState,
+          phase: 'idle',
+          errorMsg: null,
+        };
+      }
+
+      if (
+        bluetoothMessage &&
+        prev.phase !== 'idle' &&
+        prev.phase !== 'error' &&
+        prev.phase !== 'done'
+      ) {
+        return {
+          ...nextState,
+          phase: 'error',
+          errorMsg: bluetoothMessage,
+          isScanning: false,
+        };
+      }
+
+      return nextState;
+    });
   }, [cleanup]);
+
+  useEffect(() => {
+    const mgr = getManager();
+
+    if (mgr) {
+      bleStateSubscriptionRef.current = mgr.onStateChange((nextState) => {
+        syncBluetoothState(nextState);
+      }, true);
+    }
+
+    return () => {
+      bleStateSubscriptionRef.current?.remove();
+      bleStateSubscriptionRef.current = null;
+      cleanup();
+    };
+  }, [cleanup, syncBluetoothState]);
 
   // Step 1: scan for the CommuteLive device.
   // Firmware advertises as "esp32-XXXX" — device.name IS the deviceId.
@@ -179,6 +254,18 @@ export function useBleProvision() {
     if (!granted) {
       fail('Bluetooth permission denied. Please enable it in Settings.');
       return;
+    }
+
+    try {
+      const bleState = await mgr.state();
+      syncBluetoothState(bleState);
+      const bluetoothMessage = getBluetoothMessage(bleState);
+      if (bluetoothMessage) {
+        fail(bluetoothMessage);
+        return;
+      }
+    } catch {
+      // Ignore state lookup errors and let scan attempt surface a concrete failure.
     }
 
     setPhase('scanning', {errorMsg: null});
@@ -473,7 +560,17 @@ export function useBleProvision() {
   const reset = useCallback(() => {
     cleanup();
     deviceRef.current = null;
-    setState({phase: 'idle', foundDevice: null, foundDevices: [], deviceId: null, errorMsg: null, wifiNetworks: [], isScanning: false});
+    setState(prev => ({
+      phase: 'idle',
+      foundDevice: null,
+      foundDevices: [],
+      deviceId: null,
+      errorMsg: null,
+      bluetoothState: prev.bluetoothState,
+      bluetoothMessage: prev.bluetoothMessage,
+      wifiNetworks: [],
+      isScanning: false,
+    }));
   }, [cleanup]);
 
   return {state, startScan, selectFoundDevice, connectToDevice, sendCredentials, requestWifiScan, reset};
