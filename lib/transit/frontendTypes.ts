@@ -7,6 +7,8 @@ export type DirectionVariant = 'toggle' | 'bound' | 'summary';
 const UI_DIRECTIONS: ReadonlySet<UiDirection> = new Set([
   'uptown',
   'downtown',
+  'northbound',
+  'southbound',
   'dir0',
   'dir1',
   'westbound',
@@ -26,6 +28,7 @@ export type TransitRouteAppearance = {
 export type TransitRouteRecord = {
   id: string;
   label: string;
+  sortOrder: number | null;
   color: string;
   textColor?: string;
   headsign0: string | null;

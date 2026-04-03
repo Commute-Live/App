@@ -103,6 +103,31 @@ export const CITY_LINE_COLORS: Partial<Record<CityId, Record<string, {color: str
     'pink':   {color: '#E27EA6', textColor: '#FFFFFF'},
     'y':      {color: '#F9E300', textColor: '#000000'},
   },
+  philadelphia: {
+    // SEPTA Regional Rail — official GTFS colors (route_short_name keys)
+    'AIR': {color: '#005DAA', textColor: '#FFFFFF'}, // Airport
+    'CHE': {color: '#005DAA', textColor: '#FFFFFF'}, // Chestnut Hill East
+    'CHW': {color: '#005DAA', textColor: '#FFFFFF'}, // Chestnut Hill West
+    'CYN': {color: '#005DAA', textColor: '#FFFFFF'}, // Cynwyd
+    'FOX': {color: '#005DAA', textColor: '#FFFFFF'}, // Fox Chase
+    'LAN': {color: '#005DAA', textColor: '#FFFFFF'}, // Lansdale/Doylestown
+    'MED': {color: '#7B2D8B', textColor: '#FFFFFF'}, // Media/Elwyn
+    'NOR': {color: '#005DAA', textColor: '#FFFFFF'}, // Manayunk/Norristown
+    'PAO': {color: '#005DAA', textColor: '#FFFFFF'}, // Paoli/Thorndale
+    'TRE': {color: '#C8102E', textColor: '#FFFFFF'}, // Trenton
+    'WAR': {color: '#005DAA', textColor: '#FFFFFF'}, // Warminster
+    'WIL': {color: '#005DAA', textColor: '#FFFFFF'}, // Wilmington/Newark
+    'WTR': {color: '#005DAA', textColor: '#FFFFFF'}, // West Trenton
+    // Trolleys
+    '10': {color: '#3B7B38', textColor: '#FFFFFF'},
+    '11': {color: '#3B7B38', textColor: '#FFFFFF'},
+    '13': {color: '#3B7B38', textColor: '#FFFFFF'},
+    '15': {color: '#3B7B38', textColor: '#FFFFFF'},
+    '34': {color: '#3B7B38', textColor: '#FFFFFF'},
+    '36': {color: '#3B7B38', textColor: '#FFFFFF'},
+    // Bus fallback
+    'septa-bus': {color: '#005DAA', textColor: '#FFFFFF'},
+  },
   boston: {
     // MBTA rapid transit — keyed by actual API IDs and common variants
     'Red':     {color: '#DA291C', textColor: '#FFFFFF'},
@@ -136,25 +161,6 @@ export const CITY_LINE_COLORS: Partial<Record<CityId, Record<string, {color: str
     'BLU': {color: '#003DA5', textColor: '#FFFFFF'},
     'GRN': {color: '#00843D', textColor: '#FFFFFF'},
     'MAT': {color: '#DA291C', textColor: '#FFFFFF'},
-  },
-  philadelphia: {
-    // SEPTA Regional Rail
-    'AIR': {color: '#005DAA', textColor: '#FFFFFF'},
-    'CHE': {color: '#005DAA', textColor: '#FFFFFF'},
-    'CHW': {color: '#005DAA', textColor: '#FFFFFF'},
-    'CYN': {color: '#005DAA', textColor: '#FFFFFF'},
-    'FOX': {color: '#005DAA', textColor: '#FFFFFF'},
-    'LAN': {color: '#005DAA', textColor: '#FFFFFF'},
-    'MED': {color: '#005DAA', textColor: '#FFFFFF'},
-    'NOR': {color: '#005DAA', textColor: '#FFFFFF'},
-    'PAO': {color: '#005DAA', textColor: '#FFFFFF'},
-    'TRE': {color: '#005DAA', textColor: '#FFFFFF'},
-    'WAR': {color: '#005DAA', textColor: '#FFFFFF'},
-    'WIL': {color: '#005DAA', textColor: '#FFFFFF'},
-    'WTR': {color: '#005DAA', textColor: '#FFFFFF'},
-    // Subway / BSL / MFL
-    'BSL': {color: '#FF6900', textColor: '#FFFFFF'},
-    'MFL': {color: '#005DAA', textColor: '#FFFFFF'},
   },
 };
 

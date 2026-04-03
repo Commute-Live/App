@@ -12,6 +12,8 @@ export type TransitUiMode = 'train' | 'bus' | 'lirr' | 'mnr' | 'commuter-rail' |
 export type TransitUiDirection =
   | 'uptown'
   | 'downtown'
+  | 'northbound'
+  | 'southbound'
   | 'dir0'
   | 'dir1'
   | 'westbound'
@@ -61,6 +63,7 @@ export type TransitStationLine = {
 export type TransitLine = {
   id: string;
   label: string;
+  sortOrder: number | null;
   color: string | null;
   textColor: string | null;
   headsign0: string | null;

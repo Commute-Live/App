@@ -21,6 +21,8 @@ export type {UiDirection};
 const normalizeToken = (value: string | null | undefined) => value?.trim().toUpperCase() ?? '';
 
 const defaultDirectionLabel = (direction: UiDirection, variant: DirectionVariant) => {
+  if (direction === 'northbound') return variant === 'summary' ? 'Northbound' : 'Northbound';
+  if (direction === 'southbound') return variant === 'summary' ? 'Southbound' : 'Southbound';
   if (direction === 'westbound') return 'Westbound';
   if (direction === 'eastbound') return 'Eastbound';
   if (direction === 'outbound') return 'Outbound';
@@ -67,6 +69,12 @@ const NEW_YORK_DIRECTION_OPTIONS: Partial<Record<LocalMode, UiDirection[]>> = {
   mnr: ['outbound', 'inbound'],
 };
 
+const PHILADELPHIA_DIRECTION_OPTIONS: Partial<Record<LocalMode, UiDirection[]>> = {
+  train: ['northbound', 'southbound'],
+  bus: ['dir0', 'dir1'],
+  trolley: ['dir0', 'dir1'],
+};
+
 const DEFAULT_DIRECTION_OPTIONS: UiDirection[] = ['uptown', 'downtown'];
 
 export const getLocalDirectionOptions = (
@@ -81,6 +89,10 @@ export const getLocalDirectionOptions = (
 
   if (city === 'new-york') {
     return NEW_YORK_DIRECTION_OPTIONS[mode] ?? DEFAULT_DIRECTION_OPTIONS;
+  }
+
+  if (city === 'philadelphia') {
+    return PHILADELPHIA_DIRECTION_OPTIONS[mode] ?? DEFAULT_DIRECTION_OPTIONS;
   }
 
   return DEFAULT_DIRECTION_OPTIONS;
@@ -202,7 +214,13 @@ export const serializeUiDirection = (city: CityId, mode: LocalMode, direction: U
   const cityModule = getTransitCityModule(city);
   const serialized = cityModule?.serializeDirection(mode, direction);
   if (serialized) return serialized;
-  if (direction === 'downtown' || direction === 'eastbound' || direction === 'inbound' || direction === 'dir1') {
+  if (
+    direction === 'downtown' ||
+    direction === 'southbound' ||
+    direction === 'eastbound' ||
+    direction === 'inbound' ||
+    direction === 'dir1'
+  ) {
     return 'S';
   }
   return 'N';
@@ -218,6 +236,8 @@ export const deserializeUiDirection = (
   const cityModule = getTransitCityModule(city);
   const deserialized = cityModule?.deserializeDirection(mode, value, stopId);
   if (deserialized) return deserialized;
+  if (normalized === 'N' || normalized === 'NORTHBOUND') return 'northbound';
+  if (normalized === 'S' || normalized === 'SOUTHBOUND') return 'southbound';
   if (normalized === '1' || normalized === 'W' || normalized === 'WESTBOUND') return 'westbound';
   if (normalized === '0' || normalized === 'E' || normalized === 'EASTBOUND') return 'eastbound';
   if (normalized === 'INBOUND') return 'inbound';

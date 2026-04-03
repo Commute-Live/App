@@ -215,6 +215,7 @@ export const normalizeTransitLine = (value: unknown): TransitLine | null => {
     return {
       id: lineId,
       label: lineId,
+      sortOrder: null,
       color: null,
       textColor: null,
       headsign0: null,
@@ -265,6 +266,7 @@ export const normalizeTransitLine = (value: unknown): TransitLine | null => {
   return {
     id,
     label,
+    sortOrder: readFirstNumber(value, ['sortOrder', 'routeSortOrder', 'route_sort_order']),
     color,
     textColor,
     headsign0: readFirstString(value, ['headsign0', 'headsign_0']) ?? null,

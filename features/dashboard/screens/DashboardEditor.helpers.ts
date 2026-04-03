@@ -278,6 +278,7 @@ export async function loadRoutesForStation(city: CityId, mode: ModeId, stopId: s
   return response.lines.map(line => ({
     id: line.id,
     label: line.label || line.id,
+    sortOrder: line.sortOrder,
     color: resolveRouteColor(city, mode, line.id, line.label, line.color),
     textColor: resolveRouteTextColor(city, mode, line.id, line.label, line.textColor),
     headsign0: line.headsign0,
@@ -291,6 +292,7 @@ export async function loadGlobalLinesForCityMode(city: CityId, mode: ModeId): Pr
   return response.lines.map(line => ({
     id: line.id,
     label: line.label || line.id,
+    sortOrder: line.sortOrder,
     color: resolveRouteColor(city, mode, line.id, line.label, line.color),
     textColor: resolveRouteTextColor(city, mode, line.id, line.label, line.textColor),
     headsign0: line.headsign0,
@@ -406,9 +408,6 @@ function statusFromArrival(arrival: TransitArrival): Arrival['status'] {
 }
 
 function getArrivalDirectionParam(city: CityId, line: LinePick): string | undefined {
-  if (city === 'philadelphia' && line.mode === 'train') {
-    return undefined;
-  }
   return serializeUiDirection(city, line.mode, line.direction);
 }
 

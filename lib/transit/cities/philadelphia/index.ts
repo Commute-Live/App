@@ -1,16 +1,108 @@
+import type {ModeId, UiDirection} from '../../frontendTypes';
 import type {TransitCityModule} from '../types';
 import {
-  buildPhiladelphiaRouteGroups,
-  deserializePhiladelphiaDirection,
-  formatPhiladelphiaRoutePickerLabel,
-  getPhiladelphiaDirectionLabel,
-  getPhiladelphiaLineLabel,
-  getPhiladelphiaModeLabel,
-  getPhiladelphiaRouteBadgeLabel,
-  isPhiladelphiaMode,
-  preparePhiladelphiaRouteEntries,
-  serializePhiladelphiaDirection,
-} from '../../providers/philadelphia';
+  buildPhiladelphiaBusRouteGroups,
+  formatPhiladelphiaBusRoutePickerLabel,
+  getPhiladelphiaBusDirectionLabel,
+  getPhiladelphiaBusLineLabel,
+  getPhiladelphiaBusModeLabel,
+  getPhiladelphiaBusRouteBadgeLabel,
+  preparePhiladelphiaBusRouteEntries,
+  serializePhiladelphiaBusDirection,
+  deserializePhiladelphiaBusDirection,
+} from './bus';
+import {
+  buildPhiladelphiaRailRouteGroups,
+  formatPhiladelphiaRailRoutePickerLabel,
+  getPhiladelphiaRailDirectionLabel,
+  getPhiladelphiaRailLineLabel,
+  getPhiladelphiaRailModeLabel,
+  getPhiladelphiaRailRouteBadgeLabel,
+  preparePhiladelphiaRailRouteEntries,
+  serializePhiladelphiaRailDirection,
+  deserializePhiladelphiaRailDirection,
+} from './rail';
+import {
+  buildPhiladelphiaTrolleyRouteGroups,
+  formatPhiladelphiaTrolleyRoutePickerLabel,
+  getPhiladelphiaTrolleyDirectionLabel,
+  getPhiladelphiaTrolleyLineLabel,
+  getPhiladelphiaTrolleyModeLabel,
+  getPhiladelphiaTrolleyRouteBadgeLabel,
+  preparePhiladelphiaTrolleyRouteEntries,
+  serializePhiladelphiaTrolleyDirection,
+  deserializePhiladelphiaTrolleyDirection,
+} from './trolley';
+
+export type PhiladelphiaMode = Extract<ModeId, 'train' | 'bus' | 'trolley'>;
+
+export const isPhiladelphiaMode = (mode: ModeId): mode is PhiladelphiaMode =>
+  mode === 'train' || mode === 'bus' || mode === 'trolley';
+
+export const getPhiladelphiaModeLabel = (mode: PhiladelphiaMode) => {
+  if (mode === 'train') return getPhiladelphiaRailModeLabel();
+  if (mode === 'trolley') return getPhiladelphiaTrolleyModeLabel();
+  return getPhiladelphiaBusModeLabel();
+};
+
+export const formatPhiladelphiaRoutePickerLabel = (
+  mode: PhiladelphiaMode,
+  routeId: string,
+  routeLabel: string,
+) => {
+  if (mode === 'train') return formatPhiladelphiaRailRoutePickerLabel(routeId, routeLabel);
+  if (mode === 'trolley') return formatPhiladelphiaTrolleyRoutePickerLabel(routeId, routeLabel);
+  return formatPhiladelphiaBusRoutePickerLabel(routeId, routeLabel);
+};
+
+export const getPhiladelphiaLineLabel = (
+  mode: PhiladelphiaMode,
+  routeId: string,
+  routeLabel: string,
+) => {
+  if (mode === 'train') return getPhiladelphiaRailLineLabel(routeId, routeLabel);
+  if (mode === 'trolley') return getPhiladelphiaTrolleyLineLabel(routeId, routeLabel);
+  return getPhiladelphiaBusLineLabel(routeId, routeLabel);
+};
+
+export const getPhiladelphiaRouteBadgeLabel = (
+  mode: PhiladelphiaMode,
+  routeId: string,
+  routeLabel?: string | null,
+) => {
+  if (mode === 'train') return getPhiladelphiaRailRouteBadgeLabel(routeId, routeLabel);
+  if (mode === 'trolley') return getPhiladelphiaTrolleyRouteBadgeLabel(routeId, routeLabel);
+  return getPhiladelphiaBusRouteBadgeLabel(routeId, routeLabel);
+};
+
+export const getPhiladelphiaDirectionLabel = (
+  mode: PhiladelphiaMode,
+  direction: UiDirection,
+  _variant: 'toggle' | 'bound' | 'summary' = 'bound',
+) => {
+  if (mode === 'train') return getPhiladelphiaRailDirectionLabel(direction);
+  if (mode === 'trolley') return getPhiladelphiaTrolleyDirectionLabel(direction);
+  return getPhiladelphiaBusDirectionLabel(direction);
+};
+
+export const serializePhiladelphiaDirection = (
+  mode: PhiladelphiaMode,
+  direction: UiDirection,
+) => {
+  if (mode === 'train') return serializePhiladelphiaRailDirection(direction);
+  if (mode === 'trolley') return serializePhiladelphiaTrolleyDirection(direction);
+  return serializePhiladelphiaBusDirection(direction);
+};
+
+export const deserializePhiladelphiaDirection = (
+  mode: PhiladelphiaMode,
+  value: string | null | undefined,
+  stopId?: string | null,
+) => {
+  if (mode === 'train') return deserializePhiladelphiaRailDirection(value, stopId);
+  if (mode === 'trolley') return deserializePhiladelphiaTrolleyDirection(value);
+  return deserializePhiladelphiaBusDirection(value);
+};
 
 export const philadelphiaTransitModule: TransitCityModule = {
   city: 'philadelphia',
@@ -34,8 +126,16 @@ export const philadelphiaTransitModule: TransitCityModule = {
   deserializeDirection: (mode, value, stopId) =>
     isPhiladelphiaMode(mode) ? deserializePhiladelphiaDirection(mode, value, stopId) : null,
   normalizeSavedStationId: (_provider, stopId) => stopId.trim().toUpperCase(),
-  prepareRouteEntries: (mode, routes) =>
-    isPhiladelphiaMode(mode) ? preparePhiladelphiaRouteEntries(mode, routes) : null,
-  buildRouteGroups: (mode, routes) =>
-    isPhiladelphiaMode(mode) ? buildPhiladelphiaRouteGroups(mode, routes) : null,
+  prepareRouteEntries: (mode, routes) => {
+    if (!isPhiladelphiaMode(mode)) return null;
+    if (mode === 'train') return preparePhiladelphiaRailRouteEntries(routes);
+    if (mode === 'trolley') return preparePhiladelphiaTrolleyRouteEntries(routes);
+    return preparePhiladelphiaBusRouteEntries(routes);
+  },
+  buildRouteGroups: (mode, routes) => {
+    if (!isPhiladelphiaMode(mode)) return null;
+    if (mode === 'train') return buildPhiladelphiaRailRouteGroups(routes);
+    if (mode === 'trolley') return buildPhiladelphiaTrolleyRouteGroups(routes);
+    return buildPhiladelphiaBusRouteGroups(routes);
+  },
 };

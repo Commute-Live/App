@@ -145,7 +145,7 @@ const getMockStopName = (city: CityId, mode: ModeId) => {
   if (city === 'boston' && mode === 'train') return 'Park Street';
   if (city === 'boston' && mode === 'commuter-rail') return 'Back Bay';
   if (city === 'boston' && mode === 'ferry') return 'Long Wharf';
-  if (city === 'philadelphia' && mode === 'train') return 'Gray 30th St Station';
+  if (city === 'philadelphia' && mode === 'train') return '30th Street Station';
   if (city === 'philadelphia' && mode === 'trolley') return '13th St';
   if (city === 'philadelphia' && mode === 'bus') return '69th St TC';
   return 'Times Sq–42 St';
@@ -183,6 +183,14 @@ const getPresetDescriptionForMode = (
   if (city === 'new-york' && mode === 'mnr') {
     if (presetId === 2) return 'Inbound or Outbound terminal on the left, next arrival on the right.';
     if (presetId === 5) return 'Inbound or Outbound terminal with upcoming arrivals.';
+  }
+  if (city === 'philadelphia' && mode === 'train') {
+    if (presetId === 2) return 'Northbound or Southbound on the left, next arrival on the right.';
+    if (presetId === 5) return 'Northbound or Southbound with upcoming arrivals.';
+  }
+  if (city === 'philadelphia' && (mode === 'bus' || mode === 'trolley')) {
+    if (presetId === 2) return 'Trip direction on the left, next arrival on the right.';
+    if (presetId === 5) return 'Trip direction with upcoming arrivals.';
   }
   return defaultDescription;
 };
