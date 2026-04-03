@@ -144,7 +144,7 @@ const isReorderLineBus = (display: DeviceDisplay, label: string) => {
     l => typeof l.line === 'string' && l.line.trim().toUpperCase() === label,
   );
   const provider = matchedLine?.provider ?? display.config.lines?.[0]?.provider ?? '';
-  return provider === 'mta-bus';
+  return provider === 'mta-bus' || provider === 'septa-bus';
 };
 
 const sortDisplaysForCarousel = (items: DeviceDisplay[], activeDisplayId: string | null) =>

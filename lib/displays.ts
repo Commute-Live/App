@@ -473,7 +473,7 @@ export const toPreviewSlots = (
     const {color, textColor: lineTextColor} =
       line.provider === 'mta-bus'
         ? {color: '#0039A6', textColor: '#FFFFFF'}
-        : resolveProviderLineColor(line.provider, lineId)
+        : resolveProviderLineColor(line.provider ?? '', lineId)
           ?? lineColors[lineId]
           ?? hashLineColor(lineId);
     const directionLabel = resolvePreviewDirectionCueLabel(line);

@@ -176,6 +176,34 @@ const BAY_AREA_LINE_COLORS: Record<string, {color: string; textColor: string}> =
   'SF:T':    {color: '#BA0016', textColor: '#FFFFFF'},
 };
 
+// SEPTA rail lines — keyed by GTFS route_short_name. Most are SEPTA blue;
+// Media/Elwyn and Trenton have distinct official colors.
+const SEPTA_RAIL_COLORS: Record<string, {color: string; textColor: string}> = {
+  'AIR': {color: '#005DAA', textColor: '#FFFFFF'}, // Airport
+  'CHE': {color: '#005DAA', textColor: '#FFFFFF'}, // Chestnut Hill East
+  'CHW': {color: '#005DAA', textColor: '#FFFFFF'}, // Chestnut Hill West
+  'CYN': {color: '#005DAA', textColor: '#FFFFFF'}, // Cynwyd
+  'FOX': {color: '#005DAA', textColor: '#FFFFFF'}, // Fox Chase
+  'LAN': {color: '#005DAA', textColor: '#FFFFFF'}, // Lansdale/Doylestown
+  'MED': {color: '#7B2D8B', textColor: '#FFFFFF'}, // Media/Elwyn
+  'NOR': {color: '#005DAA', textColor: '#FFFFFF'}, // Manayunk/Norristown
+  'PAO': {color: '#005DAA', textColor: '#FFFFFF'}, // Paoli/Thorndale
+  'TRE': {color: '#C8102E', textColor: '#FFFFFF'}, // Trenton
+  'WAR': {color: '#005DAA', textColor: '#FFFFFF'}, // Warminster
+  'WIL': {color: '#005DAA', textColor: '#FFFFFF'}, // Wilmington/Newark
+  'WTR': {color: '#005DAA', textColor: '#FFFFFF'}, // West Trenton
+};
+
+// SEPTA trolley lines — keyed by internal GTFS route ID
+const SEPTA_TROLLEY_COLORS: Record<string, {color: string; textColor: string}> = {
+  'G1': {color: '#3B7B38', textColor: '#FFFFFF'}, // Route 15
+  'T1': {color: '#3B7B38', textColor: '#FFFFFF'}, // Route 10
+  'T2': {color: '#3B7B38', textColor: '#FFFFFF'}, // Route 11
+  'T3': {color: '#3B7B38', textColor: '#FFFFFF'}, // Route 13
+  'T4': {color: '#3B7B38', textColor: '#FFFFFF'}, // Route 34
+  'T5': {color: '#3B7B38', textColor: '#FFFFFF'}, // Route 36
+};
+
 // LIRR/MNR use numeric route IDs that collide with subway line numbers,
 // so they need a separate provider-scoped lookup.
 const LIRR_ROUTE_COLORS: Record<string, {color: string; textColor: string}> = {
@@ -202,9 +230,13 @@ const MNR_ROUTE_COLORS: Record<string, {color: string; textColor: string}> = {
   '6': {color: '#EE0034', textColor: '#FFFFFF'}, // Waterbury
 };
 
+const SEPTA_BUS_DEFAULT: {color: string; textColor: string} = {color: '#005DAA', textColor: '#FFFFFF'};
+
 const PROVIDER_COLOR_OVERRIDES: Record<string, Record<string, {color: string; textColor: string}>> = {
   'mta-lirr': LIRR_ROUTE_COLORS,
   'mta-mnr': MNR_ROUTE_COLORS,
+  'septa-rail': SEPTA_RAIL_COLORS,
+  'septa-trolley': SEPTA_TROLLEY_COLORS,
 };
 
 /**
@@ -215,10 +247,15 @@ export function resolveProviderLineColor(
   provider: string,
   lineId: string,
 ): {color: string; textColor: string} | null {
+  // SEPTA bus routes are all uniform SEPTA blue — no per-route color table needed
+  if (provider === 'septa-bus') return SEPTA_BUS_DEFAULT;
+
   const overrideMap = PROVIDER_COLOR_OVERRIDES[provider];
   if (overrideMap) {
     const result = overrideMap[lineId] ?? overrideMap[lineId.toUpperCase()];
     if (result) return result;
+    // Unknown SEPTA rail/trolley routes fall back to SEPTA blue rather than hash
+    if (provider === 'septa-rail' || provider === 'septa-trolley') return SEPTA_BUS_DEFAULT;
   }
   return null;
 }
