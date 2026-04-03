@@ -84,6 +84,7 @@ type LinePick = {
   stationId: string;
   routeId: string;
   direction: Direction;
+  scrolling: boolean;
   label: string;
   secondaryLabel: string;
   textColor: string;
@@ -767,6 +768,7 @@ export default function DisplayEditorScreen() {
               stationId: normalizeSavedStationId(saved.provider, normalizedSavedStop),
               routeId: saved.line,
               direction: dir,
+              scrolling: saved.scrolling === true || (saved.scrolling === undefined && sourceDisplay.config?.scrolling === true),
               label: typeof saved.label === 'string' ? saved.label : typeof saved.topText === 'string' ? saved.topText : '',
               secondaryLabel:
                 typeof saved.secondaryLabel === 'string'
@@ -999,6 +1001,7 @@ export default function DisplayEditorScreen() {
           headsign1: route?.headsign1 ?? undefined,
           directions: route?.directions ?? undefined,
           displayType: getPersistedDisplayType(displayPresetsByLine[line.id] ?? inferDisplayPreset(line)),
+          scrolling: line.scrolling,
           label: line.label.trim() || undefined,
           secondaryLabel: line.secondaryLabel.trim() || undefined,
           textColor: line.textColor || undefined,
@@ -1768,7 +1771,7 @@ export default function DisplayEditorScreen() {
                   onClearDisplayType={() => clearDisplayPreset(selectedLine.id)}
                   onPresetNameChange={setPresetName}
                   onBrightnessChange={brightness => setDisplayMetadata(prev => ({...prev, brightness}))}
-                  onScrollingChange={scrolling => setDisplayMetadata(prev => ({...prev, scrolling}))}
+                  onScrollingChange={scrolling => updateLine(selectedLine.id, {scrolling})}
                   onScheduleEnabledChange={() => setCustomDisplayScheduleEnabled(prev => !prev)}
                   onScheduleStartChange={start => setDisplaySchedule(prev => ({...prev, start}))}
                   onScheduleEndChange={end => setDisplaySchedule(prev => ({...prev, end}))}
@@ -4065,8 +4068,8 @@ function WizardReviewStep({
             <Text style={styles.wizardSettingLabel}>Long Text</Text>
             <View style={styles.wizardSegmented}>
               {[
-                {id: 'truncate', label: 'Cut Off', active: !displayMetadata.scrolling},
-                {id: 'scroll', label: 'Scroll', active: displayMetadata.scrolling},
+                {id: 'truncate', label: 'Cut Off', active: !line.scrolling},
+                {id: 'scroll', label: 'Scroll', active: line.scrolling},
               ].map(opt => (
                 <Pressable
                   key={opt.id}

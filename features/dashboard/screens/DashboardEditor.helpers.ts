@@ -29,6 +29,7 @@ type LinePick = {
   stationId: string;
   routeId: string;
   direction: Direction;
+  scrolling: boolean;
   label: string;
   secondaryLabel: string;
   textColor: string;
@@ -111,6 +112,7 @@ export function areSameLinePicks(left: LinePick[], right: LinePick[]) {
       && line.stationId === other.stationId
       && line.routeId === other.routeId
       && line.direction === other.direction
+      && line.scrolling === other.scrolling
       && line.label === other.label
       && line.secondaryLabel === other.secondaryLabel
       && line.textColor === other.textColor
@@ -485,6 +487,7 @@ function newLine(
       stationId: firstStation?.id ?? '',
       routeId: firstRoute?.id ?? '',
       direction: getDefaultUiDirection(city, safeMode, firstRoute),
+      scrolling: false,
       label: '',
       secondaryLabel: '',
       textColor: DEFAULT_TEXT_COLOR,
@@ -527,6 +530,7 @@ export function normalizeLine(
     stationId: resolvedStationId,
     routeId: resolvedRouteId,
     direction: resolvedDirection,
+    scrolling: line.scrolling === true,
     label: normalizeCustomLabel(line.label),
     secondaryLabel: normalizeCustomLabel(line.secondaryLabel),
     textColor: normalizeHexColor(line.textColor) ?? DEFAULT_TEXT_COLOR,
