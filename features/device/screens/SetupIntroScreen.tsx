@@ -8,6 +8,7 @@ import {colors, layout, radii, spacing, typography} from '../../../theme';
 import {useAppState} from '../../../state/appState';
 import {apiFetch} from '../../../lib/api';
 import {queryKeys} from '../../../lib/queryKeys';
+import {getCurrentIanaTimeZone} from '../../../lib/schedules';
 import {useAuth} from '../../../state/authProvider';
 
 export default function SetupIntroScreen() {
@@ -44,7 +45,10 @@ export default function SetupIntroScreen() {
       const registerResponse = await apiFetch('/device/register', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({id: deviceIdToLink}),
+        body: JSON.stringify({
+          id: deviceIdToLink,
+          timezone: getCurrentIanaTimeZone(),
+        }),
       });
       if (!registerResponse.ok && registerResponse.status !== 409) {
         const registerData = await registerResponse.json().catch(() => null);

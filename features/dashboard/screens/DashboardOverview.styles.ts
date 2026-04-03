@@ -236,12 +236,14 @@ export const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: spacing.md,
   },
+  quietHeaderCopy: {flex: 1, gap: spacing.xxs},
   quietDescription: {
     flex: 1,
     color: colors.textMuted,
     fontSize: 13,
     lineHeight: 18,
   },
+  quietDescriptionDisabled: {opacity: 0.6},
 
   // ─── Toggle Chip ──────────────────────────────────────────────────────────
   toggleChip: {
@@ -263,6 +265,30 @@ export const styles = StyleSheet.create({
   toggleChipText: {color: colors.text, fontSize: 13, fontWeight: '700'},
 
   // ─── Quiet Hours / Time Fields ────────────────────────────────────────────
+  quietMetaText: {color: colors.textMuted, fontSize: 12, lineHeight: 17},
+  quietDaysWrap: {gap: spacing.xs},
+  quietDaysLabel: {
+    color: colors.textMuted,
+    fontSize: 11,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+  },
+  quietDaysRow: {flexDirection: 'row', gap: 6},
+  quietDaysRowDisabled: {opacity: 0.45},
+  quietDayPill: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.card,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  quietDayPillActive: {borderColor: colors.accent, backgroundColor: colors.accentMuted},
+  quietDayPillText: {color: colors.textMuted, fontSize: 10, fontWeight: '700'},
+  quietDayPillTextActive: {color: colors.accent},
   quietRangeRow: {flexDirection: 'row', gap: spacing.sm},
   timeField: {
     flex: 1,
@@ -299,6 +325,50 @@ export const styles = StyleSheet.create({
   },
   timeFieldButtonText: {color: colors.text, fontSize: 18, fontWeight: '600'},
   timeFieldValue: {color: colors.text, fontSize: 14, fontWeight: '800'},
+  timeFieldDisabled: {opacity: 0.45},
+  timePickerButton: {
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.background,
+    minHeight: 52,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.sm,
+    justifyContent: 'center',
+    gap: spacing.xxs,
+  },
+  timePickerValue: {color: colors.text, fontSize: 15, fontWeight: '800'},
+  timePickerMeta: {color: colors.textMuted, fontSize: 11, fontWeight: '600'},
+  timePickerModalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.55)',
+    justifyContent: 'flex-end',
+  },
+  timePickerModalSheet: {
+    backgroundColor: colors.surface,
+    borderTopLeftRadius: radii.lg,
+    borderTopRightRadius: radii.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.xl,
+    gap: spacing.sm,
+  },
+  timePickerModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  timePickerModalAction: {
+    minWidth: 56,
+    minHeight: 36,
+    justifyContent: 'center',
+  },
+  timePickerModalActionText: {color: colors.textMuted, fontSize: 14, fontWeight: '700'},
+  timePickerModalActionTextPrimary: {color: colors.accent},
+  timePickerModalTitle: {color: colors.text, fontSize: 15, fontWeight: '800'},
+  timePickerModalControl: {alignSelf: 'center'},
 
   // ─── Secondary Button ─────────────────────────────────────────────────────
   secondaryButton: {

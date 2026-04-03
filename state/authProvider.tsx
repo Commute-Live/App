@@ -233,11 +233,13 @@ export function AuthProvider({children}: {children: React.ReactNode}) {
       await Promise.all([
         queryClient.cancelQueries({queryKey: queryKeys.displays(disconnectDeviceId)}),
         queryClient.cancelQueries({queryKey: queryKeys.deviceConfig(disconnectDeviceId)}),
+        queryClient.cancelQueries({queryKey: queryKeys.deviceSettings(disconnectDeviceId)}),
         queryClient.cancelQueries({queryKey: queryKeys.lastCommand(disconnectDeviceId)}),
       ]);
 
       queryClient.removeQueries({queryKey: queryKeys.displays(disconnectDeviceId)});
       queryClient.removeQueries({queryKey: queryKeys.deviceConfig(disconnectDeviceId)});
+      queryClient.removeQueries({queryKey: queryKeys.deviceSettings(disconnectDeviceId)});
       queryClient.removeQueries({queryKey: queryKeys.lastCommand(disconnectDeviceId)});
       queryClient.setQueryData(queryKeys.auth.me, result.profile);
       applyAuthenticatedProfile(result.profile);
