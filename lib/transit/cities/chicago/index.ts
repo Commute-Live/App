@@ -1,6 +1,7 @@
 import type {TransitCityModule} from '../types';
 import {
   buildChicagoRouteGroups,
+  deserializeChicagoDirection,
   formatChicagoRoutePickerLabel,
   getChicagoDirectionLabel,
   getChicagoLineLabel,
@@ -8,6 +9,7 @@ import {
   getChicagoRouteBadgeLabel,
   isChicagoMode,
   prepareChicagoRouteEntries,
+  serializeChicagoDirection,
 } from '../../providers/chicago';
 
 export const chicagoTransitModule: TransitCityModule = {
@@ -26,8 +28,10 @@ export const chicagoTransitModule: TransitCityModule = {
     isChicagoMode(mode) ? getChicagoRouteBadgeLabel(mode, routeId, routeLabel) : null,
   getDirectionLabel: (mode, direction, routeId, variant) =>
     isChicagoMode(mode) ? getChicagoDirectionLabel(mode, direction, routeId, variant) : null,
-  serializeDirection: () => null,
-  deserializeDirection: () => null,
+  serializeDirection: (mode, direction) =>
+    isChicagoMode(mode) ? serializeChicagoDirection(mode, direction) : null,
+  deserializeDirection: (mode, value) =>
+    isChicagoMode(mode) ? deserializeChicagoDirection(mode, value) : null,
   normalizeSavedStationId: (_provider, stopId) => stopId.trim().toUpperCase(),
   prepareRouteEntries: (mode, routes) =>
     isChicagoMode(mode) ? prepareChicagoRouteEntries(mode, routes) : null,

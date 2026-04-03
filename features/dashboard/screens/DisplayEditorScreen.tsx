@@ -317,7 +317,9 @@ const getRouteHeadsign = (
   const metadataTerminal = getLocalDirectionTerminal(route, direction);
   if (metadataTerminal) return trimRouteHeadsign(metadataTerminal);
   if (city === 'new-york') return null;
-  return trimRouteHeadsign(direction === 'downtown' ? route.headsign1 : route.headsign0);
+  const useHeadsign1 =
+    direction === 'downtown' || direction === 'dir1' || direction === 'westbound' || direction === 'inbound';
+  return trimRouteHeadsign(useHeadsign1 ? route.headsign1 : route.headsign0);
 };
 
 const getDirectionCueLabel = (
@@ -987,10 +989,12 @@ export default function DisplayEditorScreen() {
           (linesByMode[normalizedMode] ?? []).find(item => item.id === line.routeId);
 
         return {
+          ...(serializeUiDirection(city, line.mode, line.direction).trim()
+            ? {direction: serializeUiDirection(city, line.mode, line.direction)}
+            : {}),
           provider: resolveBackendProvider(city, line.mode),
           line: line.routeId,
           stop: line.stationId,
-          ...(line.direction ? {direction: serializeUiDirection(city, line.mode, line.direction)} : {}),
           headsign0: route?.headsign0 ?? undefined,
           headsign1: route?.headsign1 ?? undefined,
           directions: route?.directions ?? undefined,
@@ -3282,6 +3286,7 @@ function StopPickerStep({
 
   const term = search.trim().toLowerCase();
   const isBusGrouped = city === 'new-york' && selectedMode === 'bus';
+  const hideDirectionToggle = city === 'chicago' && selectedMode === 'bus';
   const isChicagoTrainMode = city === 'chicago' && selectedMode === 'train';
   const isNycSubwayMode = city === 'new-york' && selectedMode === 'train';
   const isNycLirrMode = city === 'new-york' && selectedMode === 'lirr';
@@ -3314,32 +3319,34 @@ function StopPickerStep({
   return (
     <View style={[styles.stepContainer, styles.stopPickerStepFull]}>
       <View style={styles.stopPickerHeader}>
-        <View style={[styles.stopPickerDirRow, useWideDirectionToggle && styles.stopPickerDirRowChicagoTrain]}>
-          {directionOptions.map(dir => {
-            const active = selectedDirection === dir;
-            const label = getDirectionToggleLabel(city, selectedMode, dir, selectedRoute ?? selectedRouteId);
-            return (
-              <Pressable
-                key={dir}
-                style={[
-                  styles.stopPickerDirPill,
-                  useWideDirectionToggle && styles.stopPickerDirPillChicagoTrain,
-                  active && styles.stopPickerDirPillActive,
-                ]}
-                onPress={() => onSelectDirection(dir)}>
-                <Text
+        {!hideDirectionToggle ? (
+          <View style={[styles.stopPickerDirRow, useWideDirectionToggle && styles.stopPickerDirRowChicagoTrain]}>
+            {directionOptions.map(dir => {
+              const active = selectedDirection === dir;
+              const label = getDirectionToggleLabel(city, selectedMode, dir, selectedRoute ?? selectedRouteId);
+              return (
+                <Pressable
+                  key={dir}
                   style={[
-                    styles.stopPickerDirText,
-                    useWideDirectionToggle && styles.stopPickerDirTextChicagoTrain,
-                    active && styles.stopPickerDirTextActive,
+                    styles.stopPickerDirPill,
+                    useWideDirectionToggle && styles.stopPickerDirPillChicagoTrain,
+                    active && styles.stopPickerDirPillActive,
                   ]}
-                  numberOfLines={useWideDirectionToggle ? 2 : 1}>
-                  {label}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </View>
+                  onPress={() => onSelectDirection(dir)}>
+                  <Text
+                    style={[
+                      styles.stopPickerDirText,
+                      useWideDirectionToggle && styles.stopPickerDirTextChicagoTrain,
+                      active && styles.stopPickerDirTextActive,
+                    ]}
+                    numberOfLines={useWideDirectionToggle ? 2 : 1}>
+                    {label}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        ) : null}
       </View>
 
       <TextInput
