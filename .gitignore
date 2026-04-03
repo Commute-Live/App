@@ -63,6 +63,5 @@ coverage/
 *.pem
 
 # Generated native folders
-/ios
 /android
 .vscode
