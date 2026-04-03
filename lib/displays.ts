@@ -4,6 +4,7 @@ import {CITY_LINE_COLORS, hashLineColor, resolveProviderLineColor} from './lineC
 import {providerToCity as resolveProviderCity} from './transit/providerRegistry';
 import type {TransitLineDirection} from '../types/transit';
 import {deserializeUiDirection, getLocalDirectionLabel, getLocalDirectionTerminal, getLocalLineLabel, getLocalRouteBadgeLabel, inferUiModeFromProvider, isRailLinePreviewMode} from './transitUi';
+import {getTransitCityModule} from './transit/registry';
 
 export type DisplayWeekday = 'sun' | 'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat';
 
@@ -468,6 +469,7 @@ export const toPreviewSlots = (
   return (display.config.lines ?? []).slice(0, 2).map((line, index) => {
     const city = providerToCity(line.provider ?? null);
     const mode = inferUiModeFromProvider(line.provider, line.stop, line.line);
+    const isBusBadge = city && mode ? (getTransitCityModule(city)?.isBusBadge?.(mode) ?? false) : false;
     const lineColors = city ? (CITY_LINE_COLORS[city] ?? {}) : {};
     const lineId = (line.line ?? '').toUpperCase();
     const {color, textColor: lineTextColor} =
@@ -510,13 +512,13 @@ export const toPreviewSlots = (
     const badgeShape: PreviewSlot['badgeShape'] =
       city === 'new-york' && (line.provider === 'mta-lirr' || line.provider === 'mta-mnr')
         ? 'bar'
-        : city === 'new-york' && line.provider === 'mta-bus'
+        : isBusBadge
         ? 'pill'
         : city === 'chicago' && line.provider === 'cta-subway'
           ? 'pill'
         : city === 'boston' && (mode === 'train' || mode === 'ferry')
           ? 'pill'
-          : city === 'philadelphia' && mode === 'train'
+        : city === 'philadelphia' && (mode === 'train' || mode === 'trolley')
             ? 'pill'
             : line.provider === 'mta-lirr' || line.provider === 'mta-mnr' || mode === 'commuter-rail'
           ? 'rail'

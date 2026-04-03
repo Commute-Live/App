@@ -1450,11 +1450,11 @@ export default function DisplayEditorScreen() {
                 : undefined;
         const previewSubLineColor = displayPreset === 4 || displayPreset === 5 || displayPreset === 6 ? '#E5C15A' : undefined;
 
-        const isBusBadge = city === 'new-york' && safeMode === 'bus';
+        const isBusBadge = isNycBusBadge(city, safeMode);
         const isChicagoTrainBadge = city === 'chicago' && safeMode === 'train';
         const isBostonTrainBadge = city === 'boston' && safeMode === 'train';
         const isBostonFerryBadge = city === 'boston' && safeMode === 'ferry';
-        const isPhillyRailBadge = city === 'philadelphia' && safeMode === 'train';
+        const isPhillyRailBadge = city === 'philadelphia' && (safeMode === 'train' || safeMode === 'trolley');
         const isRailLineBadge = isNycRailMode(safeMode);
         const isCommuterRailBadge = safeMode === 'commuter-rail';
 
@@ -3154,12 +3154,13 @@ function LinePickerStep({
                 <View style={[styles.lineGrid, isWidePillMode && styles.lineGridChicagoTrain]}>
                   {group.routes.map(route => {
                       const isSelected = route.routes.some(item => item.id === selectedRouteId);
-                      const isBusBadge = city === 'new-york' && selectedMode === 'bus';
+                      const isBusBadge = isNycBusBadge(city, selectedMode);
                       const isChicagoTrainBadge = city === 'chicago' && selectedMode === 'train';
                       const isBostonWideBadge = city === 'boston' && (selectedMode === 'train' || selectedMode === 'ferry');
                       const isCommuterRailBadge = false;
+                      const routeBadgeLabel = getLocalRouteBadgeLabel(city, selectedMode, route.id, route.label);
                       const isExpress = !isBusBadge && isExpressRouteBadge(city, selectedMode, route);
-                      const useCompactBadgeText = isBusBadge && route.displayLabel.length >= 5;
+                      const useCompactBadgeText = isBusBadge && routeBadgeLabel.length >= 5;
                       const shouldAutoFitBadgeText = isBusBadge || isChicagoTrainBadge || isBostonWideBadge || isCommuterRailBadge || isExpress;
                       const anim = getPulseAnim(route.id);
                     return (
@@ -3198,7 +3199,7 @@ function LinePickerStep({
                                   {color: route.textColor ?? '#fff'},
                                   isExpress && styles.lineBadgeTextDiamond,
                                 ]}>
-                                {route.displayLabel}
+                                {routeBadgeLabel}
                               </Text>
                             </View>
                           </Pressable>
@@ -3846,7 +3847,7 @@ function LedStylePickerStep({
   const isNycRail = isNycRailMode(line.mode);
   const isCommuterRail = line.mode === 'commuter-rail';
   const isChicagoTrain = city === 'chicago' && line.mode === 'train';
-  const isPhillyRail = city === 'philadelphia' && line.mode === 'train';
+  const isPhillyRail = city === 'philadelphia' && (line.mode === 'train' || line.mode === 'trolley');
   const isRailPreviewMode = isRailLinePreviewMode(city, line.mode);
   const shouldUseRailBranchLabel = isRailPreviewMode && !(city === 'new-york' && isNycRail);
   const routeBadgeLabel = getLocalRouteBadgeLabel(city, line.mode, line.routeId, routeLabel);
@@ -3886,7 +3887,7 @@ function LedStylePickerStep({
                   branchLabel={shouldUseRailBranchLabel ? linePreviewLabel : undefined}
                   badgeShape={city === 'new-york' && (line.mode === 'lirr' || line.mode === 'mnr')
                     ? 'bar'
-                    : isNycRail || isChicagoTrain || isPhillyRail || (city === 'boston' && line.mode === 'train') || (city === 'boston' && line.mode === 'ferry')
+                    : isNycBusBadge(city, line.mode) || isNycRail || isChicagoTrain || isPhillyRail || (city === 'boston' && line.mode === 'train') || (city === 'boston' && line.mode === 'ferry')
                       ? 'pill'
                       : isCommuterRail
                         ? 'rail'

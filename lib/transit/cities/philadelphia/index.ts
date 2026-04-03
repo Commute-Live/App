@@ -33,6 +33,7 @@ import {
   serializePhiladelphiaTrolleyDirection,
   deserializePhiladelphiaTrolleyDirection,
 } from './trolley';
+import {getPhiladelphiaRouteBadgeAppearance} from './shared';
 
 export type PhiladelphiaMode = Extract<ModeId, 'train' | 'bus' | 'trolley'>;
 
@@ -138,4 +139,9 @@ export const philadelphiaTransitModule: TransitCityModule = {
     if (mode === 'trolley') return buildPhiladelphiaTrolleyRouteGroups(routes);
     return buildPhiladelphiaBusRouteGroups(routes);
   },
+  resolveRouteAppearance: (mode, lineId) => {
+    if (!isPhiladelphiaMode(mode)) return null;
+    return getPhiladelphiaRouteBadgeAppearance(mode, lineId);
+  },
+  isBusBadge: mode => mode === 'bus',
 };

@@ -60,6 +60,7 @@ export default function DashboardOverviewScreen() {
    });
 
    const deviceDisplays = displaysQuery.data?.displays ?? [];
+   const activeDisplayId = displaysQuery.data?.activeDisplayId ?? null;
    const displaysLoading = displaysQuery.isPending || displaysQuery.isFetching;
    const displaysError = displaysQuery.error instanceof Error ? displaysQuery.error.message : '';
 
@@ -213,12 +214,16 @@ export default function DashboardOverviewScreen() {
       }
    }, [hasLinkedDevice, isScreenFocused, queryClient, selectedDevice.id, status]);
 
-   const activePreset = useMemo(
-      () => carouselPresets.length === 0
-         ? null
-         : [...carouselPresets].sort((a, b) => b.priority - a.priority)[0] ?? null,
-      [carouselPresets],
-   );
+   const activePreset = useMemo(() => {
+      if (deviceDisplays.length === 0) return null;
+      if (activeDisplayId) {
+         const matched = deviceDisplays.find(display => display.displayId === activeDisplayId);
+         if (matched) return matched;
+      }
+      return [...deviceDisplays].sort((a, b) => b.priority - a.priority)[0] ?? null;
+   }, [activeDisplayId, deviceDisplays]);
+   const activePresetCity = providerToCity(activePreset?.config.lines?.[0]?.provider ?? null) ?? city;
+   const activePresetBrand = CITY_BRANDS[activePresetCity];
    const activeScheduleText = activePreset ? toDisplayScheduleText(activePreset) : 'No schedule set';
    const liveArrivalLookup = useMemo(
       () => getLiveArrivalLookup(lastCommandPayload),
@@ -466,14 +471,12 @@ export default function DashboardOverviewScreen() {
                   {activePreset ? (
                      <View style={styles.ledContainer}>
                         <DashboardPreviewSection
-                           slots={toPreviewSlots(activePreset, cityBrand.accent, stopNames, liveArrivalLookup, {
-                              showDirectionFallback: false,
-                           })}
+                           slots={toPreviewSlots(activePreset, activePresetBrand.accent, stopNames, liveArrivalLookup, {showDirectionFallback: false})}
                            displayType={activePreset.config.displayType ?? Number(activePreset.config.lines?.[0]?.displayType) ?? 1}
                            onSelectSlot={() =>
                               router.push({
                                  pathname: '/preset-editor',
-                                 params: {city, from: 'dashboard', mode: 'edit', displayId: activePreset.displayId},
+                                 params: {city: activePresetCity, from: 'dashboard', mode: 'edit', displayId: activePreset.displayId},
                               })
                            }
                            onReorderSlot={() => {}}

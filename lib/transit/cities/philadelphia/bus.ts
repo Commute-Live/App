@@ -1,5 +1,5 @@
 import type {TransitRoutePickerItem, TransitRouteRecord} from '../../frontendTypes';
-import {naturalRouteLabelCompare, routeToPickerItem, singleGroup} from './shared';
+import {getPhiladelphiaSurfaceBadgeLabel, naturalRouteLabelCompare, routeToPickerItem, singleGroup} from './shared';
 
 const normalizeBusSortLabel = (value: string) => value.trim().toUpperCase().replace(/\s+/g, '');
 
@@ -43,7 +43,7 @@ export const getPhiladelphiaBusLineLabel = (
 export const getPhiladelphiaBusRouteBadgeLabel = (
   routeId: string,
   routeLabel?: string | null,
-) => routeId.trim().toUpperCase() || (routeLabel ?? routeId).trim().toUpperCase().slice(0, 4);
+) => getPhiladelphiaSurfaceBadgeLabel(routeId) || routeId.trim().toUpperCase() || (routeLabel ?? routeId).trim().toUpperCase().slice(0, 4);
 
 export const getPhiladelphiaBusDirectionLabel = (
   direction: string,

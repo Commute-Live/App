@@ -3,6 +3,7 @@ import {
   compareRouteSortOrder,
   extractRouteNumber,
   formatSurfaceBridgeLabel,
+  getPhiladelphiaSurfaceBadgeLabel,
   PHILADELPHIA_TROLLEY_ROUTE_LABELS,
   normalizeToken,
   routeToPickerItem,
@@ -42,7 +43,7 @@ export const getPhiladelphiaTrolleyLineLabel = (
 export const getPhiladelphiaTrolleyRouteBadgeLabel = (
   routeId: string,
   routeLabel?: string | null,
-) => resolvePhiladelphiaTrolleyLabel(routeId, (routeLabel ?? routeId).trim());
+) => getPhiladelphiaSurfaceBadgeLabel(routeId) || resolvePhiladelphiaTrolleyLabel(routeId, (routeLabel ?? routeId).trim());
 
 export const getPhiladelphiaTrolleyDirectionLabel = (
   direction: UiDirection,

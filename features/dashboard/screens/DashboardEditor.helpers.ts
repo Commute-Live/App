@@ -1,5 +1,5 @@
 import {normalizeCityId, type CityId} from '../../../constants/cities';
-import {CITY_LINE_COLORS, FALLBACK_ROUTE_COLORS} from '../../../lib/lineColors';
+import {CITY_LINE_COLORS, FALLBACK_ROUTE_COLORS, resolveProviderLineColor} from '../../../lib/lineColors';
 import {getGlobalTransitLines, getTransitArrivals, getTransitLines, getTransitStations, getTransitStopsForLine} from '../../../lib/transitApi';
 import type {
   ModeId,
@@ -245,10 +245,17 @@ function resolveMappedRouteAppearance(city: CityId, mode: ModeId, lineId: string
 
 function resolveRouteColor(city: CityId, mode: ModeId, lineId: string, label: string | null, apiColor: string | null): string {
   const cityModule = getTransitCityModule(city);
+  const providerId = isSupportedTransitCity(city) ? resolveBackendProviderId(city, mode) : null;
+  const providerAppearance = providerId
+    ? resolveProviderLineColor(providerId, lineId) ?? (label ? resolveProviderLineColor(providerId, label) : null)
+    : null;
+  if (city === 'philadelphia' && mode === 'train' && providerAppearance) return providerAppearance.color;
+
   const appearance = cityModule?.resolveRouteAppearance?.(mode, lineId, label);
   if (appearance) return appearance.color;
 
   if (city === 'chicago' && apiColor) return apiColor;
+  if (providerAppearance) return providerAppearance.color;
   const mapped = resolveMappedRouteAppearance(city, mode, lineId, label);
   if (mapped) return mapped.color;
   if (apiColor) return apiColor;
@@ -257,10 +264,17 @@ function resolveRouteColor(city: CityId, mode: ModeId, lineId: string, label: st
 
 function resolveRouteTextColor(city: CityId, mode: ModeId, lineId: string, label: string | null, apiTextColor: string | null): string {
   const cityModule = getTransitCityModule(city);
+  const providerId = isSupportedTransitCity(city) ? resolveBackendProviderId(city, mode) : null;
+  const providerAppearance = providerId
+    ? resolveProviderLineColor(providerId, lineId) ?? (label ? resolveProviderLineColor(providerId, label) : null)
+    : null;
+  if (city === 'philadelphia' && mode === 'train' && providerAppearance) return providerAppearance.textColor;
+
   const appearance = cityModule?.resolveRouteAppearance?.(mode, lineId, label);
   if (appearance) return appearance.textColor;
 
   if (city === 'chicago' && apiTextColor) return apiTextColor;
+  if (providerAppearance) return providerAppearance.textColor;
   const mapped = resolveMappedRouteAppearance(city, mode, lineId, label);
   if (mapped) return mapped.textColor;
   if (apiTextColor) return apiTextColor;
