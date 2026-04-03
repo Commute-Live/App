@@ -976,6 +976,8 @@ function ReorderDisplaysModal({
               autoscrollSpeed={240}
               dragItemOverflow={false}
               scrollEnabled={draftDisplays.length * REORDER_ROW_HEIGHT > listHeight}
+              showsVerticalScrollIndicator={false}
+              showsHorizontalScrollIndicator={false}
               style={[styles.reorderList, {maxHeight: listHeight}]}
               contentContainerStyle={styles.reorderListContent}
               onDragBegin={index => setActiveId(draftDisplays[index]?.displayId ?? null)}
