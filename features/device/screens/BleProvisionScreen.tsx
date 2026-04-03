@@ -248,6 +248,7 @@ export default function BleProvisionScreen() {
   const [provisionStep, setProvisionStep] = useState<ProvisionStep>('idle');
   const pairingTokenRef = useRef<string | null>(null);
   const hasRequestedScanRef = useRef(false);
+  const bluetoothMessage = state.bluetoothMessage;
 
   const isProvisioning = provisionStep !== 'idle';
   const isBusy =
@@ -257,6 +258,7 @@ export default function BleProvisionScreen() {
     state.phase === 'provisioning' ||
     state.phase === 'waiting_wifi' ||
     isProvisioning;
+  const canStartScan = !isBusy && !bluetoothMessage;
 
   const modalError =
     state.errorMsg ??
@@ -363,13 +365,23 @@ export default function BleProvisionScreen() {
         {/* Phase: idle / error */}
         {(state.phase === 'idle' || state.phase === 'error') && (
           <Animated.View entering={FadeIn.duration(300)} exiting={FadeOut.duration(200)} style={styles.section}>
-            {state.phase === 'error' && (
+            {bluetoothMessage && (
+              <View style={styles.errorCard}>
+                <Text style={styles.errorText}>{bluetoothMessage}</Text>
+              </View>
+            )}
+            {state.phase === 'error' && state.errorMsg && state.errorMsg !== bluetoothMessage && (
               <View style={styles.errorCard}>
                 <Text style={styles.errorText}>{state.errorMsg}</Text>
               </View>
             )}
-            <Pressable style={styles.primaryButton} onPress={startScan}>
-              <Text style={styles.primaryText}>Find my CommuteLive display</Text>
+            <Pressable
+              style={[styles.primaryButton, !canStartScan && styles.primaryButtonDisabled]}
+              onPress={startScan}
+              disabled={!canStartScan}>
+              <Text style={styles.primaryText}>
+                {bluetoothMessage ? 'Turn on Bluetooth to continue' : 'Find my CommuteLive display'}
+              </Text>
             </Pressable>
             {state.phase === 'error' && (
               <Pressable style={styles.secondaryButton} onPress={reset}>
