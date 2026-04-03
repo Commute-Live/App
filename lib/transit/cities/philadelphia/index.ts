@@ -78,9 +78,9 @@ export const getPhiladelphiaRouteBadgeLabel = (
 export const getPhiladelphiaDirectionLabel = (
   mode: PhiladelphiaMode,
   direction: UiDirection,
-  _variant: 'toggle' | 'bound' | 'summary' = 'bound',
+  variant: 'toggle' | 'bound' | 'summary' = 'bound',
 ) => {
-  if (mode === 'train') return getPhiladelphiaRailDirectionLabel(direction);
+  if (mode === 'train') return getPhiladelphiaRailDirectionLabel(direction, variant);
   if (mode === 'trolley') return getPhiladelphiaTrolleyDirectionLabel(direction);
   return getPhiladelphiaBusDirectionLabel(direction);
 };
