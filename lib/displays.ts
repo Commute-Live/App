@@ -12,6 +12,7 @@ export type {DisplayWeekday} from './schedules';
 
 export type LineConfig = {
   provider: string;
+  providerMode?: string;
   line: string;
   stop?: string;
   direction?: string;
@@ -97,6 +98,60 @@ const parseError = async (response: Response) => {
 
 export const providerToCity = (provider: string | undefined | null): CityId | null => {
   return resolveProviderCity(provider);
+};
+
+const normalizeProviderMode = (value: string | undefined | null) => {
+  if (typeof value !== 'string') return null;
+  const normalized = value.trim().toLowerCase();
+  if (!normalized.length) return null;
+  return KNOWN_PROVIDER_MODES.has(normalized) ? normalized : null;
+};
+
+const KNOWN_PROVIDER_MODES = new Set([
+  'mta/subway',
+  'mta/bus',
+  'mta/lirr',
+  'mta/mnr',
+  'septa/rail',
+  'septa/bus',
+  'septa/trolley',
+  'mbta/subway',
+  'mbta/bus',
+  'mbta/rail',
+  'mbta/ferry',
+  'cta/subway',
+  'cta/bus',
+]);
+
+const inferMbtaProviderMode = (stopId: string | undefined | null) => {
+  if (typeof stopId !== 'string') return 'mbta/subway';
+  const normalizedStopId = stopId.trim();
+  if (!normalizedStopId) return 'mbta/subway';
+  if (/^Boat-/i.test(normalizedStopId)) return 'mbta/ferry';
+  if (/^\d+$/.test(normalizedStopId)) return 'mbta/bus';
+  if (!/^place-/i.test(normalizedStopId)) return 'mbta/rail';
+  return 'mbta/subway';
+};
+
+export const resolveLineProviderMode = (
+  line: Pick<LineConfig, 'provider' | 'providerMode' | 'stop'>,
+): string | null => {
+  const provider = typeof line.provider === 'string' ? line.provider.trim().toLowerCase() : '';
+  const providerMode = normalizeProviderMode(line.providerMode);
+  if (provider === 'mbta' && providerMode?.startsWith('mbta/')) return providerMode;
+  if (provider === 'mbta') {
+    return inferMbtaProviderMode(line.stop);
+  }
+
+  return null;
+};
+
+export const buildStopLookupKey = (
+  line: Pick<LineConfig, 'provider' | 'providerMode' | 'stop'>,
+): string => {
+  const provider = typeof line.provider === 'string' ? line.provider.trim().toLowerCase() : '';
+  const stop = typeof line.stop === 'string' ? line.stop.trim() : '';
+  return `${resolveLineProviderMode(line) ?? provider}:${stop}`;
 };
 
 type RecordValue = Record<string, unknown>;
@@ -478,7 +533,7 @@ export const toPreviewSlots = (
           ?? hashLineColor(lineId);
     const directionLabel = resolvePreviewDirectionCueLabel(line);
     const headsignLabel = resolvePreviewHeadsignLabel(line);
-    const destinationLabel = stopNames[`${line.provider}:${line.stop}`] || line.stop || 'Select stop';
+    const destinationLabel = stopNames[buildStopLookupKey(line)] || line.stop || 'Select stop';
     const displayType = Number.isFinite(Number(line.displayType))
       ? Math.max(1, Math.min(5, Math.trunc(Number(line.displayType))))
       : Number.isFinite(Number(display.config.displayType))

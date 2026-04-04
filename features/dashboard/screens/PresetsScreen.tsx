@@ -17,6 +17,7 @@ import {CITY_BRANDS, CITY_LABELS} from '../../../constants/cities';
 import {useAppState} from '../../../state/appState';
 import {useAuth} from '../../../state/authProvider';
 import {
+  buildStopLookupKey,
   deleteDisplay,
   DISPLAY_WEEKDAYS,
   fetchDisplays,
@@ -212,13 +213,13 @@ export default function PresetsScreen() {
   );
 
   const stopPairs = useMemo(() => {
-    const pairs: {key: string; provider: string; stop: string}[] = [];
+    const pairs: {key: string; provider: string; providerMode?: string; stop: string}[] = [];
     for (const display of displays) {
       for (const line of display.config.lines ?? []) {
         if (!line.provider || !line.stop) continue;
-        const key = `${line.provider}:${line.stop}`;
+        const key = buildStopLookupKey(line);
         if (!pairs.find(pair => pair.key === key)) {
-          pairs.push({key, provider: line.provider, stop: line.stop});
+          pairs.push({key, provider: line.provider, providerMode: line.providerMode, stop: line.stop});
         }
       }
     }
@@ -226,9 +227,9 @@ export default function PresetsScreen() {
   }, [displays]);
 
   const stopNameQueries = useQueries({
-    queries: stopPairs.map(({provider, stop}) => ({
-      queryKey: queryKeys.transitStationName(provider, stop),
-      queryFn: () => getTransitStationName(provider, stop),
+    queries: stopPairs.map(({key, provider, providerMode, stop}) => ({
+      queryKey: queryKeys.transitStationName(key, stop),
+      queryFn: () => getTransitStationName(provider, stop, providerMode),
       staleTime: 10 * 60 * 1000,
     })),
   });

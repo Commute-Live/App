@@ -49,7 +49,7 @@ import {
   areSameLinePicks,
   buildNextArrivalTimes,
   buildRouteGroups,
-  cityModeFromProvider,
+  cityModeFromSavedLine,
   clampNextStops,
   cycleTimeOption,
   ensureLineCount,
@@ -75,6 +75,7 @@ import {
   normalizeSecondaryContent,
   prepareRouteEntriesForPicker,
   resolveBackendProvider,
+  resolveBackendProviderMode,
   resolveDisplayContent,
   resolveSelectedStationForLine,
   routeLookupKey,
@@ -759,7 +760,7 @@ export default function DisplayEditorScreen() {
         const fallbackDisplayPreset = Number.isFinite(savedDisplayType)
           ? getDisplayPresetFromPersistedType(Math.trunc(savedDisplayType))
           : DEFAULT_DISPLAY_PRESET;
-        const citySavedLines = savedLines.filter((saved: any) => cityModeFromProvider(saved.provider)?.city === city);
+        const citySavedLines = savedLines.filter((saved: any) => cityModeFromSavedLine(saved)?.city === city);
         const nextLayoutSlots = citySavedLines.length > 1 ? 2 : 1;
         let nextLines = ensureLineCount([], city, nextLayoutSlots, {}, {});
 
@@ -796,15 +797,9 @@ export default function DisplayEditorScreen() {
         if (citySavedLines.length > 0) {
           const restoredLines: LinePick[] = citySavedLines.slice(0, 2).map((saved: any, i: number) => {
             const displayFormat = normalizeDisplayFormat(saved.displayFormat);
-            const mapping = cityModeFromProvider(saved.provider);
-            let mode: ModeId = mapping?.mode ?? 'train';
-            if (saved.provider === 'mbta' && saved.stop) {
-              const stopId = saved.stop.trim();
-              if (/^Boat-/i.test(stopId)) mode = 'ferry';
-              else if (/^\d+$/.test(stopId)) mode = 'bus';
-              else if (!/^place-/i.test(stopId)) mode = 'commuter-rail';
-            }
-            const normalizedSavedStop = saved.stop.trim().toUpperCase();
+            const mapping = cityModeFromSavedLine(saved);
+            const mode: ModeId = mapping?.mode ?? 'train';
+            const normalizedSavedStop = typeof saved.stop === 'string' ? saved.stop.trim().toUpperCase() : '';
             const dir: Direction = deserializeUiDirection(
               city,
               mode,
@@ -1038,12 +1033,12 @@ export default function DisplayEditorScreen() {
         const route =
           (routesByStation[routeLookupKey(normalizedMode, line.stationId)] ?? []).find(item => item.id === line.routeId) ??
           (linesByMode[normalizedMode] ?? []).find(item => item.id === line.routeId);
+        const direction = serializeUiDirection(city, line.mode, line.direction).trim();
 
         return {
-          ...(serializeUiDirection(city, line.mode, line.direction).trim()
-            ? {direction: serializeUiDirection(city, line.mode, line.direction)}
-            : {}),
+          ...(direction ? {direction} : {}),
           provider: resolveBackendProvider(city, line.mode),
+          providerMode: city === 'boston' ? resolveBackendProviderMode(city, line.mode) : undefined,
           line: line.routeId,
           stop: line.stationId,
           headsign0: route?.headsign0 ?? undefined,

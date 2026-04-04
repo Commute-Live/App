@@ -24,6 +24,7 @@ import { useSelectedDevice } from '../../../hooks/useSelectedDevice';
 import { apiFetch } from '../../../lib/api';
 import { queryKeys } from '../../../lib/queryKeys';
 import {
+   buildStopLookupKey,
    DISPLAY_WEEKDAYS,
    fetchDisplays,
    getLiveArrivalLookup,
@@ -102,13 +103,13 @@ export default function DashboardOverviewScreen() {
    const quietHoursTimezone = deviceSettings?.timezone ?? getCurrentIanaTimeZone();
 
    const stopPairs = useMemo(() => {
-      const pairs: {key: string; provider: string; stop: string}[] = [];
+      const pairs: {key: string; provider: string; providerMode?: string; stop: string}[] = [];
       for (const display of deviceDisplays) {
          for (const line of display.config.lines ?? []) {
             if (line.provider && line.stop) {
-               const key = `${line.provider}:${line.stop}`;
+               const key = buildStopLookupKey(line);
                if (!pairs.find(p => p.key === key)) {
-                  pairs.push({key, provider: line.provider, stop: line.stop});
+                  pairs.push({key, provider: line.provider, providerMode: line.providerMode, stop: line.stop});
                }
             }
          }
@@ -117,9 +118,9 @@ export default function DashboardOverviewScreen() {
    }, [deviceDisplays]);
 
    const stopNameQueries = useQueries({
-      queries: stopPairs.map(({provider, stop}) => ({
-         queryKey: queryKeys.transitStationName(provider, stop),
-         queryFn: () => getTransitStationName(provider, stop),
+      queries: stopPairs.map(({key, provider, providerMode, stop}) => ({
+         queryKey: queryKeys.transitStationName(key, stop),
+         queryFn: () => getTransitStationName(provider, stop, providerMode),
          staleTime: 10 * 60 * 1000,
       })),
    });
