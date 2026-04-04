@@ -6,7 +6,7 @@ export type DisplayFormat =
     | 'times-line';   // [BADGE] [Woodlawn/5,10m]   [2m]
 
 export type DisplayContent = 'destination' | 'direction' | 'headsign' | 'custom';
-export type SupportedTransitCity = 'new-york' | 'philadelphia' | 'boston' | 'chicago';
+export type SupportedTransitCity = 'new-york' | 'philadelphia' | 'boston' | 'chicago' | 'new-jersey';
 
 export type TransitUiMode = 'train' | 'bus' | 'lirr' | 'mnr' | 'commuter-rail' | 'trolley' | 'ferry';
 export type TransitUiDirection =
@@ -21,7 +21,7 @@ export type TransitUiDirection =
   | 'outbound'
   | 'inbound';
 
-export type TransitProvider = 'mta' | 'septa' | 'cta' | 'mbta';
+export type TransitProvider = 'mta' | 'septa' | 'cta' | 'mbta' | 'njt';
 export type TransitBackendMode = 'subway' | 'bus' | 'lirr' | 'mnr' | 'rail' | 'trolley' | 'ferry';
 export type TransitBackendProviderId =
   | 'mta-subway'
@@ -33,7 +33,9 @@ export type TransitBackendProviderId =
   | 'septa-trolley'
   | 'mbta'
   | 'cta-subway'
-  | 'cta-bus';
+  | 'cta-bus'
+  | 'njt-rail'
+  | 'njt-bus';
 export type TransitProviderMode = `${TransitProvider}/${TransitBackendMode}`;
 
 export type TransitModeMapping = {

@@ -10,7 +10,7 @@ import {configSharedStyles} from './configStyles';
 const MAX_PHILLY_LINES = 2;
 const DISPLAY_PRESETS = [1, 2, 3, 4, 5] as const;
 
-type City = 'boston' | 'philadelphia';
+type City = 'boston' | 'philadelphia' | 'new-jersey';
 type Mode = 'train' | 'bus';
 type StopOption = {stopId: string; stop: string};
 
@@ -22,6 +22,7 @@ type Props = {
 
 const providerFor = (city: City, mode: Mode) => {
   if (city === 'boston') return 'mbta';
+  if (city === 'new-jersey') return mode === 'bus' ? 'njt-bus' : 'njt-rail';
   return mode === 'bus' ? 'septa-bus' : 'septa-rail';
 };
 
@@ -31,12 +32,19 @@ const stopsEndpointFor = (city: City, mode: Mode, route: string) => {
       ? `/providers/boston/stops/bus?route=${encodeURIComponent(route)}&limit=1000`
       : `/providers/boston/stops/subway?route=${encodeURIComponent(route)}&limit=1000`;
   }
+  if (city === 'new-jersey') {
+    return `/njt/stations?mode=${mode === 'bus' ? 'bus' : 'rail'}`;
+  }
   return mode === 'bus'
     ? '/providers/philly/stops/bus'
     : '/providers/philly/stops/train';
 };
 
 const linesForStopEndpointFor = (city: City, mode: Mode, stopId: string, direction?: 'N' | 'S') => {
+  if (city === 'new-jersey') {
+    const njtMode = mode === 'bus' ? 'bus' : 'rail';
+    return `/njt/stations/${njtMode}/${encodeURIComponent(stopId)}/lines`;
+  }
   if (city !== 'philadelphia') return '';
   if (mode === 'bus') {
     return `/providers/philly/stops/bus/${encodeURIComponent(stopId)}/lines`;
@@ -49,7 +57,11 @@ const linesForStopEndpointFor = (city: City, mode: Mode, stopId: string, directi
 
 const directionHint = (dir: 'N' | 'S') => (dir === 'N' ? 'Northbound (N)' : 'Southbound (S)');
 
-const cityTitle = (city: City) => (city === 'boston' ? 'Boston' : 'Philly');
+const cityTitle = (city: City) => {
+  if (city === 'boston') return 'Boston';
+  if (city === 'new-jersey') return 'NJ Transit';
+  return 'Philly';
+};
 
 export default function RegionalTransitConfig({deviceId, city, mode}: Props) {
   const queryClient = useQueryClient();
@@ -90,7 +102,7 @@ export default function RegionalTransitConfig({deviceId, city, mode}: Props) {
 
   useEffect(() => {
     let cancelled = false;
-    if (city !== 'philadelphia' || !stopId) return;
+    if ((city !== 'philadelphia' && city !== 'new-jersey') || !stopId) return;
 
     const loadLines = async () => {
       setIsLoadingRoutes(true);
@@ -110,7 +122,11 @@ export default function RegionalTransitConfig({deviceId, city, mode}: Props) {
         const data = result.data;
         const nextLines = Array.isArray(data?.lines)
           ? data.lines
-              .map((line: unknown) => (typeof line === 'string' ? line.toUpperCase() : ''))
+              .map((line: unknown) => {
+                if (typeof line === 'string') return line.toUpperCase();
+                if (line && typeof line === 'object' && typeof (line as any).id === 'string') return (line as any).id.toUpperCase();
+                return '';
+              })
               .filter((line: string) => line.length > 0)
           : [];
         if (!cancelled) {
@@ -194,7 +210,7 @@ export default function RegionalTransitConfig({deviceId, city, mode}: Props) {
     let cancelled = false;
     if (!stopDropdownOpen) return;
 
-    if (city !== 'philadelphia' && !route.trim()) {
+    if (city !== 'philadelphia' && city !== 'new-jersey' && !route.trim()) {
       setStops([]);
       return;
     }
@@ -210,6 +226,14 @@ export default function RegionalTransitConfig({deviceId, city, mode}: Props) {
           }
           params.set('limit', '1000');
           endpoint = `${endpoint}?${params.toString()}`;
+        } else if (city === 'new-jersey') {
+          const sep = endpoint.includes('?') ? '&' : '?';
+          const params = new URLSearchParams();
+          if (phillyStopQuery.trim().length > 0) {
+            params.set('q', phillyStopQuery.trim());
+          }
+          params.set('limit', '500');
+          endpoint = `${endpoint}${sep}${params.toString()}`;
         }
 
         const result = await queryClient.fetchQuery({
@@ -225,14 +249,13 @@ export default function RegionalTransitConfig({deviceId, city, mode}: Props) {
           return;
         }
         const data = result.data;
-        const options: StopOption[] = Array.isArray(data?.stops)
-          ? data.stops
-              .map((row: any) => ({
-                stopId: typeof row?.stopId === 'string' ? row.stopId : typeof row?.id === 'string' ? row.id : '',
-                stop: typeof row?.stop === 'string' ? row.stop : typeof row?.name === 'string' ? row.name : '',
-              }))
-              .filter((row: StopOption) => row.stopId.length > 0 && row.stop.length > 0)
-          : [];
+        const rawList = Array.isArray(data?.stations) ? data.stations : Array.isArray(data?.stops) ? data.stops : [];
+        const options: StopOption[] = rawList
+          .map((row: any) => ({
+            stopId: typeof row?.stopId === 'string' ? row.stopId : typeof row?.id === 'string' ? row.id : '',
+            stop: typeof row?.stop === 'string' ? row.stop : typeof row?.name === 'string' ? row.name : '',
+          }))
+          .filter((row: StopOption) => row.stopId.length > 0 && row.stop.length > 0);
         if (!cancelled) {
           setStops(options);
           const selected = options.find(s => s.stopId === stopId);
@@ -307,7 +330,7 @@ export default function RegionalTransitConfig({deviceId, city, mode}: Props) {
   const saveConfig = useCallback(async () => {
     if (!deviceId) return;
     const routeTrimmed = route.trim();
-    const linesToSave = city === 'philadelphia'
+    const linesToSave = (city === 'philadelphia' || city === 'new-jersey')
       ? selectedLines.map(line => line.trim()).filter(line => line.length > 0).slice(0, MAX_PHILLY_LINES)
       : (routeTrimmed ? [routeTrimmed] : []);
     const stopTrimmed = stopId.trim();
@@ -441,7 +464,7 @@ export default function RegionalTransitConfig({deviceId, city, mode}: Props) {
 
       <View style={styles.sectionCard}>
         <Text style={styles.sectionTitle}>{cityTitle(city)} {mode === 'train' ? 'Train' : 'Bus'}</Text>
-        {city === 'philadelphia' ? (
+        {(city === 'philadelphia' || city === 'new-jersey') ? (
           <Text style={styles.hintText}>
             Pick {mode === 'train' ? 'rail station' : 'bus stop'} first, then choose up to 2 lines.
           </Text>
@@ -493,7 +516,7 @@ export default function RegionalTransitConfig({deviceId, city, mode}: Props) {
           <Text style={styles.stationSelectorCaret}>{stopDropdownOpen ? '▲' : '▼'}</Text>
         </Pressable>
 
-        {city === 'philadelphia' && (
+        {(city === 'philadelphia' || city === 'new-jersey') && (
           <TextInput
             value={phillyStopQuery}
             onChangeText={setPhillyStopQuery}
@@ -511,7 +534,7 @@ export default function RegionalTransitConfig({deviceId, city, mode}: Props) {
             <ScrollView style={styles.stopListScroll} nestedScrollEnabled>
               {!isLoadingStops && stops.length === 0 && (
                 <Text style={styles.emptyText}>
-                  No {city === 'philadelphia' ? (mode === 'train' ? 'stations' : 'stops') : 'stops'} available
+                  No {(city === 'philadelphia' || city === 'new-jersey') ? (mode === 'train' ? 'stations' : 'stops') : 'stops'} available
                 </Text>
               )}
               {stops.map(option => {
@@ -534,7 +557,7 @@ export default function RegionalTransitConfig({deviceId, city, mode}: Props) {
           </View>
         )}
 
-        {city === 'philadelphia' && (
+        {(city === 'philadelphia' || city === 'new-jersey') && (
           <>
             {isLoadingRoutes && <Text style={styles.hintText}>Loading lines...</Text>}
             {!isLoadingRoutes && lineOptions.length === 0 && <Text style={styles.hintText}>No lines for this stop</Text>}

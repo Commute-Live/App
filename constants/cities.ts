@@ -1,4 +1,4 @@
-export type CityId = 'new-york' | 'philadelphia' | 'boston' | 'chicago';
+export type CityId = 'new-york' | 'philadelphia' | 'boston' | 'chicago' | 'new-jersey';
 
 export type CityOption = {
   id: CityId;
@@ -41,6 +41,14 @@ export const CITY_OPTIONS: CityOption[] = [
     agencyCode: 'CTA',
     agencyName: 'CTA',
     description: 'L station and line selection flow tailored to CTA color lines.',
+  },
+  {
+    id: 'new-jersey',
+    label: 'New Jersey',
+    shortLabel: 'NJ',
+    agencyCode: 'NJT',
+    agencyName: 'NJ Transit',
+    description: 'NJ Transit rail and bus schedules for commuters across New Jersey.',
   },
 ];
 
@@ -90,10 +98,17 @@ export const CITY_BRANDS: Record<
     accent: '#00A1DE',
     accentSoft: '#102B35',
   },
+  'new-jersey': {
+    badgeBg: '#0039A6',
+    badgeBorder: '#2255CC',
+    badgeText: '#FFFFFF',
+    accent: '#0039A6',
+    accentSoft: '#001A4D',
+  },
 };
 
 export function isCityId(value: string | undefined | null): value is CityId {
-  return value === 'new-york' || value === 'philadelphia' || value === 'boston' || value === 'chicago';
+  return value === 'new-york' || value === 'philadelphia' || value === 'boston' || value === 'chicago' || value === 'new-jersey';
 }
 
 export function normalizeCityId(value: string | undefined | null, fallback: CityId = 'new-york'): CityId {

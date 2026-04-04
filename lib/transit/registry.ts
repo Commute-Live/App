@@ -11,6 +11,7 @@ import type {
 import {
   bostonTransitModule,
   chicagoTransitModule,
+  newJerseyTransitModule,
   newYorkTransitModule,
   philadelphiaTransitModule,
   type TransitCityModule,
@@ -26,6 +27,7 @@ const TRANSIT_CITY_MODULES: Record<SupportedTransitCity, TransitCityModule> = {
   philadelphia: philadelphiaTransitModule,
   boston: bostonTransitModule,
   chicago: chicagoTransitModule,
+  'new-jersey': newJerseyTransitModule,
 };
 
 const BACKEND_PROVIDER_CONTEXT: Record<TransitBackendProviderId, BackendContext> = {
@@ -39,6 +41,8 @@ const BACKEND_PROVIDER_CONTEXT: Record<TransitBackendProviderId, BackendContext>
   mbta: {provider: 'mbta', mode: 'subway'},
   'cta-subway': {provider: 'cta', mode: 'subway'},
   'cta-bus': {provider: 'cta', mode: 'bus'},
+  'njt-rail': {provider: 'njt', mode: 'rail'},
+  'njt-bus': {provider: 'njt', mode: 'bus'},
 };
 
 const BACKEND_PROVIDER_CITY_MODE: Record<TransitBackendProviderId, {city: SupportedTransitCity; mode: TransitUiMode}> = {
@@ -52,6 +56,8 @@ const BACKEND_PROVIDER_CITY_MODE: Record<TransitBackendProviderId, {city: Suppor
   mbta: {city: 'boston', mode: 'train'},
   'cta-subway': {city: 'chicago', mode: 'train'},
   'cta-bus': {city: 'chicago', mode: 'bus'},
+  'njt-rail': {city: 'new-jersey', mode: 'train'},
+  'njt-bus': {city: 'new-jersey', mode: 'bus'},
 };
 
 const hasOwn = <T extends object>(record: T, key: PropertyKey): key is keyof T =>
