@@ -27,6 +27,7 @@ export type TransitRouteAppearance = {
 
 export type TransitRouteRecord = {
   id: string;
+  shortName?: string | null;
   label: string;
   sortOrder: number | null;
   color: string;
@@ -38,6 +39,7 @@ export type TransitRouteRecord = {
 
 export type TransitRoutePickerItem = {
   id: string;
+  shortName?: string | null;
   label: string;
   displayLabel: string;
   color: string;

@@ -75,6 +75,11 @@ const PHILADELPHIA_DIRECTION_OPTIONS: Partial<Record<LocalMode, UiDirection[]>> 
   trolley: ['dir0', 'dir1'],
 };
 
+const NEW_JERSEY_DIRECTION_OPTIONS: Partial<Record<LocalMode, UiDirection[]>> = {
+  train: ['dir0', 'dir1'],
+  bus: ['dir0', 'dir1'],
+};
+
 const DEFAULT_DIRECTION_OPTIONS: UiDirection[] = ['uptown', 'downtown'];
 
 export const getLocalDirectionOptions = (
@@ -95,6 +100,10 @@ export const getLocalDirectionOptions = (
     return PHILADELPHIA_DIRECTION_OPTIONS[mode] ?? DEFAULT_DIRECTION_OPTIONS;
   }
 
+  if (city === 'new-jersey') {
+    return NEW_JERSEY_DIRECTION_OPTIONS[mode] ?? DEFAULT_DIRECTION_OPTIONS;
+  }
+
   return DEFAULT_DIRECTION_OPTIONS;
 };
 
@@ -106,6 +115,7 @@ export const getDefaultUiDirection = (
   const first = getLocalDirectionOptions(city, mode, route)[0];
   if (first) return first;
   if (city === 'chicago') return 'dir0';
+  if (city === 'new-jersey') return 'dir0';
   return 'uptown';
 };
 
@@ -181,10 +191,11 @@ export const getLocalRouteBadgeLabel = (
   mode: LocalMode,
   routeId: string,
   routeLabel?: string | null,
+  routeShortName?: string | null,
 ) => {
   const safeLabel = (routeLabel ?? routeId).trim();
   const cityModule = getTransitCityModule(city);
-  const moduleLabel = cityModule?.getRouteBadgeLabel(mode, routeId, safeLabel);
+  const moduleLabel = cityModule?.getRouteBadgeLabel(mode, routeId, safeLabel, routeShortName);
   if (moduleLabel) return moduleLabel;
   return safeLabel.toUpperCase().slice(0, 4);
 };

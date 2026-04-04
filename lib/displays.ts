@@ -13,6 +13,7 @@ export type {DisplayWeekday} from './schedules';
 export type LineConfig = {
   provider: string;
   line: string;
+  shortName?: string;
   stop?: string;
   direction?: string;
   headsign0?: string;
@@ -249,9 +250,10 @@ const buildPreviewEtaList = (firstMinutes: number, count: number) => {
 };
 
 const resolvePreviewRouteLabel = (
-  line: Pick<LineConfig, 'provider' | 'line' | 'stop' | 'direction' | 'headsign0' | 'headsign1' | 'directions'>,
+  line: Pick<LineConfig, 'provider' | 'line' | 'shortName' | 'stop' | 'direction' | 'headsign0' | 'headsign1' | 'directions'>,
 ) => {
   const lineId = (line.line ?? '').trim();
+  const shortName = (line.shortName ?? '').trim();
   if (!lineId) return '--';
   const city = providerToCity(line.provider ?? null);
   const mode = inferUiModeFromProvider(line.provider, line.stop, lineId);
@@ -266,7 +268,7 @@ const resolvePreviewRouteLabel = (
     if (mode === 'mnr') {
       return getLocalLineLabel(city, mode, lineId, lineId);
     }
-    return getLocalRouteBadgeLabel(city, mode, lineId, lineId);
+    return getLocalRouteBadgeLabel(city, mode, lineId, shortName || lineId, shortName || undefined);
   }
   return lineId.toUpperCase().slice(0, 4);
 };
@@ -515,6 +517,8 @@ export const toPreviewSlots = (
         : city === 'chicago' && line.provider === 'cta-subway'
           ? 'pill'
         : city === 'boston' && (mode === 'train' || mode === 'ferry')
+          ? 'pill'
+        : city === 'new-jersey' && mode === 'train'
           ? 'pill'
         : city === 'philadelphia' && (mode === 'train' || mode === 'trolley')
             ? 'pill'

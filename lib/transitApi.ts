@@ -214,6 +214,7 @@ export const normalizeTransitLine = (value: unknown): TransitLine | null => {
     if (!lineId) return null;
     return {
       id: lineId,
+      shortName: lineId,
       label: lineId,
       sortOrder: null,
       color: null,
@@ -226,6 +227,7 @@ export const normalizeTransitLine = (value: unknown): TransitLine | null => {
 
   const id = readFirstString(value, ['id', 'lineId', 'routeId', 'shortName', 'line']);
   if (!id) return null;
+  const shortName = readFirstString(value, ['shortName']) ?? null;
 
   const label =
     readFirstString(value, ['shortName', 'label', 'line', 'longName', 'name']) ?? id;
@@ -265,6 +267,7 @@ export const normalizeTransitLine = (value: unknown): TransitLine | null => {
 
   return {
     id,
+    shortName,
     label,
     sortOrder: readFirstNumber(value, ['sortOrder', 'routeSortOrder', 'route_sort_order']),
     color,

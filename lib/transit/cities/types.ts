@@ -19,7 +19,7 @@ export type TransitCityModule = {
   getModeLabel(mode: TransitUiMode): string | null;
   formatRoutePickerLabel(mode: TransitUiMode, routeId: string, routeLabel: string): string | null;
   getLineLabel(mode: TransitUiMode, routeId: string, routeLabel: string): string | null;
-  getRouteBadgeLabel(mode: TransitUiMode, routeId: string, routeLabel?: string | null): string | null;
+  getRouteBadgeLabel(mode: TransitUiMode, routeId: string, routeLabel?: string | null, routeShortName?: string | null): string | null;
   getDirectionLabel(
     mode: TransitUiMode,
     direction: UiDirection,
