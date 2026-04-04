@@ -182,7 +182,7 @@ export function AuthProvider({children}: {children: React.ReactNode}) {
         const data = await response.json().catch(() => null);
         const profile = toUserProfile(data?.user);
         if (!response.ok || !profile) {
-          return {ok: false as const, error: data?.message ?? 'Sign-in failed'};
+          return {ok: false as const, error: data?.message ?? data?.error ?? 'Sign-in failed'};
         }
         applyAuthenticatedProfile(profile);
         setCurrentProvider(provider);

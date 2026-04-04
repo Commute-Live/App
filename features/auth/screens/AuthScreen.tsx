@@ -78,7 +78,11 @@ export default function AuthScreen() {
               {errorText ? <Text style={styles.errorText}>{errorText}</Text> : null}
             </View>
 
-            <Text style={styles.securityText}>Secure sign-in is handled directly by Apple and Google.</Text>
+            <Text style={styles.securityText}>
+              {Platform.OS === 'android'
+                ? 'Secure sign-in is handled directly by Google.'
+                : 'Secure sign-in is handled directly by Apple and Google.'}
+            </Text>
           </View>
         </View>
 
@@ -144,7 +148,6 @@ const styles = StyleSheet.create({
     fontSize: typography.body,
     lineHeight: 19,
     textAlign: 'center',
-    maxWidth: 260,
   },
   actionsCard: {
     borderRadius: radii.lg,
