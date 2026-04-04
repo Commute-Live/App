@@ -1087,6 +1087,78 @@ export const styles = StyleSheet.create({
     columnGap: spacing.xs,
     rowGap: 2,
   },
+  bostonRouteCardList: {
+    gap: spacing.xs,
+    width: '100%',
+  },
+  bostonRouteCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    width: '100%',
+    minHeight: 76,
+    borderRadius: radii.lg,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+    backgroundColor: 'rgba(8, 12, 18, 0.82)',
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.sm,
+  },
+  bostonRouteCardActive: {
+    borderColor: colors.accent,
+    backgroundColor: 'rgba(17, 29, 38, 0.96)',
+  },
+  bostonRouteCardAccent: {
+    width: 4,
+    alignSelf: 'stretch',
+    borderRadius: 999,
+    opacity: 0.72,
+  },
+  bostonRouteCardAccentActive: {
+    opacity: 1,
+  },
+  bostonRouteCardBadge: {
+    width: 58,
+    height: 58,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: spacing.xs,
+    flexShrink: 0,
+  },
+  bostonRouteCardBadgeText: {
+    fontSize: 19,
+    fontWeight: '900',
+    textAlign: 'center',
+    letterSpacing: -0.3,
+  },
+  bostonRouteCardBadgeTextCompact: {
+    fontSize: 15,
+    lineHeight: 17,
+    includeFontPadding: false,
+  },
+  bostonRouteCardCopy: {
+    flex: 1,
+    minWidth: 0,
+    gap: 3,
+  },
+  bostonRouteCardTitle: {
+    color: '#F4F8FC',
+    fontSize: 16,
+    fontWeight: '800',
+    letterSpacing: -0.2,
+  },
+  bostonRouteCardTitleActive: {
+    color: '#FFFFFF',
+  },
+  bostonRouteCardSubtitle: {
+    color: '#8EA0B4',
+    fontSize: 12,
+    lineHeight: 17,
+  },
+  bostonRouteCardSubtitleActive: {
+    color: '#C9D8E6',
+  },
   lineBadgeTileWrapChicagoTrain: {
     width: '48%',
   },

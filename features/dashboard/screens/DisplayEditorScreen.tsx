@@ -49,7 +49,7 @@ import {
   areSameLinePicks,
   buildNextArrivalTimes,
   buildRouteGroups,
-  cityModeFromProvider,
+  cityModeFromSavedLine,
   clampNextStops,
   cycleTimeOption,
   ensureLineCount,
@@ -75,6 +75,7 @@ import {
   normalizeSecondaryContent,
   prepareRouteEntriesForPicker,
   resolveBackendProvider,
+  resolveBackendProviderMode,
   resolveDisplayContent,
   resolveSelectedStationForLine,
   routeLookupKey,
@@ -765,7 +766,7 @@ export default function DisplayEditorScreen() {
         const fallbackDisplayPreset = Number.isFinite(savedDisplayType)
           ? getDisplayPresetFromPersistedType(Math.trunc(savedDisplayType))
           : DEFAULT_DISPLAY_PRESET;
-        const citySavedLines = savedLines.filter((saved: any) => cityModeFromProvider(saved.provider)?.city === city);
+        const citySavedLines = savedLines.filter((saved: any) => cityModeFromSavedLine(saved)?.city === city);
         const nextLayoutSlots = citySavedLines.length > 1 ? 2 : 1;
         let nextLines = ensureLineCount([], city, nextLayoutSlots, {}, {});
 
@@ -802,15 +803,9 @@ export default function DisplayEditorScreen() {
         if (citySavedLines.length > 0) {
           const restoredLines: LinePick[] = citySavedLines.slice(0, 2).map((saved: any, i: number) => {
             const displayFormat = normalizeDisplayFormat(saved.displayFormat);
-            const mapping = cityModeFromProvider(saved.provider);
-            let mode: ModeId = mapping?.mode ?? 'train';
-            if (saved.provider === 'mbta' && saved.stop) {
-              const stopId = saved.stop.trim();
-              if (/^Boat-/i.test(stopId)) mode = 'ferry';
-              else if (/^\d+$/.test(stopId)) mode = 'bus';
-              else if (!/^place-/i.test(stopId)) mode = 'commuter-rail';
-            }
-            const normalizedSavedStop = saved.stop.trim().toUpperCase();
+            const mapping = cityModeFromSavedLine(saved);
+            const mode: ModeId = mapping?.mode ?? 'train';
+            const normalizedSavedStop = typeof saved.stop === 'string' ? saved.stop.trim().toUpperCase() : '';
             const dir: Direction = deserializeUiDirection(
               city,
               mode,
@@ -1044,12 +1039,14 @@ export default function DisplayEditorScreen() {
         const route =
           (routesByStation[routeLookupKey(normalizedMode, line.stationId)] ?? []).find(item => item.id === line.routeId) ??
           (linesByMode[normalizedMode] ?? []).find(item => item.id === line.routeId);
+        const direction = serializeUiDirection(city, line.mode, line.direction).trim();
+        const provider = city === 'boston' ? 'mbta' : resolveBackendProvider(city, line.mode);
+        const providerMode = city === 'boston' ? resolveBackendProviderMode(city, line.mode) : undefined;
 
         return {
-          ...(serializeUiDirection(city, line.mode, line.direction).trim()
-            ? {direction: serializeUiDirection(city, line.mode, line.direction)}
-            : {}),
-          provider: resolveBackendProvider(city, line.mode),
+          ...(direction ? {direction} : {}),
+          provider,
+          providerMode,
           line: line.routeId,
           shortName: route?.shortName ?? undefined,
           stop: line.stationId,
@@ -3077,6 +3074,77 @@ const CITY_MODE_COLORS: Partial<Record<CityId, Partial<Record<ModeId, string>>>>
   },
 };
 
+const BOSTON_ROUTE_CARD_TITLES: Record<string, string> = {
+  RED: 'Red Line',
+  ORANGE: 'Orange Line',
+  BLUE: 'Blue Line',
+  'GREEN-B': 'Green Line B Branch',
+  'GREEN-C': 'Green Line C Branch',
+  'GREEN-D': 'Green Line D Branch',
+  'GREEN-E': 'Green Line E Branch',
+  MATTAPAN: 'Mattapan Line',
+};
+
+const getDefaultCollapsedLineGroupKeys = (city: CityId, mode: ModeId) => {
+  if (city === 'new-york' && mode === 'bus') {
+    return ['bronx', 'brooklyn', 'manhattan', 'queens', 'staten-island', 'other'];
+  }
+
+  if (city === 'boston' && mode === 'bus') {
+    return ['silver-line', 'crosstown', 'local', 'quincy', 'northwest', 'north-shore', 'express', 'other'];
+  }
+
+  return [];
+};
+
+const getBostonRouteCardTitle = (mode: ModeId, route: RoutePickerItem) => {
+  const normalizedId = route.id.trim().toUpperCase();
+  const fallbackLabel = route.label.trim() || route.displayLabel;
+
+  if (mode === 'train') {
+    return BOSTON_ROUTE_CARD_TITLES[normalizedId] ?? fallbackLabel;
+  }
+
+  if (mode === 'commuter-rail') {
+    return route.displayLabel.trim() || fallbackLabel;
+  }
+
+  if (mode === 'ferry') {
+    const compactLabel = route.displayLabel.trim();
+    if (/^F\d+$/i.test(compactLabel)) return `Route ${compactLabel}`;
+    return /ferry$/i.test(compactLabel) ? compactLabel : `${compactLabel} Ferry`;
+  }
+
+  return fallbackLabel;
+};
+
+const getBostonRouteCardSubtitle = (mode: ModeId, route: RoutePickerItem) => {
+  const normalizedId = route.id.trim().toUpperCase();
+  const fullLabel = route.label.trim();
+
+  if (mode === 'train') {
+    if (normalizedId.startsWith('GREEN-')) return 'Choose a specific Green Line branch';
+    if (normalizedId === 'MATTAPAN') return 'Mattapan trolley service';
+    return 'MBTA rapid transit line';
+  }
+
+  if (mode === 'commuter-rail') {
+    if (fullLabel.length > 0 && fullLabel.toLowerCase() !== route.displayLabel.trim().toLowerCase()) {
+      return fullLabel;
+    }
+    return 'MBTA commuter rail line';
+  }
+
+  if (mode === 'ferry') {
+    if (fullLabel.length > 0 && fullLabel.toLowerCase() !== route.displayLabel.trim().toLowerCase()) {
+      return fullLabel;
+    }
+    return 'MBTA ferry route';
+  }
+
+  return null;
+};
+
 
 function LinePickerStep({
   city,
@@ -3106,18 +3174,20 @@ function LinePickerStep({
   const isLoading = !!linesLoadingByMode[selectedMode];
   const [lineSearch, setLineSearch] = useState('');
   const [variantPickerEntry, setVariantPickerEntry] = useState<RoutePickerItem | null>(null);
-  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set(['bronx', 'brooklyn', 'manhattan', 'queens', 'staten-island', 'other']));
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(
+    new Set(getDefaultCollapsedLineGroupKeys(city, selectedMode)),
+  );
   const pulseAnims = useRef<Record<string, Animated.Value>>({}).current;
 
-  const isBusGrouped = city === 'new-york' && selectedMode === 'bus';
+  const isBusGrouped = selectedMode === 'bus' && (city === 'new-york' || city === 'boston');
+  const isBostonRouteCardMode =
+    city === 'boston' && (selectedMode === 'train' || selectedMode === 'commuter-rail' || selectedMode === 'ferry');
   const isWidePillMode =
     (city === 'chicago' && selectedMode === 'train') ||
-    (city === 'boston' && (selectedMode === 'train' || selectedMode === 'ferry')) ||
     (city === 'new-jersey' && selectedMode === 'train');
   const isBranchListMode =
     selectedMode === 'lirr' ||
     selectedMode === 'mnr' ||
-    selectedMode === 'commuter-rail' ||
     (city === 'philadelphia' && selectedMode === 'train') ||
     (city === 'new-jersey' && selectedMode === 'train');
 
@@ -3141,14 +3211,15 @@ function LinePickerStep({
       );
     return prepareRouteEntriesForPicker(city, selectedMode, filtered);
   }, [allRoutes, city, lineSearch, selectedMode]);
+  const isSearchingLines = lineSearch.trim().length > 0;
 
   const routeGroups = useMemo(() => buildRouteGroups(city, selectedMode, routes), [city, routes, selectedMode]);
 
   // Reset search and collapse groups when mode changes
   useEffect(() => {
     setLineSearch('');
-    setCollapsedGroups(new Set(['bronx', 'brooklyn', 'manhattan', 'queens', 'staten-island', 'other']));
-  }, [selectedMode]);
+    setCollapsedGroups(new Set(getDefaultCollapsedLineGroupKeys(city, selectedMode)));
+  }, [city, selectedMode]);
 
   const getPulseAnim = (id: string) => {
     if (!pulseAnims[id]) pulseAnims[id] = new Animated.Value(1);
@@ -3228,12 +3299,14 @@ function LinePickerStep({
         ) : (
           <View style={styles.lineGroupList}>
             {routeGroups.map(group => {
-              const isCollapsed = isBusGrouped && !!group.title && collapsedGroups.has(group.key);
+              const isCollapsed = isBusGrouped && !isSearchingLines && !!group.title && collapsedGroups.has(group.key);
               const hasSelected = group.routes.some(r => r.routes.some(item => item.id === selectedRouteId));
-              const boroughAccent: Record<string, string> = {
+              const groupAccent: Record<string, string> = {
                 bronx: '#E63946', brooklyn: '#F4A261', manhattan: '#5CE1E6', queens: '#A8DADC', 'staten-island': '#6EE7B7',
+                'silver-line': '#94A3B8', crosstown: '#22C55E', local: '#3B82F6', quincy: '#06B6D4', northwest: '#8B5CF6',
+                'north-shore': '#F59E0B', express: '#EF4444', other: colors.border,
               };
-              const accentColor = boroughAccent[group.key] ?? colors.border;
+              const accentColor = groupAccent[group.key] ?? colors.border;
               return (
               <View key={group.key} style={styles.lineGroup}>
                 {group.title ? (
@@ -3277,6 +3350,63 @@ function LinePickerStep({
                           </Text>
                           {isSelected && <Text style={[styles.lirrBranchCheck, {color: route.textColor || '#FFFFFF'}]}>✓</Text>}
                         </Pressable>
+                      );
+                    })}
+                  </View>
+                ) : isBostonRouteCardMode ? (
+                  <View style={styles.bostonRouteCardList}>
+                    {group.routes.map(route => {
+                      const isSelected = route.routes.some(item => item.id === selectedRouteId);
+                      const routeBadgeLabel = getLocalRouteBadgeLabel(city, selectedMode, route.id, route.label, route.shortName);
+                      const title = getBostonRouteCardTitle(selectedMode, route);
+                      const subtitle = getBostonRouteCardSubtitle(selectedMode, route);
+                      const anim = getPulseAnim(route.id);
+                      return (
+                        <Animated.View
+                          key={route.id}
+                          style={{transform: [{scale: anim}]}}>
+                          <Pressable
+                            style={[styles.bostonRouteCard, isSelected && styles.bostonRouteCardActive]}
+                            onPress={() => handleSelectLine(route)}>
+                            <View
+                              style={[
+                                styles.bostonRouteCardAccent,
+                                {backgroundColor: route.color},
+                                isSelected && styles.bostonRouteCardAccentActive,
+                              ]}
+                            />
+                            <View style={[styles.bostonRouteCardBadge, {backgroundColor: route.color}]}>
+                              <Text
+                                adjustsFontSizeToFit
+                                minimumFontScale={0.72}
+                                numberOfLines={1}
+                                style={[
+                                  styles.bostonRouteCardBadgeText,
+                                  routeBadgeLabel.length >= 4 && styles.bostonRouteCardBadgeTextCompact,
+                                  {color: route.textColor ?? '#FFFFFF'},
+                                ]}>
+                                {routeBadgeLabel}
+                              </Text>
+                            </View>
+                            <View style={styles.bostonRouteCardCopy}>
+                              <Text style={[styles.bostonRouteCardTitle, isSelected && styles.bostonRouteCardTitleActive]}>
+                                {title}
+                              </Text>
+                              {subtitle ? (
+                                <Text
+                                  style={[
+                                    styles.bostonRouteCardSubtitle,
+                                    isSelected && styles.bostonRouteCardSubtitleActive,
+                                  ]}>
+                                  {subtitle}
+                                </Text>
+                              ) : null}
+                            </View>
+                            <View style={[styles.choiceRowCheck, isSelected && styles.choiceRowCheckActive]}>
+                              {isSelected ? <Text style={styles.choiceRowCheckText}>✓</Text> : null}
+                            </View>
+                          </Pressable>
+                        </Animated.View>
                       );
                     })}
                   </View>

@@ -49,6 +49,37 @@ const MIN_NEXT_STOPS = 1;
 const MAX_NEXT_STOPS = 5;
 const TIME_OPTIONS = ['00:00', '05:00', '06:00', '07:00', '08:00', '09:00', '10:00', '17:00', '18:00', '20:00', '22:00', '23:00'];
 
+const PROVIDER_MODE_TO_CITY_MODE: Record<string, {city: CityId; mode: ModeId}> = {
+  'mta/subway': {city: 'new-york', mode: 'train'},
+  'mta/bus': {city: 'new-york', mode: 'bus'},
+  'mta/lirr': {city: 'new-york', mode: 'lirr'},
+  'mta/mnr': {city: 'new-york', mode: 'mnr'},
+  'septa/rail': {city: 'philadelphia', mode: 'train'},
+  'septa/bus': {city: 'philadelphia', mode: 'bus'},
+  'septa/trolley': {city: 'philadelphia', mode: 'trolley'},
+  'mbta/subway': {city: 'boston', mode: 'train'},
+  'mbta/bus': {city: 'boston', mode: 'bus'},
+  'mbta/rail': {city: 'boston', mode: 'commuter-rail'},
+  'mbta/ferry': {city: 'boston', mode: 'ferry'},
+  'cta/subway': {city: 'chicago', mode: 'train'},
+  'cta/bus': {city: 'chicago', mode: 'bus'},
+};
+
+const normalizeProviderMode = (value: string | undefined | null) => {
+  if (typeof value !== 'string') return '';
+  return value.trim().toLowerCase();
+};
+
+const resolveBostonModeFromSavedStop = (stopId: string | undefined | null): ModeId => {
+  if (typeof stopId !== 'string') return 'train';
+  const normalizedStopId = stopId.trim();
+  if (!normalizedStopId) return 'train';
+  if (/^Boat-/i.test(normalizedStopId)) return 'ferry';
+  if (/^\d+$/.test(normalizedStopId)) return 'bus';
+  if (!/^place-/i.test(normalizedStopId)) return 'commuter-rail';
+  return 'train';
+};
+
 export function resolveBackendProvider(c: CityId, mode: ModeId): string {
   if (!isSupportedTransitCity(c)) {
     throw new Error(`Transit provider lookup does not support city "${c}".`);
@@ -56,8 +87,49 @@ export function resolveBackendProvider(c: CityId, mode: ModeId): string {
   return resolveBackendProviderId(c, mode);
 }
 
+export function resolveBackendProviderMode(c: CityId, mode: ModeId): string {
+  if (c === 'new-york') {
+    if (mode === 'bus') return 'mta/bus';
+    if (mode === 'lirr') return 'mta/lirr';
+    if (mode === 'mnr') return 'mta/mnr';
+    return 'mta/subway';
+  }
+  if (c === 'philadelphia') {
+    if (mode === 'bus') return 'septa/bus';
+    if (mode === 'trolley') return 'septa/trolley';
+    return 'septa/rail';
+  }
+  if (c === 'chicago') {
+    if (mode === 'bus') return 'cta/bus';
+    return 'cta/subway';
+  }
+  if (mode === 'bus') return 'mbta/bus';
+  if (mode === 'commuter-rail') return 'mbta/rail';
+  if (mode === 'ferry') return 'mbta/ferry';
+  return 'mbta/subway';
+}
+
 export function cityModeFromProvider(provider: string): {city: CityId; mode: ModeId} | null {
   return resolveCityModeFromBackendProvider(provider);
+}
+
+export function cityModeFromSavedLine(saved: {
+  provider?: string | null;
+  providerMode?: string | null;
+  stop?: string | null;
+}): {city: CityId; mode: ModeId} | null {
+  const normalizedProviderMode = normalizeProviderMode(saved.providerMode);
+  if (normalizedProviderMode) {
+    const mapped = PROVIDER_MODE_TO_CITY_MODE[normalizedProviderMode];
+    if (mapped) return mapped;
+  }
+
+  const provider = typeof saved.provider === 'string' ? saved.provider : '';
+  const fallback = cityModeFromProvider(provider);
+  if (fallback?.city === 'boston' && fallback.mode === 'train') {
+    return {city: 'boston', mode: resolveBostonModeFromSavedStop(saved.stop)};
+  }
+  return fallback;
 }
 
 export function normalizeCityIdParam(value: string | undefined): CityId {

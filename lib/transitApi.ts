@@ -5,6 +5,7 @@ import type {
   TransitApi,
   TransitArrival,
   TransitArrivalGroup,
+  TransitBackendMode,
   TransitCity,
   TransitContext,
   TransitLine,
@@ -182,23 +183,22 @@ export const normalizeTransitStation = (value: unknown): TransitStation | null =
   const name = readFirstString(value, ['name', 'stop', 'station', 'label']);
   if (!id || !name) return null;
 
-  // Parse lines array from backend (includes id, shortName, label per line)
   const rawLines = Array.isArray(value.lines) ? value.lines : [];
   const lines = rawLines
-    .map((l: unknown) => {
-      if (!isRecord(l)) {
-        const lineId = normalizeString(l);
+    .map((line): TransitStation['lines'][number] | null => {
+      if (!isRecord(line)) {
+        const lineId = normalizeString(line);
         return lineId ? {id: lineId, shortName: lineId, label: lineId} : null;
       }
-      const lineId = readFirstString(l, ['id', 'lineId', 'routeId']);
+      const lineId = readFirstString(line, ['id', 'lineId', 'routeId']);
       if (!lineId) return null;
       return {
         id: lineId,
-        shortName: readFirstString(l, ['shortName']) ?? lineId,
-        label: readFirstString(l, ['label', 'longName']) ?? lineId,
+        shortName: readFirstString(line, ['shortName']) ?? lineId,
+        label: readFirstString(line, ['label', 'longName']) ?? lineId,
       };
     })
-    .filter((l: unknown): l is {id: string; shortName: string; label: string} => l !== null);
+    .filter((line): line is TransitStation['lines'][number] => line !== null);
 
   return {
     id,
@@ -229,18 +229,13 @@ export const normalizeTransitLine = (value: unknown): TransitLine | null => {
   if (!id) return null;
   const shortName = readFirstString(value, ['shortName']) ?? null;
 
-  const label =
-    readFirstString(value, ['shortName', 'label', 'line', 'longName', 'name']) ?? id;
+  const label = readFirstString(value, ['shortName', 'label', 'line', 'longName', 'name']) ?? id;
 
   const rawColor = readFirstString(value, ['color', 'routeColor', 'bg_color']);
-  const color = rawColor
-    ? rawColor.startsWith('#') ? rawColor : `#${rawColor}`
-    : null;
+  const color = rawColor ? (rawColor.startsWith('#') ? rawColor : `#${rawColor}`) : null;
 
   const rawTextColor = readFirstString(value, ['textColor', 'text_color', 'routeTextColor']);
-  const textColor = rawTextColor
-    ? rawTextColor.startsWith('#') ? rawTextColor : `#${rawTextColor}`
-    : null;
+  const textColor = rawTextColor ? (rawTextColor.startsWith('#') ? rawTextColor : `#${rawTextColor}`) : null;
 
   const rawDirections = Array.isArray(value.directions) ? value.directions : [];
   const directions = rawDirections
@@ -252,7 +247,9 @@ export const normalizeTransitLine = (value: unknown): TransitLine | null => {
       const boundLabel = readFirstString(entry, ['boundLabel', 'bound_label']);
       const toggleLabel = readFirstString(entry, ['toggleLabel', 'toggle_label']);
       const summaryLabel = readFirstString(entry, ['summaryLabel', 'summary_label']);
-      if (!id || !uiKey || !isUiDirection(uiKey) || !label || !boundLabel || !toggleLabel || !summaryLabel) return null;
+      if (!id || !uiKey || !isUiDirection(uiKey) || !label || !boundLabel || !toggleLabel || !summaryLabel) {
+        return null;
+      }
       return {
         id,
         uiKey,
@@ -426,15 +423,80 @@ export const getTransitStopsForLine = async (
   return normalizeTransitStationGroup(payload, context);
 };
 
+const normalizeProviderMode = (value: string | undefined | null) => {
+  if (typeof value !== 'string') return null;
+  const normalized = value.trim().toLowerCase();
+  if (!normalized.length) return null;
+  return KNOWN_PROVIDER_MODES.has(normalized) ? normalized : null;
+};
+
+const KNOWN_PROVIDER_MODES = new Set([
+  'mta/subway',
+  'mta/bus',
+  'mta/lirr',
+  'mta/mnr',
+  'septa/rail',
+  'septa/bus',
+  'septa/trolley',
+  'mbta/subway',
+  'mbta/bus',
+  'mbta/rail',
+  'mbta/ferry',
+  'cta/subway',
+  'cta/bus',
+]);
+
+const inferMbtaModeFromStopId = (stopId: string): TransitBackendMode => {
+  if (/^Boat-/i.test(stopId)) return 'ferry';
+  if (/^\d+$/.test(stopId)) return 'bus';
+  if (!/^place-/i.test(stopId)) return 'rail';
+  return 'subway';
+};
+
+const resolveStationLookupContext = (
+  backendProvider: string,
+  stopId: string,
+  providerMode?: string | null,
+): {provider: string; mode: string; stopId: string} | null => {
+  const normalizedProviderMode = normalizeProviderMode(providerMode);
+  if (normalizedProviderMode) {
+    const [provider = '', mode = ''] = normalizedProviderMode.split('/', 2);
+    if (provider && mode) {
+      const normalizedStopId =
+        provider === 'mta' && mode === 'subway' ? stopId.replace(/[NS]$/i, '') : stopId;
+      return {provider, mode, stopId: normalizedStopId};
+    }
+  }
+
+  if (backendProvider === 'mbta') {
+    return {
+      provider: 'mbta',
+      mode: inferMbtaModeFromStopId(stopId),
+      stopId,
+    };
+  }
+
+  const context = resolveBackendProviderContext(backendProvider);
+  if (!context) return null;
+
+  return {
+    provider: context.provider,
+    mode: context.mode,
+    stopId:
+      context.provider === 'mta' && context.mode === 'subway'
+        ? stopId.replace(/[NS]$/i, '')
+        : stopId,
+  };
+};
+
 export const getTransitStationName = async (
   backendProvider: string,
   stopId: string,
+  providerMode?: string | null,
 ): Promise<string | null> => {
-  const ctx = resolveBackendProviderContext(backendProvider);
+  const ctx = resolveStationLookupContext(backendProvider, stopId, providerMode);
   if (!ctx) return null;
-  // Strip direction suffix (e.g. "117N" → "117")
-  const baseStopId = stopId.replace(/[NS]$/i, '');
-  const endpoint = `/${ctx.provider}/stations/${ctx.mode}/${encodeURIComponent(baseStopId)}/lines`;
+  const endpoint = `/${ctx.provider}/stations/${ctx.mode}/${encodeURIComponent(ctx.stopId)}/lines`;
   try {
     const response = await apiFetch(endpoint);
     if (!response.ok) return null;

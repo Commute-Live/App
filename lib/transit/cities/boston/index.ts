@@ -4,9 +4,11 @@ import {
   deserializeBostonDirection,
   formatBostonRoutePickerLabel,
   getBostonDirectionLabel,
+  getBostonFullDirectionLabel,
   getBostonLineLabel,
   getBostonModeLabel,
   getBostonRouteBadgeLabel,
+  getBostonRouteHeadsign,
   isBostonMode,
   prepareBostonRouteEntries,
   serializeBostonDirection,
@@ -16,18 +18,18 @@ export const bostonTransitModule: TransitCityModule = {
   city: 'boston',
   modeOrder: ['train', 'bus', 'commuter-rail', 'ferry'],
   backendProvidersByMode: {
-    train: 'mbta',
-    bus: 'mbta',
-    'commuter-rail': 'mbta',
-    ferry: 'mbta',
+    train: 'mbta-subway',
+    bus: 'mbta-bus',
+    'commuter-rail': 'mbta-rail',
+    ferry: 'mbta-ferry',
   },
   getModeLabel: mode => (isBostonMode(mode) ? getBostonModeLabel(mode) : null),
   formatRoutePickerLabel: (mode, routeId, routeLabel) =>
     isBostonMode(mode) ? formatBostonRoutePickerLabel(mode, routeId, routeLabel) : null,
   getLineLabel: (mode, routeId, routeLabel) =>
     isBostonMode(mode) ? getBostonLineLabel(mode, routeId, routeLabel) : null,
-  getRouteBadgeLabel: (mode, routeId, routeLabel) =>
-    isBostonMode(mode) ? getBostonRouteBadgeLabel(mode, routeId, routeLabel) : null,
+  getRouteBadgeLabel: (mode, routeId, routeLabel, routeShortName) =>
+    isBostonMode(mode) ? getBostonRouteBadgeLabel(mode, routeId, routeLabel, routeShortName) : null,
   getDirectionLabel: (mode, direction, _routeId, variant) =>
     isBostonMode(mode) ? getBostonDirectionLabel(mode, direction, variant) : null,
   serializeDirection: (mode, direction) =>
@@ -40,3 +42,6 @@ export const bostonTransitModule: TransitCityModule = {
   buildRouteGroups: (mode, routes) =>
     isBostonMode(mode) ? buildBostonRouteGroups(mode, routes) : null,
 };
+
+export {getBostonRouteHeadsign};
+export {getBostonFullDirectionLabel};
