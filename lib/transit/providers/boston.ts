@@ -49,6 +49,9 @@ const BOSTON_FERRY_BADGE_LABELS: Record<string, string> = {
 };
 
 const BOSTON_TRAIN_ORDER = ['RED', 'ORANGE', 'BLUE', 'GREEN-B', 'GREEN-C', 'GREEN-D', 'GREEN-E', 'MATTAPAN'];
+const BOSTON_GREEN_BRANCH_IDS = new Set(['GREEN-B', 'GREEN-C', 'GREEN-D', 'GREEN-E']);
+const BOSTON_BUS_APPEARANCE = {color: '#0F4CBA', textColor: '#FFFFFF'};
+const BOSTON_FERRY_APPEARANCE = {color: '#0EA5E9', textColor: '#FFFFFF'};
 
 const naturalRouteLabelCompare = (left: string, right: string) =>
   left.localeCompare(right, undefined, {numeric: true, sensitivity: 'base'});
@@ -74,16 +77,27 @@ const compactBostonFerryLabel = (routeId: string, label: string) => {
 };
 
 const routeToPickerItem = (
+  mode: BostonMode,
   route: TransitRouteRecord,
   displayLabel: string,
-): TransitRoutePickerItem => ({
-  id: route.id,
-  label: route.label,
-  displayLabel,
-  color: route.color,
-  textColor: route.textColor,
-  routes: [route],
-});
+): TransitRoutePickerItem => {
+  const appearance =
+    mode === 'bus'
+      ? BOSTON_BUS_APPEARANCE
+      : mode === 'ferry'
+          ? BOSTON_FERRY_APPEARANCE
+          : {color: route.color, textColor: route.textColor ?? '#FFFFFF'};
+
+  return {
+    id: route.id,
+    shortName: route.shortName,
+    label: route.label,
+    displayLabel,
+    color: appearance.color,
+    textColor: appearance.textColor,
+    routes: [route],
+  };
+};
 
 const getBostonTrainOrder = (route: TransitRouteRecord) => {
   const normalized = normalizeToken(route.id);
@@ -104,6 +118,85 @@ const sortRoutesAlphabetically = (routes: TransitRouteRecord[]) =>
     const labelCompare = naturalRouteLabelCompare(left.label, right.label);
     if (labelCompare !== 0) return labelCompare;
     return naturalRouteLabelCompare(left.id, right.id);
+  });
+
+const getBostonBusGroupKey = (route: TransitRouteRecord | TransitRoutePickerItem) => {
+  const displayLabel = 'displayLabel' in route ? route.displayLabel : null;
+  const normalized = normalizeToken(route.shortName ?? displayLabel ?? route.label ?? route.id);
+
+  if (normalized.startsWith('SL')) return 'silver-line';
+  if (normalized.startsWith('CT')) return 'crosstown';
+
+  const numberMatch = normalized.match(/^(\d{1,3})/);
+  const routeNumber = numberMatch ? Number(numberMatch[1]) : null;
+
+  if (routeNumber === null) return 'other';
+  if (routeNumber >= 500) return 'express';
+  if (routeNumber >= 400) return 'north-shore';
+  if (routeNumber >= 300) return 'northwest';
+  if (routeNumber >= 210) return 'quincy';
+  return 'local';
+};
+
+const getBostonBusGroupTitle = (key: string) => {
+  switch (key) {
+    case 'silver-line':
+      return 'Silver Line';
+    case 'crosstown':
+      return 'Crosstown';
+    case 'local':
+      return 'Local routes';
+    case 'quincy':
+      return 'Quincy area';
+    case 'northwest':
+      return 'Northwest suburbs';
+    case 'north-shore':
+      return 'North Shore';
+    case 'express':
+      return 'Express';
+    default:
+      return 'Other';
+  }
+};
+
+const getBostonBusGroupOrder = (key: string) => {
+  switch (key) {
+    case 'silver-line':
+      return 0;
+    case 'crosstown':
+      return 1;
+    case 'local':
+      return 2;
+    case 'quincy':
+      return 3;
+    case 'northwest':
+      return 4;
+    case 'north-shore':
+      return 5;
+    case 'express':
+      return 6;
+    default:
+      return 7;
+  }
+};
+
+const getBostonFerrySortParts = (route: TransitRouteRecord | TransitRoutePickerItem) => {
+  const normalized = normalizeToken(route.id);
+  const numberedMatch = normalized.match(/^BOAT-F(\d+)$/);
+  if (numberedMatch) {
+    return {family: 0, number: Number(numberedMatch[1]), label: normalizeToken(route.label)};
+  }
+
+  return {family: 1, number: Number.MAX_SAFE_INTEGER, label: normalizeToken(route.label)};
+};
+
+const sortBostonFerryRoutes = (routes: TransitRouteRecord[]) =>
+  [...routes].sort((left, right) => {
+    const leftParts = getBostonFerrySortParts(left);
+    const rightParts = getBostonFerrySortParts(right);
+    if (leftParts.family !== rightParts.family) return leftParts.family - rightParts.family;
+    if (leftParts.number !== rightParts.number) return leftParts.number - rightParts.number;
+    return naturalRouteLabelCompare(left.label, right.label);
   });
 
 export const isBostonMode = (mode: ModeId): mode is BostonMode =>
@@ -152,9 +245,10 @@ export const getBostonRouteBadgeLabel = (
   mode: BostonMode,
   routeId: string,
   routeLabel?: string | null,
+  routeShortName?: string | null,
 ) => {
   const normalizedId = normalizeToken(routeId);
-  const safeLabel = (routeLabel ?? routeId).trim();
+  const safeLabel = (routeShortName ?? routeLabel ?? routeId).trim();
 
   if (mode === 'train') {
     return (
@@ -239,13 +333,18 @@ export const prepareBostonRouteEntries = (
 ): TransitRoutePickerItem[] | null => {
   if (mode === 'train') {
     return sortBostonTrainRoutes(routes).map(route =>
-      routeToPickerItem(route, getBostonLineLabel(mode, route.id, route.label)),
+      routeToPickerItem(mode, route, getBostonLineLabel(mode, route.id, route.label)),
     );
   }
 
-  if (mode === 'commuter-rail' || mode === 'ferry') {
-    return sortRoutesAlphabetically(routes).map(route =>
-      routeToPickerItem(route, getBostonLineLabel(mode, route.id, route.label)),
+  if (mode === 'bus' || mode === 'commuter-rail' || mode === 'ferry') {
+    const sortedRoutes =
+      mode === 'ferry'
+        ? sortBostonFerryRoutes(routes)
+        : sortRoutesAlphabetically(routes);
+
+    return sortedRoutes.map(route =>
+      routeToPickerItem(mode, route, getBostonLineLabel(mode, route.id, route.label)),
     );
   }
 
@@ -256,6 +355,49 @@ export const buildBostonRouteGroups = (
   mode: BostonMode,
   routes: TransitRoutePickerItem[],
 ): TransitRouteGroup[] | null => {
-  if (mode !== 'train' && mode !== 'commuter-rail' && mode !== 'ferry') return null;
-  return routes.length > 0 ? [{key: `boston-${mode}`, routes}] : [];
+  if (mode === 'train') {
+    const rapidTransitRoutes = routes.filter(route => !BOSTON_GREEN_BRANCH_IDS.has(normalizeToken(route.id)));
+    const greenBranchRoutes = routes.filter(route => BOSTON_GREEN_BRANCH_IDS.has(normalizeToken(route.id)));
+
+    return [
+      {key: 'boston-train-main', title: 'Subway lines', routes: rapidTransitRoutes},
+      {key: 'boston-train-green', title: 'Green Line branches', routes: greenBranchRoutes},
+    ].filter(group => group.routes.length > 0);
+  }
+
+  if (mode === 'bus') {
+    const grouped = new Map<string, TransitRoutePickerItem[]>();
+
+    for (const route of routes) {
+      const key = getBostonBusGroupKey(route);
+      const current = grouped.get(key) ?? [];
+      current.push(route);
+      grouped.set(key, current);
+    }
+
+    return [...grouped.entries()]
+      .sort((left, right) => getBostonBusGroupOrder(left[0]) - getBostonBusGroupOrder(right[0]))
+      .map(([key, groupRoutes]) => ({
+        key,
+        title: getBostonBusGroupTitle(key),
+        routes: groupRoutes,
+      }))
+      .filter(group => group.routes.length > 0);
+  }
+
+  if (mode === 'commuter-rail') {
+    return routes.length > 0 ? [{key: 'boston-commuter-rail', title: 'Commuter rail lines', routes}] : [];
+  }
+
+  if (mode === 'ferry') {
+    const numberedRoutes = routes.filter(route => getBostonFerrySortParts(route).family === 0);
+    const namedRoutes = routes.filter(route => getBostonFerrySortParts(route).family === 1);
+
+    return [
+      {key: 'boston-ferry-numbered', title: 'Route ferries', routes: numberedRoutes},
+      {key: 'boston-ferry-named', title: 'Named ferries', routes: namedRoutes},
+    ].filter(group => group.routes.length > 0);
+  }
+
+  return null;
 };
