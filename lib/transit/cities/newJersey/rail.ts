@@ -16,7 +16,14 @@ export const getNjtRailLineLabel = (
 export const getNjtRailRouteBadgeLabel = (
   routeId: string,
   routeLabel?: string | null,
-) => routeId.trim().toUpperCase() || trimLineSuffix((routeLabel ?? routeId).trim()).toUpperCase().slice(0, 4);
+  routeShortName?: string | null,
+) => {
+  const shortName = (routeShortName ?? '').trim().toUpperCase();
+  if (shortName) return shortName;
+  const label = (routeLabel ?? '').trim();
+  if (label && !/^\d+$/.test(label)) return trimLineSuffix(label).toUpperCase().slice(0, 5);
+  return routeId.trim().toUpperCase() || trimLineSuffix((routeLabel ?? routeId).trim()).toUpperCase().slice(0, 5);
+};
 
 export const getNjtRailDirectionLabel = (
   direction: string,

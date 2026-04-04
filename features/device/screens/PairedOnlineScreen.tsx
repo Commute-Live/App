@@ -9,6 +9,7 @@ import {colors, layout, radii, spacing, typography} from '../../../theme';
 import {apiFetch} from '../../../lib/api';
 import {useAuth} from '../../../state/authProvider';
 import {BottomNav, type BottomNavItem} from '../../../components/BottomNav';
+import {logger} from '../../../lib/datadog';
 
 const fallbackDevice = {id: 'commutelive-001', name: 'Commute Live Display'};
 const NAV_ITEMS: BottomNavItem[] = [
@@ -80,14 +81,17 @@ export default function PairedOnlineScreen() {
           return;
         }
         if (!result.ok) {
+          logger.error('Device link failed', {userId, deviceId, error: result.message});
           setLinkStatus('error');
           setLinkMessage(result.message);
           return;
         }
+        logger.info('Device linked successfully', {userId, deviceId});
         setLinkStatus('linked');
         setLinkMessage(result.message);
       },
       onError: () => {
+        logger.error('Device link network error', {userId, deviceId});
         setLinkStatus('error');
         setLinkMessage('Network error.');
       },

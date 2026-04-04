@@ -3,6 +3,7 @@ import * as AppleAuthentication from 'expo-apple-authentication';
 import {useRouter} from 'expo-router';
 import {useAuth} from '../../../state/authProvider';
 import {getPostAuthRoute} from '../../../lib/deviceSetup';
+import {logger} from '../../../lib/datadog';
 
 export function useAppleAuth() {
   const {socialSignIn} = useAuth();
@@ -35,6 +36,7 @@ export function useAppleAuth() {
       if (error?.code === 'ERR_REQUEST_CANCELED') {
         return {ok: false, error: 'cancelled'};
       }
+      logger.error('Apple sign-in failed', {error: error?.message ?? String(error)});
       return {ok: false, error: 'Apple Sign-In failed'};
     }
   }, [router, socialSignIn]);

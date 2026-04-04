@@ -52,8 +52,8 @@ export const newJerseyTransitModule: TransitCityModule = {
     if (mode === 'bus') return getNjtBusLineLabel(routeId, routeLabel);
     return null;
   },
-  getRouteBadgeLabel: (mode, routeId, routeLabel) => {
-    if (mode === 'train') return getNjtRailRouteBadgeLabel(routeId, routeLabel);
+  getRouteBadgeLabel: (mode, routeId, routeLabel, routeShortName) => {
+    if (mode === 'train') return getNjtRailRouteBadgeLabel(routeId, routeLabel, routeShortName);
     if (mode === 'bus') return getNjtBusRouteBadgeLabel(routeId, routeLabel);
     return null;
   },

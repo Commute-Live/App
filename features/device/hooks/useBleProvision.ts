@@ -2,6 +2,7 @@ import {useCallback, useEffect, useRef, useState} from 'react';
 import {BleManager, Device, BleError} from 'react-native-ble-plx';
 import {Platform, PermissionsAndroid} from 'react-native';
 import {Buffer} from 'buffer';
+import {logger} from '../../../lib/datadog';
 
 // CommuteLive custom GATT UUIDs — must match firmware ble_provisioner.cpp
 export const BLE_SERVICE_UUID    = 'a1b2c3d4-0000-4a5b-8c7d-9e0f1a2b3c4d';
@@ -319,6 +320,7 @@ export function useBleProvision() {
           discoveryTimeoutRef.current = null;
         }
         mgr.stopDeviceScan();
+        logger.error('BLE scan error', {error: error.message});
         fail(`Scan error: ${error.message}`);
         return;
       }
@@ -401,6 +403,7 @@ export function useBleProvision() {
           }
 
           if (payload.status === 'failed') {
+            logger.error('BLE device WiFi connection failed', {deviceId: nextDeviceId});
             setPhase('connected', {
               deviceId: nextDeviceId,
               errorMsg: 'Display could not connect to Wi-Fi. Check the SSID, username, and password, then try again.',
@@ -416,7 +419,9 @@ export function useBleProvision() {
       deviceRef.current = connected;
       setPhase('connected', {errorMsg: null});
     } catch (e: unknown) {
-      fail(`Connection failed: ${e instanceof Error ? e.message : String(e)}`);
+      const msg = e instanceof Error ? e.message : String(e);
+      logger.error('BLE device connection failed', {deviceId: device.name ?? device.id, error: msg});
+      fail(`Connection failed: ${msg}`);
     }
   }, [fail, setPhase, state.foundDevice]);
 
@@ -468,7 +473,9 @@ export function useBleProvision() {
           pendingWifiResultRef.current.resolve(null);
           pendingWifiResultRef.current = null;
         }
-        fail(`Failed to send credentials: ${e instanceof Error ? e.message : String(e)}`);
+        const msg = e instanceof Error ? e.message : String(e);
+        logger.error('BLE credential send failed', {error: msg});
+        fail(`Failed to send credentials: ${msg}`);
         return null;
       }
     },

@@ -4,6 +4,7 @@ import {GoogleSignin} from '../lib/googleSignIn';
 import {apiFetch} from '../lib/api';
 import {queryKeys} from '../lib/queryKeys';
 import {useAppState} from './appState';
+import {setDatadogUser, clearDatadogUser} from '../lib/datadog';
 
 type AuthStatus = 'loading' | 'authenticated' | 'unauthenticated';
 
@@ -83,6 +84,7 @@ export function AuthProvider({children}: {children: React.ReactNode}) {
       setDeviceIds(profile.deviceIds);
       setStatus('authenticated');
       setUserId(profile.id);
+      setDatadogUser({id: profile.id, email: profile.email});
 
       const nextDeviceId =
         appDeviceId && profile.deviceIds.includes(appDeviceId)
@@ -113,6 +115,7 @@ export function AuthProvider({children}: {children: React.ReactNode}) {
     setStatus('unauthenticated');
     setCurrentProvider(null);
     clearAppAuth();
+    clearDatadogUser();
   }, [clearAppAuth]);
 
   const authMeQuery = useQuery({
@@ -184,9 +187,9 @@ export function AuthProvider({children}: {children: React.ReactNode}) {
         if (!response.ok || !profile) {
           return {ok: false as const, error: data?.message ?? data?.error ?? 'Sign-in failed'};
         }
+        queryClient.setQueryData(queryKeys.auth.me, profile);
         applyAuthenticatedProfile(profile);
         setCurrentProvider(provider);
-        queryClient.setQueryData(queryKeys.auth.me, profile);
         return {
           ok: true as const,
           user: {id: profile.id, email: profile.email},
@@ -272,7 +275,11 @@ export function AuthProvider({children}: {children: React.ReactNode}) {
       return;
     }
     if (authMeQuery.isError && status !== 'unauthenticated') {
-      clearAuth();
+      // Don't clear if socialSignIn just populated the cache
+      const cached = queryClient.getQueryData(queryKeys.auth.me);
+      if (!cached) {
+        clearAuth();
+      }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [

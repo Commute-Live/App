@@ -1,4 +1,4 @@
-export type TransitCity = 'new-york' | 'philadelphia' | 'boston' | 'chicago';
+export type TransitCity = 'new-york' | 'philadelphia' | 'boston' | 'chicago' | 'new-jersey';
 
 export type DisplayFormat =
     | 'single-line'   // [BADGE] [Woodlawn]         [2m]
@@ -64,6 +64,7 @@ export type TransitStationLine = {
 
 export type TransitLine = {
   id: string;
+  shortName: string | null;
   label: string;
   sortOrder: number | null;
   color: string | null;

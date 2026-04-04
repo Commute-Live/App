@@ -367,6 +367,7 @@ export async function loadRoutesForStation(city: CityId, mode: ModeId, stopId: s
   const response = await getTransitLines(city, toTransitUiMode(mode), stopId);
   return response.lines.map(line => ({
     id: line.id,
+    shortName: line.shortName,
     label: line.label || line.id,
     sortOrder: line.sortOrder,
     color: resolveRouteColor(city, mode, line.id, line.label, line.color),
@@ -381,6 +382,7 @@ export async function loadGlobalLinesForCityMode(city: CityId, mode: ModeId): Pr
   const response = await getGlobalTransitLines(city, toTransitUiMode(mode));
   return response.lines.map(line => ({
     id: line.id,
+    shortName: line.shortName,
     label: line.label || line.id,
     sortOrder: line.sortOrder,
     color: resolveRouteColor(city, mode, line.id, line.label, line.color),
