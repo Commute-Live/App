@@ -20,6 +20,7 @@ import {apiFetch, API_BASE} from '../../../lib/api';
 import {useAuth} from '../../../state/authProvider';
 import {useBleProvision, WifiNetwork} from '../hooks/useBleProvision';
 import {AppBrandHeader} from '../../../components/AppBrandHeader';
+import {supportsBleProvisioning, unsupportedDeviceSetupMessage} from '../../../lib/deviceSetup';
 
 type ProvisionStep = 'idle' | 'online';
 
@@ -352,6 +353,23 @@ export default function BleProvisionScreen() {
       <Text style={styles.statusLabel}>{label}</Text>
     </View>
   );
+
+  if (!supportsBleProvisioning) {
+    return (
+      <SafeAreaView style={styles.container} edges={['top', 'left', 'right', 'bottom']}>
+        <AppBrandHeader />
+        <View style={styles.unsupportedWrap}>
+          <View style={styles.unsupportedCard}>
+            <Text style={styles.unsupportedTitle}>Use the mobile app for setup</Text>
+            <Text style={styles.unsupportedText}>{unsupportedDeviceSetupMessage}</Text>
+          </View>
+          <Pressable style={styles.primaryButton} onPress={() => router.replace('/dashboard')}>
+            <Text style={styles.primaryText}>Open dashboard</Text>
+          </Pressable>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.container} edges={['top', 'left', 'right', 'bottom']}>
@@ -758,6 +776,32 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
   },
   skipText: {color: colors.textMuted, fontWeight: '700', fontSize: typography.body},
+  unsupportedWrap: {
+    flex: 1,
+    justifyContent: 'center',
+    paddingHorizontal: layout.screenPadding,
+    gap: spacing.md,
+  },
+  unsupportedCard: {
+    backgroundColor: colors.card,
+    borderColor: colors.border,
+    borderWidth: 1,
+    borderRadius: radii.lg,
+    padding: layout.cardPaddingLg,
+    gap: spacing.sm,
+  },
+  unsupportedTitle: {
+    color: colors.text,
+    fontSize: typography.title,
+    fontWeight: '800',
+    textAlign: 'center',
+  },
+  unsupportedText: {
+    color: colors.textMuted,
+    fontSize: typography.body,
+    lineHeight: 20,
+    textAlign: 'center',
+  },
 });
 
 const modal = StyleSheet.create({

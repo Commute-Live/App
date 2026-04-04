@@ -10,7 +10,8 @@
       "env": {
         "EXPO_PUBLIC_SERVER_URL": "https://staging.commutelive.com",
         "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "790984102356-2d2jhelkf2bugl2kd21moq832qp0276t.apps.googleusercontent.com",
-        "EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID": "790984102356-sq1leqa8e4c71pb51nmf2gsrl8up0n13.apps.googleusercontent.com"
+        "EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID": "790984102356-sq1leqa8e4c71pb51nmf2gsrl8up0n13.apps.googleusercontent.com",
+        "EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID": "790984102356-s7pn4glo6n6rp097n240jnu3044imc1p.apps.googleusercontent.com"
       }
     },
     "production": {
@@ -19,7 +20,8 @@
       "env": {
         "EXPO_PUBLIC_SERVER_URL": "https://api.commutelive.com",
         "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "790984102356-2d2jhelkf2bugl2kd21moq832qp0276t.apps.googleusercontent.com",
-        "EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID": "790984102356-sq1leqa8e4c71pb51nmf2gsrl8up0n13.apps.googleusercontent.com"
+        "EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID": "790984102356-sq1leqa8e4c71pb51nmf2gsrl8up0n13.apps.googleusercontent.com",
+        "EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID": "790984102356-s7pn4glo6n6rp097n240jnu3044imc1p.apps.googleusercontent.com"
       }
     }
   },

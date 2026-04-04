@@ -10,6 +10,7 @@ import {apiFetch} from '../../../lib/api';
 import {queryKeys} from '../../../lib/queryKeys';
 import {getCurrentIanaTimeZone} from '../../../lib/schedules';
 import {useAuth} from '../../../state/authProvider';
+import {supportsLocalDeviceSetup, unsupportedDeviceSetupMessage} from '../../../lib/deviceSetup';
 
 export default function SetupIntroScreen() {
   const router = useRouter();
@@ -36,6 +37,7 @@ export default function SetupIntroScreen() {
       if (!response.ok) return null;
       return response.json().catch(() => null);
     },
+    enabled: supportsLocalDeviceSetup,
     retry: false,
     refetchOnWindowFocus: false,
   });
@@ -245,6 +247,24 @@ export default function SetupIntroScreen() {
     setConnectStatus('success');
     await tryRegisterAndLinkDevice(pendingLinkDeviceId);
   };
+
+  if (!supportsLocalDeviceSetup) {
+    return (
+      <SafeAreaView style={styles.container} edges={['top', 'left', 'right', 'bottom']}>
+        <View style={styles.body}>
+          <View style={styles.unsupportedWrap}>
+            <View style={styles.unsupportedCard}>
+              <Text style={styles.unsupportedTitle}>Use the mobile app for setup</Text>
+              <Text style={styles.unsupportedText}>{unsupportedDeviceSetupMessage}</Text>
+            </View>
+            <Pressable style={styles.primaryButton} onPress={() => router.replace('/dashboard')}>
+              <Text style={styles.primaryText}>Open dashboard</Text>
+            </Pressable>
+          </View>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.container} edges={['top', 'left', 'right', 'bottom']}>
@@ -553,4 +573,30 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   loadingText: {color: colors.text, fontWeight: '700'},
+  unsupportedWrap: {
+    flex: 1,
+    justifyContent: 'center',
+    padding: layout.screenPadding,
+    gap: spacing.md,
+  },
+  unsupportedCard: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radii.lg,
+    padding: layout.cardPaddingLg,
+    backgroundColor: colors.card,
+    gap: spacing.sm,
+  },
+  unsupportedTitle: {
+    color: colors.text,
+    fontSize: typography.title,
+    fontWeight: '800',
+    textAlign: 'center',
+  },
+  unsupportedText: {
+    color: colors.textMuted,
+    fontSize: typography.body,
+    lineHeight: 20,
+    textAlign: 'center',
+  },
 });

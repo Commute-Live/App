@@ -2,6 +2,7 @@ import {useCallback, useEffect, useState} from 'react';
 import * as AppleAuthentication from 'expo-apple-authentication';
 import {useRouter} from 'expo-router';
 import {useAuth} from '../../../state/authProvider';
+import {getPostAuthRoute} from '../../../lib/deviceSetup';
 
 export function useAppleAuth() {
   const {socialSignIn} = useAuth();
@@ -27,7 +28,7 @@ export function useAppleAuth() {
 
       const result = await socialSignIn('apple', credential.identityToken);
       if (result.ok) {
-        router.replace(result.deviceIds.length === 0 ? '/ble-provision' : '/dashboard');
+        router.replace(getPostAuthRoute(result.deviceIds));
       }
       return result;
     } catch (error: any) {

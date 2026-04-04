@@ -7,6 +7,7 @@ import {ScreenHeader} from '../../../components/ScreenHeader';
 import {colors, layout, radii, spacing, typography} from '../../../theme';
 import {useAppState} from '../../../state/appState';
 import {queryKeys} from '../../../lib/queryKeys';
+import {supportsLocalDeviceSetup, unsupportedDeviceSetupMessage} from '../../../lib/deviceSetup';
 
 export default function RegisterDeviceScreen() {
   const router = useRouter();
@@ -29,6 +30,7 @@ export default function RegisterDeviceScreen() {
         clearTimeout(timeout);
       }
     },
+    enabled: supportsLocalDeviceSetup,
     retry: false,
     refetchOnWindowFocus: false,
   });
@@ -41,7 +43,7 @@ export default function RegisterDeviceScreen() {
       const data = await response.json().catch(() => null);
       return data?.deviceId ? String(data.deviceId) : null;
     },
-    enabled: heartbeatQuery.data === true && !state.deviceId,
+    enabled: supportsLocalDeviceSetup && heartbeatQuery.data === true && !state.deviceId,
     retry: false,
     refetchOnWindowFocus: false,
   });
@@ -65,6 +67,23 @@ export default function RegisterDeviceScreen() {
       }
     });
   };
+
+  if (!supportsLocalDeviceSetup) {
+    return (
+      <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
+        <ScreenHeader title="Connect your device" />
+        <View style={styles.unsupportedWrap}>
+          <View style={styles.unsupportedCard}>
+            <Text style={styles.title}>Use the mobile app for setup</Text>
+            <Text style={styles.subtitle}>{unsupportedDeviceSetupMessage}</Text>
+          </View>
+          <Pressable style={styles.secondaryButton} onPress={() => router.back()}>
+            <Text style={styles.secondaryText}>Back</Text>
+          </Pressable>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
@@ -241,4 +260,19 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   secondaryText: {color: colors.textMuted, fontWeight: '700', fontSize: typography.bodyLg},
+  unsupportedWrap: {
+    flex: 1,
+    justifyContent: 'center',
+    padding: layout.screenPadding,
+    gap: spacing.md,
+  },
+  unsupportedCard: {
+    width: '100%',
+    backgroundColor: colors.card,
+    borderColor: colors.border,
+    borderWidth: 1,
+    borderRadius: radii.lg,
+    padding: layout.cardPaddingLg,
+    gap: spacing.sm,
+  },
 });

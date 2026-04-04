@@ -6,6 +6,7 @@ import {FlatList, ScrollView, SectionList} from 'react-native';
 import {SafeAreaProvider} from 'react-native-safe-area-context';
 import {QueryClientProvider} from '@tanstack/react-query';
 import {GoogleSignin} from '../lib/googleSignIn';
+import {googleAuthConfig} from '../lib/googleAuthConfig';
 import {AppStateProvider} from '../state/appState';
 import {colors} from '../theme';
 import {setSessionInvalidHandler} from '../lib/api';
@@ -35,8 +36,8 @@ hideScrollIndicatorsByDefault(FlatList as ScrollIndicatorDefaultsComponent);
 hideScrollIndicatorsByDefault(SectionList as ScrollIndicatorDefaultsComponent);
 
 GoogleSignin.configure({
-  webClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
-  iosClientId: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
+  webClientId: googleAuthConfig.webClientId,
+  iosClientId: googleAuthConfig.iosClientId,
 });
 
 function AppNavigator() {

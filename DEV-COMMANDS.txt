@@ -5,6 +5,22 @@ Staging: (update will only work if there are minor js changes)
 - New staging TestFlight build: npm run build:staging:ios
 - OTA JS update to staging: npm run update:staging -- --message "your message"
 
+ANDROID:
+$env:JAVA_HOME="C:\Program Files\Android\Android Studio\jbr"
+$env:Path="C:\Program Files\Android\Android Studio\jbr\bin;"+$env:Path
+
+$env:ANDROID_HOME="C:\Users\liakht\AppData\Local\Android\Sdk"
+$env:ANDROID_SDK_ROOT="C:\Users\liakht\AppData\Local\Android\Sdk"
+$env:Path += ";C:\Users\liakht\AppData\Local\Android\Sdk\platform-tools;C:\Users\liakht\AppData\Local\Android\Sdk\emulator"
+
+cd C:\Users\liakht\Dropbox\PC\Documents\GitHub\commute-live\App
+adb devices
+npm.cmd run android
+
+# Debug keystore SHA-1 for Android Google Sign-In
+keytool -list -v -alias androiddebugkey -keystore android\app\debug.keystore -storepass android -keypass android
+
+
 
 Production:
 - New production App Store build: npm run build:production:ios
