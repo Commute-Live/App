@@ -4,9 +4,11 @@ import {
   deserializeBostonDirection,
   formatBostonRoutePickerLabel,
   getBostonDirectionLabel,
+  getBostonFullDirectionLabel,
   getBostonLineLabel,
   getBostonModeLabel,
   getBostonRouteBadgeLabel,
+  getBostonRouteHeadsign,
   isBostonMode,
   prepareBostonRouteEntries,
   serializeBostonDirection,
@@ -40,3 +42,6 @@ export const bostonTransitModule: TransitCityModule = {
   buildRouteGroups: (mode, routes) =>
     isBostonMode(mode) ? buildBostonRouteGroups(mode, routes) : null,
 };
+
+export {getBostonRouteHeadsign};
+export {getBostonFullDirectionLabel};

@@ -185,6 +185,44 @@ export const getBostonDirectionLabel = (
   _variant: DirectionVariant = 'bound',
 ) => (direction === 'uptown' ? 'Outbound' : 'Inbound');
 
+type BostonRouteRef =
+  | string
+  | {
+      id?: string;
+      label?: string;
+      headsign0?: string | null;
+      headsign1?: string | null;
+    }
+  | null
+  | undefined;
+
+const trimOptionalString = (value: string | null | undefined) => {
+  const trimmed = value?.trim() ?? '';
+  return trimmed.length > 0 ? trimmed : null;
+};
+
+export const getBostonRouteHeadsign = (
+  route: BostonRouteRef,
+  direction: UiDirection,
+): string | null => {
+  if (!route || typeof route === 'string') return null;
+  return trimOptionalString(direction === 'uptown' ? route.headsign0 : route.headsign1);
+};
+
+export const getBostonFullDirectionLabel = (
+  mode: BostonMode,
+  direction: UiDirection,
+  route?: BostonRouteRef,
+  variant: DirectionVariant = 'bound',
+): string => {
+  const baseTerm = direction === 'uptown' ? 'Outbound' : 'Inbound';
+  if (mode !== 'commuter-rail' && mode !== 'ferry') return baseTerm;
+  const headsign = getBostonRouteHeadsign(route, direction);
+  if (!headsign) return baseTerm;
+  if (variant === 'toggle' || variant === 'summary') return `${baseTerm}: ${headsign}`;
+  return `${baseTerm}: ${headsign}`;
+};
+
 export const serializeBostonDirection = (direction: UiDirection) =>
   direction === 'uptown' ? '0' : '1';
 
