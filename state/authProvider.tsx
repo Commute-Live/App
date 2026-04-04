@@ -4,6 +4,7 @@ import {GoogleSignin} from '../lib/googleSignIn';
 import {apiFetch} from '../lib/api';
 import {queryKeys} from '../lib/queryKeys';
 import {useAppState} from './appState';
+import {setDatadogUser, clearDatadogUser} from '../lib/datadog';
 
 type AuthStatus = 'loading' | 'authenticated' | 'unauthenticated';
 
@@ -83,6 +84,7 @@ export function AuthProvider({children}: {children: React.ReactNode}) {
       setDeviceIds(profile.deviceIds);
       setStatus('authenticated');
       setUserId(profile.id);
+      setDatadogUser({id: profile.id, email: profile.email});
 
       const nextDeviceId =
         appDeviceId && profile.deviceIds.includes(appDeviceId)
@@ -113,6 +115,7 @@ export function AuthProvider({children}: {children: React.ReactNode}) {
     setStatus('unauthenticated');
     setCurrentProvider(null);
     clearAppAuth();
+    clearDatadogUser();
   }, [clearAppAuth]);
 
   const authMeQuery = useQuery({

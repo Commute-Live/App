@@ -8,6 +8,7 @@ import {useAuth} from '../../../state/authProvider';
 import {AppBrandHeader} from '../../../components/AppBrandHeader';
 import {TabScreen} from '../../../components/TabScreen';
 import {useAppState} from '../../../state/appState';
+import {logger} from '../../../lib/datadog';
 
 type SectionKey = 'Account' | 'Session' | 'Device' | 'Time Format' | 'Notifications' | 'Privacy';
 
@@ -45,7 +46,9 @@ export default function SettingsScreen() {
     setIsSigningOut(true);
     try {
       await signOut();
-    } catch {
+      logger.info('User signed out', {userId: user?.id});
+    } catch (e: unknown) {
+      logger.error('Sign-out failed', {userId: user?.id, error: e instanceof Error ? e.message : String(e)});
       setIsSigningOut(false);
     }
   };
@@ -62,7 +65,13 @@ export default function SettingsScreen() {
           style: 'destructive',
           onPress: async () => {
             setIsDeleting(true);
-            try { await deleteAccount(); } catch { setIsDeleting(false); }
+            try {
+              await deleteAccount();
+              logger.info('User deleted account', {userId: user?.id});
+            } catch (e: unknown) {
+              logger.error('Delete account failed', {userId: user?.id, error: e instanceof Error ? e.message : String(e)});
+              setIsDeleting(false);
+            }
           },
         },
       ],
@@ -74,7 +83,12 @@ export default function SettingsScreen() {
     setDeviceNotice(null);
     try {
       const result = await disconnectDevice(targetDeviceId);
-      if (!result.ok) { setDeviceNotice({kind: 'error', text: result.error}); return; }
+      if (!result.ok) {
+        logger.error('Device unpair failed', {userId: user?.id, deviceId: targetDeviceId, error: result.error});
+        setDeviceNotice({kind: 'error', text: result.error});
+        return;
+      }
+      logger.info('Device unpaired', {userId: user?.id, deviceId: targetDeviceId});
       if (result.deviceIds.length === 0) { router.replace('/ble-provision'); return; }
       setDeviceNotice({kind: 'success', text: `Unpaired. Switched to device ${result.deviceIds[0]}.`});
     } finally {

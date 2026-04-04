@@ -1,5 +1,7 @@
 import React, {useEffect} from 'react';
 import {Stack, useRouter} from 'expo-router';
+import {DatadogProvider} from '@datadog/mobile-react-native';
+import {createDatadogConfig} from '../lib/datadog';
 import {StatusBar} from 'expo-status-bar';
 import {useFonts} from 'expo-font';
 import {FlatList, ScrollView, SectionList} from 'react-native';
@@ -39,6 +41,8 @@ GoogleSignin.configure({
   webClientId: googleAuthConfig.webClientId,
   iosClientId: googleAuthConfig.iosClientId,
 });
+
+const datadogConfig = createDatadogConfig();
 
 function AppNavigator() {
   const router = useRouter();
@@ -109,15 +113,17 @@ export default function RootLayout() {
   }
 
   return (
-    <QueryClientProvider client={queryClient}>
-      <SafeAreaProvider>
-        <AppStateProvider>
-          <AuthProvider>
-            <StatusBar style="light" />
-            <AppNavigator />
-          </AuthProvider>
-        </AppStateProvider>
-      </SafeAreaProvider>
-    </QueryClientProvider>
+    <DatadogProvider configuration={datadogConfig}>
+      <QueryClientProvider client={queryClient}>
+        <SafeAreaProvider>
+          <AppStateProvider>
+            <AuthProvider>
+              <StatusBar style="light" />
+              <AppNavigator />
+            </AuthProvider>
+          </AppStateProvider>
+        </SafeAreaProvider>
+      </QueryClientProvider>
+    </DatadogProvider>
   );
 }
