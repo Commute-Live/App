@@ -71,7 +71,14 @@
         }
       ],
       "@react-native-community/datetimepicker",
-      "expo-datadog"
+      [
+        "expo-datadog",
+        {
+          "errorTracking": {
+            "iosDsyms": false
+          }
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true
