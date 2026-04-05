@@ -5,7 +5,9 @@
   },
   "build": {
     "staging": {
-      "autoIncrement": true,
+      "ios": {
+        "buildNumber": "11"
+      },
       "channel": "staging",
       "env": {
         "EXPO_PUBLIC_SERVER_URL": "https://staging.commutelive.com",
