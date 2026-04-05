@@ -21,11 +21,6 @@ dist/
 expo-env.d.ts
 
 # React Native
-android/.gradle/
-android/app/build/
-android/build/
-ios/Pods/
-ios/build/
 /.kotlin/
 *.orig.*
 *.jks
@@ -62,6 +57,7 @@ coverage/
 *.temp
 *.pem
 
-# Generated native folders
+# Generated native folders (CNG / Prebuild)
 /android
+/ios
 .vscode
