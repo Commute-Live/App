@@ -17,6 +17,7 @@
     "start:expo": "expo start --go"
   },
   "dependencies": {
+    "@datadog/datadog-ci": "^4.4.0",
     "@datadog/mobile-react-native": "^2.14.5",
     "@expo-google-fonts/inter": "^0.4.1",
     "@expo/config-plugins": "~54.0.4",

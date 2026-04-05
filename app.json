@@ -75,7 +75,10 @@
         "expo-datadog",
         {
           "errorTracking": {
-            "iosDsyms": false
+            "iosDsyms": false,
+            "iosSourcemaps": false,
+            "androidSourcemaps": false,
+            "androidProguardMappingFiles": false
           }
         }
       ]
