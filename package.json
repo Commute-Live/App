@@ -19,6 +19,7 @@
   "dependencies": {
     "@datadog/mobile-react-native": "^2.14.5",
     "@expo-google-fonts/inter": "^0.4.1",
+    "@expo/config-plugins": "~54.0.4",
     "@expo/vector-icons": "^15.0.3",
     "@react-native-community/datetimepicker": "8.4.4",
     "@react-native-community/slider": "5.0.1",
