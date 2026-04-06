@@ -19,6 +19,37 @@ type LocalRouteRef =
 export type {UiDirection};
 
 const normalizeToken = (value: string | null | undefined) => value?.trim().toUpperCase() ?? '';
+const normalizeProviderMode = (value: string | null | undefined) => value?.trim().toLowerCase() ?? '';
+
+const BOSTON_SUBWAY_ROUTE_IDS = new Set([
+  'RED',
+  'ORANGE',
+  'BLUE',
+  'GREEN',
+  'GREEN-B',
+  'GREEN-C',
+  'GREEN-D',
+  'GREEN-E',
+  'MATTAPAN',
+]);
+
+const PROVIDER_MODE_TO_UI_MODE: Partial<Record<string, LocalMode>> = {
+  'mta/subway': 'train',
+  'mta/bus': 'bus',
+  'mta/lirr': 'lirr',
+  'mta/mnr': 'mnr',
+  'septa/rail': 'train',
+  'septa/bus': 'bus',
+  'septa/trolley': 'trolley',
+  'mbta/subway': 'train',
+  'mbta/bus': 'bus',
+  'mbta/rail': 'commuter-rail',
+  'mbta/ferry': 'ferry',
+  'cta/subway': 'train',
+  'cta/bus': 'bus',
+  'njt/rail': 'train',
+  'njt/bus': 'bus',
+};
 
 const defaultDirectionLabel = (direction: UiDirection, variant: DirectionVariant) => {
   if (direction === 'northbound') return variant === 'summary' ? 'Northbound' : 'Northbound';
@@ -123,6 +154,9 @@ export const inferMbtaMode = (stopId: string | null | undefined, lineId?: string
   const normalizedStopId = (stopId ?? '').trim();
   const normalizedLineId = normalizeToken(lineId);
   if (/^BOAT-/i.test(normalizedStopId) || normalizedLineId.startsWith('BOAT-')) return 'ferry';
+  if (normalizedLineId === 'CAPEFLYER' || normalizedLineId.startsWith('CR-')) return 'commuter-rail';
+  if (BOSTON_SUBWAY_ROUTE_IDS.has(normalizedLineId)) return 'train';
+  if (/^PLACE-/i.test(normalizedStopId)) return 'train';
   if (/^\d+$/.test(normalizedStopId)) return 'bus';
   if (normalizedStopId && !/^PLACE-/i.test(normalizedStopId)) return 'commuter-rail';
   return 'train';
@@ -132,7 +166,14 @@ export const inferUiModeFromProvider = (
   provider: string | null | undefined,
   stopId?: string | null,
   lineId?: string | null,
+  providerMode?: string | null,
 ): LocalMode | null => {
+  const normalizedProviderMode = normalizeProviderMode(providerMode);
+  if (normalizedProviderMode) {
+    const inferredFromProviderMode = PROVIDER_MODE_TO_UI_MODE[normalizedProviderMode];
+    if (inferredFromProviderMode) return inferredFromProviderMode;
+  }
+
   const fixedMapping = resolveCityModeFromBackendProvider(provider);
   if (fixedMapping && (provider ?? '').trim().toLowerCase() !== 'mbta') {
     return fixedMapping.mode;

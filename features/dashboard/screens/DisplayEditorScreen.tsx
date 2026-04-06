@@ -409,6 +409,12 @@ const getDirectionToggleLabel = (
   direction: Direction,
   route?: Route | string,
 ) => {
+  if (city === 'boston') {
+    const cue = getDirectionCueLabel(city, mode, direction, route);
+    const headsign = getRouteHeadsign(city, mode, route, direction);
+    if (headsign) return `${cue}\n${headsign}`;
+    return cue;
+  }
   const toggleLabel = getLocalDirectionLabel(city, mode, direction, route, 'toggle');
   if (toggleLabel) return toggleLabel;
   const cue = getDirectionCueLabel(city, mode, direction, route);
@@ -706,8 +712,23 @@ export default function DisplayEditorScreen() {
         queryKey: queryKeys.transitLinesForStation(city, item.mode, item.stationId),
         queryFn: () => loadRoutesForStation(city, item.mode, item.stationId),
       })
-        .then(routes => {
-          setRoutesByStation(prev => ({...prev, [key]: routes}));
+        .then(result => {
+          const resolvedStopId = result.stopId?.trim() || item.stationId;
+          const resolvedKey = routeLookupKey(item.mode, resolvedStopId);
+          setRoutesByStation(prev => ({
+            ...prev,
+            [key]: result.routes,
+            [resolvedKey]: result.routes,
+          }));
+          if (resolvedStopId !== item.stationId) {
+            setLines(prev =>
+              prev.map(line =>
+                line.mode === item.mode && line.stationId === item.stationId
+                  ? {...line, stationId: resolvedStopId}
+                  : line,
+              ),
+            );
+          }
         })
         .catch(() => {
           setRoutesByStation(prev => ({...prev, [key]: []}));
@@ -903,8 +924,21 @@ export default function DisplayEditorScreen() {
   }, [city, editingDisplayId, hasLinkedDevice, isCreateMode, queryClient, selectedDevice.id]);
 
   const activeLiveSelections = useMemo(
-    () => lines.filter(line => line.stationId.trim().length > 0 && line.routeId.trim().length > 0),
-    [lines],
+    () =>
+      lines.filter(line => {
+        if (!line.stationId.trim() || !line.routeId.trim()) return false;
+        const normalizedMode = normalizeMode(city, line.mode);
+        const resolvedStation = resolveSelectedStationForLine(
+          line,
+          city,
+          stationsByMode,
+          stationsByLine,
+        );
+        if (!resolvedStation) return false;
+        const stationRoutes = routesByStation[routeLookupKey(normalizedMode, resolvedStation.id)] ?? [];
+        return stationRoutes.some(route => route.id === line.routeId);
+      }),
+    [city, lines, routesByStation, stationsByLine, stationsByMode],
   );
   const activeSelectionKey = useMemo(
     () =>
@@ -915,7 +949,10 @@ export default function DisplayEditorScreen() {
   );
 
   useEffect(() => {
-    if (!liveSupported || activeLiveSelections.length === 0) return;
+    if (!liveSupported || activeLiveSelections.length === 0) {
+      setLiveStatusText('');
+      return;
+    }
     let cancelled = false;
 
     const pollLiveArrivals = async () => {
@@ -3555,8 +3592,9 @@ function StopPickerStep({
   const isNycMnrMode = city === 'new-york' && selectedMode === 'mnr';
   const isNjtTrainMode = city === 'new-jersey' && selectedMode === 'train';
   const isNjtBusMode = city === 'new-jersey' && selectedMode === 'bus';
+  const isBostonTrainMode = city === 'boston' && selectedMode === 'train';
   const useWideDirectionToggle =
-    isChicagoTrainMode || isNycSubwayMode || isNycLirrMode || isNycBusMode || isNycMnrMode || isNjtTrainMode || isNjtBusMode;
+    isChicagoTrainMode || isNycSubwayMode || isNycLirrMode || isNycBusMode || isNycMnrMode || isNjtTrainMode || isNjtBusMode || isBostonTrainMode;
   const directionOptions = getLocalDirectionOptions(city, selectedMode, selectedRoute ?? selectedRouteId);
 
   const filtered = useMemo(() => {

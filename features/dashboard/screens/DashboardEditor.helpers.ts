@@ -16,7 +16,7 @@ import {
   resolveCityModeFromBackendProvider,
   SUPPORTED_TRANSIT_CITIES,
 } from '../../../lib/transit/registry';
-import {formatLocalRoutePickerLabel, getDefaultUiDirection, getLocalDirectionOptions, getLocalModeLabel, serializeUiDirection} from '../../../lib/transitUi';
+import {formatLocalRoutePickerLabel, getDefaultUiDirection, getLocalDirectionOptions, getLocalModeLabel, inferMbtaMode, serializeUiDirection} from '../../../lib/transitUi';
 import type {DisplayContent, DisplayFormat, TransitArrival, TransitStationLine, TransitUiMode} from '../../../types/transit';
 
 type Station = {id: string; name: string; area: string; lines: TransitStationLine[]};
@@ -42,6 +42,7 @@ type StationsByMode = Partial<Record<ModeId, Station[]>>;
 type RoutesByStation = Record<string, Route[]>;
 type RoutePickerItem = TransitRoutePickerItem;
 type RouteGroup = TransitRouteGroup;
+type StationRouteResult = {stopId: string; routes: Route[]};
 
 const DEFAULT_TEXT_COLOR = '#E9ECEF';
 const DEFAULT_NEXT_STOPS = 3;
@@ -60,7 +61,6 @@ const PROVIDER_MODE_TO_CITY_MODE: Record<string, {city: CityId; mode: ModeId}> =
   'mbta/subway': {city: 'boston', mode: 'train'},
   'mbta/bus': {city: 'boston', mode: 'bus'},
   'mbta/rail': {city: 'boston', mode: 'commuter-rail'},
-  'mbta/ferry': {city: 'boston', mode: 'ferry'},
   'cta/subway': {city: 'chicago', mode: 'train'},
   'cta/bus': {city: 'chicago', mode: 'bus'},
 };
@@ -70,15 +70,10 @@ const normalizeProviderMode = (value: string | undefined | null) => {
   return value.trim().toLowerCase();
 };
 
-const resolveBostonModeFromSavedStop = (stopId: string | undefined | null): ModeId => {
-  if (typeof stopId !== 'string') return 'train';
-  const normalizedStopId = stopId.trim();
-  if (!normalizedStopId) return 'train';
-  if (/^Boat-/i.test(normalizedStopId)) return 'ferry';
-  if (/^\d+$/.test(normalizedStopId)) return 'bus';
-  if (!/^place-/i.test(normalizedStopId)) return 'commuter-rail';
-  return 'train';
-};
+const resolveBostonModeFromSavedStop = (
+  stopId: string | undefined | null,
+  lineId?: string | undefined | null,
+): ModeId => inferMbtaMode(stopId, lineId);
 
 export function resolveBackendProvider(c: CityId, mode: ModeId): string {
   if (!isSupportedTransitCity(c)) {
@@ -105,7 +100,6 @@ export function resolveBackendProviderMode(c: CityId, mode: ModeId): string {
   }
   if (mode === 'bus') return 'mbta/bus';
   if (mode === 'commuter-rail') return 'mbta/rail';
-  if (mode === 'ferry') return 'mbta/ferry';
   return 'mbta/subway';
 }
 
@@ -117,6 +111,7 @@ export function cityModeFromSavedLine(saved: {
   provider?: string | null;
   providerMode?: string | null;
   stop?: string | null;
+  line?: string | null;
 }): {city: CityId; mode: ModeId} | null {
   const normalizedProviderMode = normalizeProviderMode(saved.providerMode);
   if (normalizedProviderMode) {
@@ -127,7 +122,7 @@ export function cityModeFromSavedLine(saved: {
   const provider = typeof saved.provider === 'string' ? saved.provider : '';
   const fallback = cityModeFromProvider(provider);
   if (fallback?.city === 'boston' && fallback.mode === 'train') {
-    return {city: 'boston', mode: resolveBostonModeFromSavedStop(saved.stop)};
+    return {city: 'boston', mode: resolveBostonModeFromSavedStop(saved.stop, saved.line)};
   }
   return fallback;
 }
@@ -363,9 +358,11 @@ export function isNycBusBadge(city: CityId, mode: ModeId) {
   return getTransitCityModule(city)?.isBusBadge?.(mode) ?? false;
 }
 
-export async function loadRoutesForStation(city: CityId, mode: ModeId, stopId: string): Promise<Route[]> {
+export async function loadRoutesForStation(city: CityId, mode: ModeId, stopId: string): Promise<StationRouteResult> {
   const response = await getTransitLines(city, toTransitUiMode(mode), stopId);
-  return response.lines.map(line => ({
+  return {
+    stopId: response.stopId,
+    routes: response.lines.map(line => ({
     id: line.id,
     shortName: line.shortName,
     label: line.label || line.id,
@@ -375,7 +372,8 @@ export async function loadRoutesForStation(city: CityId, mode: ModeId, stopId: s
     headsign0: line.headsign0,
     headsign1: line.headsign1,
     directions: line.directions,
-  }));
+    })),
+  };
 }
 
 export async function loadGlobalLinesForCityMode(city: CityId, mode: ModeId): Promise<Route[]> {
