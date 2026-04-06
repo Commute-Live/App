@@ -55,6 +55,14 @@ const DEFAULT_QUIET_HOURS = {
    days: [...DISPLAY_WEEKDAYS] as DisplayWeekday[],
 };
 
+const formatShortTimezoneLabel = (timezone: string) => {
+   const trimmed = timezone.trim();
+   if (!trimmed) return 'Local';
+   const parts = trimmed.split('/');
+   const lastPart = parts[parts.length - 1] ?? trimmed;
+   return lastPart.replace(/_/g, ' ');
+};
+
 type QuietHoursDraft = {
    start: string;
    end: string;
@@ -101,6 +109,7 @@ export default function DashboardOverviewScreen() {
    const deviceSettingsError = deviceSettingsQuery.error instanceof Error ? deviceSettingsQuery.error.message : '';
    const quietHoursLoading = deviceSettingsQuery.isPending && !deviceSettings;
    const quietHoursTimezone = deviceSettings?.timezone ?? getCurrentIanaTimeZone();
+   const quietHoursTimezoneLabel = formatShortTimezoneLabel(quietHoursTimezone);
 
    const stopPairs = useMemo(() => {
       const pairs: {key: string; provider: string; providerMode?: string; stop: string}[] = [];
@@ -569,7 +578,7 @@ export default function DashboardOverviewScreen() {
                         <Text style={[styles.quietMetaText, quietHoursLoading && styles.quietDescriptionDisabled]}>
                            {quietHoursLoading
                               ? 'Loading device settings…'
-                              : `Blank the entire panel on selected days. Timezone: ${quietHoursTimezone}`}
+                              : `Blank the entire panel on selected days. Timezone: ${quietHoursTimezoneLabel}`}
                         </Text>
                      </View>
                      <Pressable
@@ -591,51 +600,54 @@ export default function DashboardOverviewScreen() {
                      </Pressable>
                   </View>
 
-                  <View style={styles.quietDaysWrap}>
-                     <Text style={styles.quietDaysLabel}>Days</Text>
-                     <View style={[styles.quietDaysRow, quietHoursInputsDisabled && styles.quietDaysRowDisabled]}>
-                        {DAY_OPTIONS.map(day => {
-                           const active = quietHours.days.includes(day.id);
-                           return (
-                              <Pressable
-                                 key={day.id}
-                                 style={[styles.quietDayPill, active && styles.quietDayPillActive]}
-                                 disabled={quietHoursInputsDisabled}
-                                 onPress={() => {
-                                    const nextDays = active
-                                       ? quietHours.days.filter(item => item !== day.id)
-                                       : [...quietHours.days, day.id];
-                                    const nextQuietHours = {
-                                       ...quietHours,
-                                       days: DISPLAY_WEEKDAYS.filter(option => nextDays.includes(option)),
-                                    };
-                                    setQuietHours(nextQuietHours);
-                                    if (quietHoursEnabled) void persistQuietHours(true, nextQuietHours);
-                                 }}
-                              >
-                                 <Text style={[styles.quietDayPillText, active && styles.quietDayPillTextActive]}>
-                                    {day.label}
-                                 </Text>
-                              </Pressable>
-                           );
-                        })}
-                     </View>
-                  </View>
+                  {quietHoursEnabled ? (
+                     <>
+                        <View style={styles.quietDaysWrap}>
+                           <View style={[styles.quietDaysRow, quietHoursInputsDisabled && styles.quietDaysRowDisabled]}>
+                              {DAY_OPTIONS.map(day => {
+                                 const active = quietHours.days.includes(day.id);
+                                 return (
+                                    <Pressable
+                                       key={day.id}
+                                       style={[styles.quietDayPill, active && styles.quietDayPillActive]}
+                                       disabled={quietHoursInputsDisabled}
+                                       onPress={() => {
+                                          const nextDays = active
+                                             ? quietHours.days.filter(item => item !== day.id)
+                                             : [...quietHours.days, day.id];
+                                          const nextQuietHours = {
+                                             ...quietHours,
+                                             days: DISPLAY_WEEKDAYS.filter(option => nextDays.includes(option)),
+                                          };
+                                          setQuietHours(nextQuietHours);
+                                          if (quietHoursEnabled) void persistQuietHours(true, nextQuietHours);
+                                       }}
+                                    >
+                                       <Text style={[styles.quietDayPillText, active && styles.quietDayPillTextActive]}>
+                                          {day.label}
+                                       </Text>
+                                    </Pressable>
+                                 );
+                              })}
+                           </View>
+                        </View>
 
-                  <View style={styles.quietRangeRow}>
-                        <TimeAdjustField
-                           label="Sleep From"
-                           value={quietHours.start}
-                           disabled={quietHoursInputsDisabled}
-                           onChange={(start) => updateQuietHoursDraft({start})}
-                        />
-                        <TimeAdjustField
-                           label="Wake At"
-                           value={quietHours.end}
-                           disabled={quietHoursInputsDisabled}
-                           onChange={(end) => updateQuietHoursDraft({end})}
-                        />
-                     </View>
+                        <View style={styles.quietRangeRow}>
+                              <TimeAdjustField
+                                 label="Sleep From"
+                                 value={quietHours.start}
+                                 disabled={quietHoursInputsDisabled}
+                                 onChange={(start) => updateQuietHoursDraft({start})}
+                              />
+                              <TimeAdjustField
+                                 label="Wake At"
+                                 value={quietHours.end}
+                                 disabled={quietHoursInputsDisabled}
+                                 onChange={(end) => updateQuietHoursDraft({end})}
+                              />
+                           </View>
+                     </>
+                  ) : null}
                   {quietHoursError || deviceSettingsError ? (
                      <Text style={styles.commandError}>{quietHoursError || deviceSettingsError}</Text>
                   ) : null}

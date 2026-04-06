@@ -85,16 +85,14 @@ export function DashboardOverviewTimeAdjustField({
             <Pressable
               style={styles.timeFieldButton}
               onPress={() => onChange(cycleTimeOption(value, -1))}
-              disabled={disabled}
-            >
+              disabled={disabled}>
               <Text style={styles.timeFieldButtonText}>-</Text>
             </Pressable>
             <Text style={styles.timeFieldValue}>{value}</Text>
             <Pressable
               style={styles.timeFieldButton}
               onPress={() => onChange(cycleTimeOption(value, 1))}
-              disabled={disabled}
-            >
+              disabled={disabled}>
               <Text style={styles.timeFieldButtonText}>+</Text>
             </Pressable>
           </View>
@@ -106,8 +104,7 @@ export function DashboardOverviewTimeAdjustField({
           visible={pickerVisible}
           transparent
           animationType="fade"
-          onRequestClose={closePicker}
-        >
+          onRequestClose={closePicker}>
           <Pressable style={styles.timePickerModalBackdrop} onPress={closePicker}>
             <Pressable style={styles.timePickerModalSheet} onPress={() => {}}>
               <View style={styles.timePickerModalHeader}>

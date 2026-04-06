@@ -13,6 +13,7 @@ import {AppBrandHeader} from '../../../components/AppBrandHeader';
 import DraggableFlatList, {type RenderItemParams} from 'react-native-draggable-flatlist';
 import {TabScreen, useTabRouteIsActive} from '../../../components/TabScreen';
 import DashboardPreviewSection from '../components/DashboardPreviewSection';
+import {DashboardOverviewTimeAdjustField as TimeAdjustField} from './DashboardOverviewTimeAdjustField';
 import {CITY_BRANDS, CITY_LABELS} from '../../../constants/cities';
 import {useAppState} from '../../../state/appState';
 import {useAuth} from '../../../state/authProvider';
@@ -33,7 +34,6 @@ import {
 import {CITY_LINE_COLORS, hashLineColor, resolveProviderLineColor} from '../../../lib/lineColors';
 import {getTransitStationName} from '../../../lib/transitApi';
 import {queryKeys} from '../../../lib/queryKeys';
-import {cycleTimeOption} from './DashboardOverview.time';
 
 const stopNameCache: Record<string, string> = {};
 const MIN_BRIGHTNESS = 10;
@@ -628,9 +628,9 @@ export default function PresetsScreen() {
                     />
                   </View>
 
-                  {/* [Edit + Active] | ‹ Name › | [Delete] */}
+                  {/* [Edit] | ‹ Name / Active › | [Delete] */}
                   <View style={styles.navActionsRow}>
-                    {/* Left: Edit + Active badge */}
+                    {/* Left: Edit */}
                     <View style={styles.navLeft}>
                       <Pressable
                         style={styles.editBtn}
@@ -642,12 +642,6 @@ export default function PresetsScreen() {
                       }>
                         <Ionicons name="pencil-outline" size={14} color={colors.text} />
                       </Pressable>
-                      {currentDisplay.displayId === activeDisplayId ? (
-                        <View style={styles.navActiveLabel}>
-                          <View style={styles.navActiveDot} />
-                          <Text style={styles.navActiveLabelText}>Active</Text>
-                        </View>
-                      ) : null}
                     </View>
 
                     {/* Center: ‹ Name › — truly centered */}
@@ -662,7 +656,14 @@ export default function PresetsScreen() {
                       ) : null}
                       <View style={styles.navTitleBlock}>
                         <Text style={styles.navDisplayName} numberOfLines={1}>{currentDisplay.name}</Text>
-                        <Text style={styles.navDisplayCity}>{CITY_LABELS[currentDisplayCity]}</Text>
+                        {currentDisplay.displayId === activeDisplayId ? (
+                          <View style={styles.navActiveLabelCompact}>
+                            <View style={styles.navActiveDotCompact} />
+                            <Text style={styles.navActiveLabelCompactText}>Active</Text>
+                          </View>
+                        ) : (
+                          <Text style={styles.navDisplayCity}>{CITY_LABELS[currentDisplayCity]}</Text>
+                        )}
                       </View>
                       {visibleDisplays.length > 1 ? (
                         <Pressable
@@ -747,41 +748,25 @@ export default function PresetsScreen() {
                     {currentScheduleDraft.enabled ? (
                       <>
                         <View style={styles.timeRangeRow}>
-                          <QuickTimeField
+                          <TimeAdjustField
                             label="Start"
                             value={currentScheduleDraft.start}
-                            onPrev={() => {
+                            onChange={start => {
                               const nextSchedule = {
                                 ...currentScheduleDraft,
-                                start: cycleTimeOption(currentScheduleDraft.start, -1),
-                              };
-                              handleScheduleChange(currentDisplay.displayId, nextSchedule);
-                              void handleScheduleCommit(currentDisplay, nextSchedule);
-                            }}
-                            onNext={() => {
-                              const nextSchedule = {
-                                ...currentScheduleDraft,
-                                start: cycleTimeOption(currentScheduleDraft.start, 1),
+                                start,
                               };
                               handleScheduleChange(currentDisplay.displayId, nextSchedule);
                               void handleScheduleCommit(currentDisplay, nextSchedule);
                             }}
                           />
-                          <QuickTimeField
+                          <TimeAdjustField
                             label="End"
                             value={currentScheduleDraft.end}
-                            onPrev={() => {
+                            onChange={end => {
                               const nextSchedule = {
                                 ...currentScheduleDraft,
-                                end: cycleTimeOption(currentScheduleDraft.end, -1),
-                              };
-                              handleScheduleChange(currentDisplay.displayId, nextSchedule);
-                              void handleScheduleCommit(currentDisplay, nextSchedule);
-                            }}
-                            onNext={() => {
-                              const nextSchedule = {
-                                ...currentScheduleDraft,
-                                end: cycleTimeOption(currentScheduleDraft.end, 1),
+                                end,
                               };
                               handleScheduleChange(currentDisplay.displayId, nextSchedule);
                               void handleScheduleCommit(currentDisplay, nextSchedule);
@@ -832,33 +817,6 @@ export default function PresetsScreen() {
         onSave={handleSaveReorder}
       />
     </TabScreen>
-  );
-}
-
-function QuickTimeField({
-  label,
-  value,
-  onPrev,
-  onNext,
-}: {
-  label: string;
-  value: string;
-  onPrev: () => void;
-  onNext: () => void;
-}) {
-  return (
-    <View style={styles.timeField}>
-      <Text style={styles.timeFieldLabel}>{label}</Text>
-      <View style={styles.timeFieldControls}>
-        <Pressable style={styles.timeAdjustButton} onPress={onPrev}>
-          <Text style={styles.timeAdjustButtonText}>-</Text>
-        </Pressable>
-        <Text style={styles.timeFieldValue}>{value}</Text>
-        <Pressable style={styles.timeAdjustButton} onPress={onNext}>
-          <Text style={styles.timeAdjustButtonText}>+</Text>
-        </Pressable>
-      </View>
-    </View>
   );
 }
 
@@ -1224,27 +1182,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'flex-end',
   },
-  navActiveLabel: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xxs,
-    borderWidth: 1,
-    borderColor: '#34D399',
-    borderRadius: radii.md,
-    paddingHorizontal: spacing.xs,
-    paddingVertical: spacing.xxs,
-  },
-  navActiveDot: {
-    width: 7,
-    height: 7,
-    borderRadius: 4,
-    backgroundColor: '#34D399',
-  },
-  navActiveLabelText: {
-    color: '#34D399',
-    fontSize: 12,
-    fontWeight: '600',
-  },
   navCenter: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1269,6 +1206,29 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '700',
     textAlign: 'center',
+  },
+  navActiveLabelCompact: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'center',
+    gap: 4,
+    borderWidth: 1,
+    borderColor: '#34D399',
+    borderRadius: radii.md,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+  },
+  navActiveDotCompact: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#34D399',
+  },
+  navActiveLabelCompactText: {
+    color: '#34D399',
+    fontSize: 10,
+    fontWeight: '600',
+    lineHeight: 12,
   },
   arrowBtn: {
     width: layout.iconButton,
@@ -1437,12 +1397,12 @@ const styles = StyleSheet.create({
   },
 
   // ─── Days ─────────────────────────────────────────────────────────────────
-  daysRow: {flexDirection: 'row', gap: spacing.xs},
+  daysRow: {flexDirection: 'row', justifyContent: 'center', gap: 10},
   daysRowDisabled: {opacity: 0.35},
   dayPill: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
+    width: 34,
+    height: 34,
+    borderRadius: 17,
     borderWidth: 1,
     borderColor: colors.border,
     backgroundColor: colors.card,
@@ -1450,7 +1410,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   dayPillActive: {borderColor: colors.accent, backgroundColor: colors.accentMuted},
-  dayPillText: {color: colors.textMuted, fontSize: 9, fontWeight: '700'},
+  dayPillText: {color: colors.textMuted, fontSize: 13, fontWeight: '700'},
   dayPillTextActive: {color: colors.accent},
 
   // ─── Time Range ───────────────────────────────────────────────────────────
@@ -1587,11 +1547,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
   },
   reorderBadgeRow: {
-    width: 72,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs,
-    flexWrap: 'wrap',
+    width: 76,
+    flexDirection: 'column',
+    alignItems: 'flex-start',
+    justifyContent: 'center',
+    gap: 6,
   },
   reorderLineBadge: {
     minWidth: 24,
