@@ -16,7 +16,7 @@ import {
 
 export const bostonTransitModule: TransitCityModule = {
   city: 'boston',
-  modeOrder: ['train', 'bus', 'commuter-rail', 'ferry'],
+  modeOrder: ['train', 'bus', 'commuter-rail'],
   backendProvidersByMode: {
     train: 'mbta-subway',
     bus: 'mbta-bus',

@@ -315,6 +315,9 @@ export const normalizeTransitLineGroup = (
   context: TransitContext,
   stopId: string,
 ): TransitLineGroup => {
+  const resolvedStopId = isRecord(payload)
+    ? readFirstString(payload, ['stopId', 'stationId', 'id']) ?? stopId
+    : stopId;
   const lines = dedupeById(
     collectArray(payload, ['lines', 'routes'])
       .map(normalizeTransitLine)
@@ -323,7 +326,7 @@ export const normalizeTransitLineGroup = (
 
   return {
     ...context,
-    stopId,
+    stopId: resolvedStopId,
     lines,
   };
 };
@@ -453,40 +456,44 @@ const inferMbtaModeFromStopId = (stopId: string): TransitBackendMode => {
   return 'subway';
 };
 
-const resolveStationLookupContext = (
+const resolveStationLookupContexts = (
   backendProvider: string,
   stopId: string,
   providerMode?: string | null,
-): {provider: string; mode: string; stopId: string} | null => {
+): Array<{provider: string; mode: string; stopId: string}> => {
   const normalizedProviderMode = normalizeProviderMode(providerMode);
   if (normalizedProviderMode) {
     const [provider = '', mode = ''] = normalizedProviderMode.split('/', 2);
     if (provider && mode) {
       const normalizedStopId =
         provider === 'mta' && mode === 'subway' ? stopId.replace(/[NS]$/i, '') : stopId;
-      return {provider, mode, stopId: normalizedStopId};
+      return [{provider, mode, stopId: normalizedStopId}];
     }
   }
 
   if (backendProvider === 'mbta') {
-    return {
-      provider: 'mbta',
-      mode: inferMbtaModeFromStopId(stopId),
-      stopId,
-    };
+    const orderedModes = Array.from(
+      new Set<TransitBackendMode>([
+        inferMbtaModeFromStopId(stopId),
+        'subway',
+        'rail',
+        'bus',
+      ]),
+    );
+    return orderedModes.map(mode => ({provider: 'mbta', mode, stopId}));
   }
 
   const context = resolveBackendProviderContext(backendProvider);
-  if (!context) return null;
+  if (!context) return [];
 
-  return {
+  return [{
     provider: context.provider,
     mode: context.mode,
     stopId:
       context.provider === 'mta' && context.mode === 'subway'
         ? stopId.replace(/[NS]$/i, '')
         : stopId,
-  };
+  }];
 };
 
 export const getTransitStationName = async (
@@ -494,18 +501,21 @@ export const getTransitStationName = async (
   stopId: string,
   providerMode?: string | null,
 ): Promise<string | null> => {
-  const ctx = resolveStationLookupContext(backendProvider, stopId, providerMode);
-  if (!ctx) return null;
-  const endpoint = `/${ctx.provider}/stations/${ctx.mode}/${encodeURIComponent(ctx.stopId)}/lines`;
-  try {
-    const response = await apiFetch(endpoint);
-    if (!response.ok) return null;
-    const payload = await response.json().catch(() => null);
-    if (!isRecord(payload)) return null;
-    return readFirstString(payload, ['name', 'station', 'stopName']) ?? null;
-  } catch {
-    return null;
+  const contexts = resolveStationLookupContexts(backendProvider, stopId, providerMode);
+  for (const ctx of contexts) {
+    const endpoint = `/${ctx.provider}/stations/${ctx.mode}/${encodeURIComponent(ctx.stopId)}/lines`;
+    try {
+      const response = await apiFetch(endpoint);
+      if (!response.ok) continue;
+      const payload = await response.json().catch(() => null);
+      if (!isRecord(payload)) continue;
+      const resolvedName = readFirstString(payload, ['name', 'station', 'stopName']);
+      if (resolvedName) return resolvedName;
+    } catch {
+      // Keep trying fallback contexts.
+    }
   }
+  return null;
 };
 
 export const getTransitArrivals = async (
