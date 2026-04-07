@@ -23,7 +23,8 @@
         }
       },
       "bundleIdentifier": "com.commutelive.app",
-      "usesAppleSignIn": true
+      "usesAppleSignIn": true,
+      "appleTeamId": "Z9HSRWLURP"
     },
     "android": {
       "adaptiveIcon": {
