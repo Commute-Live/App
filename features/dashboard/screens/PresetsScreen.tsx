@@ -646,14 +646,16 @@ export default function PresetsScreen() {
 
                     {/* Center: ‹ Name › — truly centered */}
                     <View style={styles.navCenter}>
-                      {visibleDisplays.length > 1 ? (
-                        <Pressable
-                          style={[styles.arrowBtn, safeIndex === 0 && styles.arrowBtnDisabled]}
-                          onPress={() => goTo(safeIndex - 1)}
-                          disabled={safeIndex === 0}>
-                          <Ionicons name="chevron-back" size={15} color={colors.textMuted} />
-                        </Pressable>
-                      ) : null}
+                      <Pressable
+                        style={[
+                          styles.arrowBtn,
+                          (visibleDisplays.length <= 1 || safeIndex === 0) && styles.arrowBtnDisabled,
+                          visibleDisplays.length <= 1 && styles.arrowBtnHidden,
+                        ]}
+                        onPress={() => goTo(safeIndex - 1)}
+                        disabled={visibleDisplays.length <= 1 || safeIndex === 0}>
+                        <Ionicons name="chevron-back" size={22} color={colors.textMuted} />
+                      </Pressable>
                       <View style={styles.navTitleBlock}>
                         <Text style={styles.navDisplayName} numberOfLines={1}>{currentDisplay.name}</Text>
                         {currentDisplay.displayId === activeDisplayId ? (
@@ -665,14 +667,16 @@ export default function PresetsScreen() {
                           <Text style={styles.navDisplayCity}>{CITY_LABELS[currentDisplayCity]}</Text>
                         )}
                       </View>
-                      {visibleDisplays.length > 1 ? (
-                        <Pressable
-                          style={[styles.arrowBtn, safeIndex === visibleDisplays.length - 1 && styles.arrowBtnDisabled]}
-                          onPress={() => goTo(safeIndex + 1)}
-                          disabled={safeIndex === visibleDisplays.length - 1}>
-                          <Ionicons name="chevron-forward" size={15} color={colors.textMuted} />
-                        </Pressable>
-                      ) : null}
+                      <Pressable
+                        style={[
+                          styles.arrowBtn,
+                          (visibleDisplays.length <= 1 || safeIndex === visibleDisplays.length - 1) && styles.arrowBtnDisabled,
+                          visibleDisplays.length <= 1 && styles.arrowBtnHidden,
+                        ]}
+                        onPress={() => goTo(safeIndex + 1)}
+                        disabled={visibleDisplays.length <= 1 || safeIndex === visibleDisplays.length - 1}>
+                        <Ionicons name="chevron-forward" size={22} color={colors.textMuted} />
+                      </Pressable>
                     </View>
 
                     {/* Right: Delete */}
@@ -1204,23 +1208,26 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   navCenter: {
+    flex: 1.5,
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.xs,
   },
   navTitleBlock: {
+    flex: 1,
+    minWidth: 0,
     alignItems: 'center',
     justifyContent: 'center',
     gap: 2,
-    flexShrink: 1,
+    paddingHorizontal: spacing.xs,
   },
   navDisplayName: {
     color: colors.text,
     fontSize: 13,
     fontWeight: '700',
     textAlign: 'center',
-    flexShrink: 1,
-    paddingHorizontal: 4,
+    width: '100%',
   },
   navDisplayCity: {
     color: colors.textMuted,
@@ -1252,12 +1259,14 @@ const styles = StyleSheet.create({
     lineHeight: 12,
   },
   arrowBtn: {
-    width: layout.iconButton,
-    height: layout.iconButton,
+    width: 44,
+    height: 44,
+    flexShrink: 0,
     alignItems: 'center',
     justifyContent: 'center',
   },
   arrowBtnDisabled: {opacity: 0.25},
+  arrowBtnHidden: {opacity: 0},
   dotRow: {flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.xxs},
   dot: {width: 5, height: 5, borderRadius: 3, backgroundColor: colors.border},
   dotActive: {width: 14, height: 5, borderRadius: 3, backgroundColor: colors.accent},
