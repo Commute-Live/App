@@ -1,5 +1,15 @@
 import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react';
-import {Alert, Modal, PanResponder, Pressable, ScrollView, StyleSheet, Text, View} from 'react-native';
+import {
+  Alert,
+  Modal,
+  PanResponder,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+  type LayoutChangeEvent,
+} from 'react-native';
 import {GestureHandlerRootView} from 'react-native-gesture-handler';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
 import {Ionicons} from '@expo/vector-icons';
@@ -174,6 +184,11 @@ export default function PresetsScreen() {
     typeof params.focusDisplayId === 'string' ? params.focusDisplayId : null,
   );
   const brightnessCommitTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const scheduleRevealTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const scrollViewRef = useRef<ScrollView | null>(null);
+  const scrollViewportHeightRef = useRef(0);
+  const scheduleSectionLayoutRef = useRef({y: 0, height: 0});
+  const footerHeightRef = useRef(0);
 
 
   const displaysQuery = useQuery({
@@ -398,6 +413,7 @@ export default function PresetsScreen() {
   const currentScheduleText = currentDisplay
     ? formatScheduleDraftSummary(currentScheduleDraft)
     : 'Always on';
+  const showSetActiveButton = !!currentDisplay && currentDisplay.displayId !== activeDisplayId;
 
   useEffect(() => {
     if (typeof params.focusDisplayId === 'string' && params.focusDisplayId.length > 0) {
@@ -550,8 +566,48 @@ export default function PresetsScreen() {
       if (brightnessCommitTimeoutRef.current) {
         clearTimeout(brightnessCommitTimeoutRef.current);
       }
+      if (scheduleRevealTimeoutRef.current) {
+        clearTimeout(scheduleRevealTimeoutRef.current);
+      }
     };
   }, []);
+
+  useEffect(() => {
+    if (!showSetActiveButton) {
+      footerHeightRef.current = 0;
+    }
+  }, [showSetActiveButton]);
+
+  const handleScrollViewportLayout = useCallback(({nativeEvent}: LayoutChangeEvent) => {
+    scrollViewportHeightRef.current = nativeEvent.layout.height;
+  }, []);
+
+  const handleScheduleSectionLayout = useCallback(({nativeEvent}: LayoutChangeEvent) => {
+    scheduleSectionLayoutRef.current = nativeEvent.layout;
+  }, []);
+
+  const handleFooterLayout = useCallback(({nativeEvent}: LayoutChangeEvent) => {
+    footerHeightRef.current = nativeEvent.layout.height;
+  }, []);
+
+  const revealScheduleContents = useCallback(() => {
+    const viewportHeight = scrollViewportHeightRef.current;
+    const footerHeight = footerHeightRef.current;
+    const {y, height} = scheduleSectionLayoutRef.current;
+    const visibleHeight = Math.max(0, viewportHeight - footerHeight - spacing.lg);
+    const targetY = Math.max(0, y + height - visibleHeight);
+    scrollViewRef.current?.scrollTo({y: targetY, animated: true});
+  }, []);
+
+  const queueScheduleReveal = useCallback(() => {
+    if (scheduleRevealTimeoutRef.current) {
+      clearTimeout(scheduleRevealTimeoutRef.current);
+    }
+    scheduleRevealTimeoutRef.current = setTimeout(() => {
+      scheduleRevealTimeoutRef.current = null;
+      revealScheduleContents();
+    }, 180);
+  }, [revealScheduleContents]);
 
   return (
     <TabScreen
@@ -560,7 +616,13 @@ export default function PresetsScreen() {
       tabRoute="/presets">
       <AppBrandHeader email={user?.email} />
 
-      <ScrollView contentContainerStyle={styles.scroll} bounces={false}>
+      <View style={styles.content}>
+        <ScrollView
+          ref={scrollViewRef}
+          style={styles.scrollView}
+          contentContainerStyle={[styles.scroll, showSetActiveButton && styles.scrollWithFooter]}
+          onLayout={handleScrollViewportLayout}
+          bounces={false}>
         {/* ── Page Header ───────────────────────────────────────────────── */}
         <View style={styles.pageHeader}>
           <View style={styles.pageHeaderRow}>
@@ -703,7 +765,9 @@ export default function PresetsScreen() {
                     />
                   </View>
 
-                  <View style={[styles.settingItem, styles.settingItemBorder]}>
+                  <View
+                    style={[styles.settingItem, styles.settingItemBorder]}
+                    onLayout={handleScheduleSectionLayout}>
                     {/* Schedule header: label + toggle */}
                     <View style={styles.scheduleMainRow}>
                       <Text style={styles.settingItemLabel}>Schedule</Text>
@@ -716,6 +780,12 @@ export default function PresetsScreen() {
                           };
                           handleScheduleChange(currentDisplay.displayId, nextSchedule);
                           void handleScheduleCommit(currentDisplay, nextSchedule);
+                          if (nextSchedule.enabled) {
+                            queueScheduleReveal();
+                          } else if (scheduleRevealTimeoutRef.current) {
+                            clearTimeout(scheduleRevealTimeoutRef.current);
+                            scheduleRevealTimeoutRef.current = null;
+                          }
                         }}>
                         <View style={[styles.scheduleToggle, currentScheduleDraft.enabled && styles.scheduleToggleOn]}>
                           <View style={[styles.scheduleToggleThumb, currentScheduleDraft.enabled && styles.scheduleToggleThumbOn]} />
@@ -777,20 +847,6 @@ export default function PresetsScreen() {
                     ) : null}
                   </View>
 
-                  {/* Set Active */}
-                  {currentDisplay.displayId !== activeDisplayId ? (
-                    <View style={[styles.settingItem, styles.settingItemBorder]}>
-                      <Pressable
-                        style={[styles.setActiveBtn, activateDisplayMutation.isPending && styles.setActiveBtnDisabled]}
-                        disabled={activateDisplayMutation.isPending}
-                        onPress={() => activateDisplayMutation.mutate(currentDisplay)}>
-                        <Text style={styles.setActiveBtnText}>
-                          {activateDisplayMutation.isPending ? 'Activating…' : 'Set as Active'}
-                        </Text>
-                      </Pressable>
-                    </View>
-                  ) : null}
-
                 </View>
               </View>
 
@@ -803,7 +859,23 @@ export default function PresetsScreen() {
           )
         ) : null}
 
-      </ScrollView>
+        </ScrollView>
+
+        {showSetActiveButton && currentDisplay ? (
+          <View
+            style={styles.footerActionBar}
+            onLayout={handleFooterLayout}>
+            <Pressable
+              style={[styles.setActiveBtn, activateDisplayMutation.isPending && styles.setActiveBtnDisabled]}
+              disabled={activateDisplayMutation.isPending}
+              onPress={() => activateDisplayMutation.mutate(currentDisplay)}>
+              <Text style={styles.setActiveBtnText}>
+                {activateDisplayMutation.isPending ? 'Activating…' : 'Set as Active'}
+              </Text>
+            </Pressable>
+          </View>
+        ) : null}
+      </View>
 
       <ReorderDisplaysModal
         visible={reorderVisible}
@@ -1037,11 +1109,16 @@ function ReorderListRow({
 const styles = StyleSheet.create({
   // ─── Layout ───────────────────────────────────────────────────────────────
   container: {flex: 1, backgroundColor: colors.background},
+  content: {flex: 1},
+  scrollView: {flex: 1},
   scroll: {
     paddingHorizontal: layout.screenPadding,
     paddingTop: layout.screenPadding,
     paddingBottom: layout.bottomInset,
     gap: layout.screenGap,
+  },
+  scrollWithFooter: {
+    paddingBottom: spacing.lg,
   },
 
   // ─── Page Header ──────────────────────────────────────────────────────────
@@ -1701,6 +1778,14 @@ const styles = StyleSheet.create({
     color: colors.background,
     fontSize: 13,
     fontWeight: '800',
+  },
+  footerActionBar: {
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    backgroundColor: colors.background,
+    paddingTop: spacing.md,
+    paddingBottom: spacing.md,
+    paddingHorizontal: layout.screenPadding,
   },
   activeStatusRow: {
     flexDirection: 'row',

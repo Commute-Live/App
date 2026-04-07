@@ -291,7 +291,6 @@ export const styles = StyleSheet.create({
     backgroundColor: colors.surface,
     padding: spacing.sm,
     gap: spacing.xs,
-    minHeight: 76,
   },
   timeFieldLabel: {
     color: colors.textMuted,
@@ -320,9 +319,8 @@ export const styles = StyleSheet.create({
   timeFieldValue: {color: colors.text, fontSize: 14, fontWeight: '800'},
   timeFieldDisabled: {opacity: 0.45},
   timePickerButton: {
-    minHeight: 52,
     paddingHorizontal: spacing.xs,
-    paddingVertical: spacing.xs,
+    paddingVertical: spacing.xxs,
     justifyContent: 'center',
     gap: spacing.xxs,
   },
