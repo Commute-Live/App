@@ -74,9 +74,13 @@ export const getNewYorkLineLabel = (
 export const getNewYorkDirectionLabel = (
   mode: NewYorkMode,
   direction: UiDirection,
+  route?: TransitRouteRecord | string,
   variant: 'toggle' | 'bound' | 'summary' = 'bound',
 ) => {
   if (mode === 'train') return getNewYorkSubwayDirectionLabel(direction, variant);
+  if (mode === 'bus') return getNewYorkBusDirectionLabel(direction, route, variant);
+  if (mode === 'lirr') return getNewYorkLirrDirectionLabel(direction, variant);
+  if (mode === 'mnr') return getNewYorkMnrDirectionLabel(direction, variant);
   return null;
 };
 
@@ -202,7 +206,7 @@ export const newYorkTransitModule: TransitCityModule = {
     return (routeLabel ?? routeId).trim().toUpperCase().slice(0, 4);
   },
   getDirectionLabel: (mode, direction, routeId, variant) =>
-    isNewYorkMode(mode) ? getNewYorkDirectionLabel(mode, direction, variant) : null,
+    isNewYorkMode(mode) ? getNewYorkDirectionLabel(mode, direction, routeId, variant) : null,
   serializeDirection: (mode, direction) =>
     isNewYorkMode(mode) ? serializeNewYorkDirection(mode, direction) : null,
   deserializeDirection: (mode, value, stopId) =>

@@ -535,7 +535,6 @@ export const toPreviewSlots = (
   return (display.config.lines ?? []).slice(0, 2).map((line, index) => {
     const city = providerToCity(line.provider ?? null);
     const mode = inferUiModeFromProvider(line.provider, line.stop, line.line, line.providerMode);
-    const isBusBadge = city && mode ? (getTransitCityModule(city)?.isBusBadge?.(mode) ?? false) : false;
     const lineColors = city ? (CITY_LINE_COLORS[city] ?? {}) : {};
     const lineId = (line.line ?? '').toUpperCase();
     const {color, textColor: lineTextColor} =
@@ -575,22 +574,7 @@ export const toPreviewSlots = (
         : displayType === 4 || displayType === 5
           ? buildPreviewEtaList(extractMinutesFromPreviewTime(liveTime), line.nextStops ?? DEFAULT_NEXT_STOPS)
           : undefined;
-    const badgeShape: PreviewSlot['badgeShape'] =
-      city === 'new-york' && (line.provider === 'mta-lirr' || line.provider === 'mta-mnr')
-        ? 'bar'
-        : isBusBadge
-        ? 'pill'
-        : city === 'chicago' && line.provider === 'cta-subway'
-          ? 'pill'
-        : city === 'boston' && mode === 'train'
-          ? 'pill'
-        : city === 'new-jersey' && mode === 'train'
-          ? 'pill'
-        : city === 'philadelphia' && (mode === 'train' || mode === 'trolley')
-            ? 'pill'
-            : line.provider === 'mta-lirr' || line.provider === 'mta-mnr' || mode === 'commuter-rail'
-          ? 'rail'
-          : 'circle';
+    const badgeShape: PreviewSlot['badgeShape'] = line.provider === 'mta-subway' ? 'circle' : 'pill';
 
     return {
       id: `${display.displayId}-${index}`,

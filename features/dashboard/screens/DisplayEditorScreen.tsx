@@ -1074,8 +1074,8 @@ export default function DisplayEditorScreen() {
           (routesByStation[routeLookupKey(normalizedMode, line.stationId)] ?? []).find(item => item.id === line.routeId) ??
           (linesByMode[normalizedMode] ?? []).find(item => item.id === line.routeId);
         const direction = serializeUiDirection(city, line.mode, line.direction).trim();
-        const provider = city === 'boston' ? 'mbta' : resolveBackendProvider(city, line.mode);
-        const providerMode = city === 'boston' ? resolveBackendProviderMode(city, line.mode) : undefined;
+        const provider = resolveBackendProvider(city, line.mode);
+        const providerMode = resolveBackendProviderMode(city, line.mode);
         const selectedPreset = displayPresetsByLine[line.id] ?? inferDisplayPreset(line);
         const presetBehavior = getPresetBehavior(selectedPreset);
         const primaryContent = line.label.trim().length > 0 ? 'custom' : presetBehavior.primaryContent;
@@ -1549,28 +1549,16 @@ export default function DisplayEditorScreen() {
         const previewSubLineColor =
           displayPreset === 4 || displayPreset === 5 || displayPreset === 6 ? colors.highlight : undefined;
 
-        const isBusBadge = isNycBusBadge(city, safeMode);
-        const isChicagoTrainBadge = city === 'chicago' && safeMode === 'train';
-        const isBostonTrainBadge = city === 'boston' && safeMode === 'train';
-        const isPhillyRailBadge = city === 'philadelphia' && (safeMode === 'train' || safeMode === 'trolley');
-        const isNjtRailBadge = city === 'new-jersey' && safeMode === 'train';
-        const isRailLineBadge = isNycRailMode(safeMode);
-        const isCommuterRailBadge = safeMode === 'commuter-rail';
-
         const badgeShape: Display3DSlot['badgeShape'] =
-          city === 'new-york' && (safeMode === 'lirr' || safeMode === 'mnr')
-            ? 'bar'
-            : (isBusBadge || isRailLineBadge || isChicagoTrainBadge || isBostonTrainBadge || isPhillyRailBadge || isNjtRailBadge)
-                ? 'pill'
-                : isCommuterRailBadge
-                  ? 'rail'
-                  : 'circle';
+          city === 'new-york' && safeMode === 'train'
+            ? 'circle'
+            : 'pill';
 
         return {
           id: line.id,
           color: route?.color ?? colors.border,
           textColor: line.textColor || route?.textColor || colors.text,
-          routeLabel: isRailLineBadge
+          routeLabel: isNycRailMode(safeMode)
             ? (route ? '' : '?')
             : getLocalRouteBadgeLabel(
                 city,
@@ -4141,10 +4129,6 @@ function LedStylePickerStep({
   const selectedStopLabel = selectedStation?.name?.trim() || 'Selected stop';
   const activeNextStops = line.nextStops >= 2 ? line.nextStops : 2;
   const isNycRail = isNycRailMode(line.mode);
-  const isCommuterRail = line.mode === 'commuter-rail';
-  const isChicagoTrain = city === 'chicago' && line.mode === 'train';
-  const isPhillyRail = city === 'philadelphia' && (line.mode === 'train' || line.mode === 'trolley');
-  const isNjtRail = city === 'new-jersey' && line.mode === 'train';
   const isRailPreviewMode = isRailLinePreviewMode(city, line.mode);
   const shouldUseRailBranchLabel = isRailPreviewMode && !(city === 'new-york' && isNycRail);
   const routeBadgeLabel = getLocalRouteBadgeLabel(city, line.mode, line.routeId, routeLabel, selectedRoute?.shortName);
@@ -4182,13 +4166,7 @@ function LedStylePickerStep({
                   direction={line.direction}
                   nextStops={isActive ? activeNextStops : 2}
                   branchLabel={shouldUseRailBranchLabel ? linePreviewLabel : undefined}
-                  badgeShape={city === 'new-york' && (line.mode === 'lirr' || line.mode === 'mnr')
-                    ? 'bar'
-                    : isNycBusBadge(city, line.mode) || isNycRail || isChicagoTrain || isPhillyRail || isNjtRail || (city === 'boston' && line.mode === 'train')
-                      ? 'pill'
-                      : isCommuterRail
-                        ? 'rail'
-                        : 'circle'}
+                  badgeShape={city === 'new-york' && line.mode === 'train' ? 'circle' : 'pill'}
                   hideBadgeLabel={isNycRail}
                 />
                 {showCountPicker ? (

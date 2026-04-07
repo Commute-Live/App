@@ -264,12 +264,9 @@ export const getLocalDirectionLabel = (
   }
 
   if (city === 'new-york') {
-    if (mode === 'train') {
-      const routeId = getRouteId(route);
-      const cityModule = getTransitCityModule(city);
-      return cityModule?.getDirectionLabel(mode, direction, routeId, variant) ?? defaultDirectionLabel(direction, variant);
-    }
-    return '--';
+    const routeId = getRouteId(route);
+    const cityModule = getTransitCityModule(city);
+    return cityModule?.getDirectionLabel(mode, direction, routeId, variant) ?? defaultDirectionLabel(direction, variant);
   }
 
   const routeId = getRouteId(route);
