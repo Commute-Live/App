@@ -4416,6 +4416,13 @@ function WizardReviewStep({
           ) : null}
         </View>
       </View>
+      {layoutSlots < 2 && presetConfirmed ? (
+        <View style={styles.stepFooterActionRow}>
+          <Pressable style={styles.reviewActionButton} onPress={onExpandToTwoStops}>
+            <Text style={styles.reviewActionButtonText}>add another line</Text>
+          </Pressable>
+        </View>
+      ) : null}
 
 
     </View>
