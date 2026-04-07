@@ -1,5 +1,5 @@
 import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react';
-import {Alert, Modal, PanResponder, Pressable, ScrollView, StyleSheet, Text, View} from 'react-native';
+import {Alert, LayoutAnimation, Modal, PanResponder, Platform, Pressable, ScrollView, StyleSheet, Text, UIManager, View} from 'react-native';
 import {GestureHandlerRootView} from 'react-native-gesture-handler';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
 import {Ionicons} from '@expo/vector-icons';
@@ -167,6 +167,7 @@ export default function PresetsScreen() {
   const isScreenFocused = useTabRouteIsActive('/presets');
   const [carouselIndex, setCarouselIndex] = useState(0);
   const [brightnessOverrides, setBrightnessOverrides] = useState<Record<string, number>>({});
+  const [expandedBrightnessControls, setExpandedBrightnessControls] = useState<Record<string, boolean>>({});
   const [scheduleOverrides, setScheduleOverrides] = useState<Record<string, ScheduleDraft>>({});
   const [reorderVisible, setReorderVisible] = useState(false);
   const [isDisplayGestureRegionActive, setIsDisplayGestureRegionActive] = useState(false);
@@ -174,6 +175,12 @@ export default function PresetsScreen() {
     typeof params.focusDisplayId === 'string' ? params.focusDisplayId : null,
   );
   const brightnessCommitTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+      UIManager.setLayoutAnimationEnabledExperimental(true);
+    }
+  }, []);
 
 
   const displaysQuery = useQuery({
@@ -392,6 +399,7 @@ export default function PresetsScreen() {
   const currentBrightness = currentDisplay
     ? brightnessOverrides[currentDisplay.displayId] ?? currentDisplay.config.brightness ?? 60
     : 60;
+  const isBrightnessControlExpanded = currentDisplay ? !!expandedBrightnessControls[currentDisplay.displayId] : false;
   const currentScheduleDraft = currentDisplay
     ? scheduleOverrides[currentDisplay.displayId] ?? getScheduleDraft(currentDisplay)
     : {enabled: false, start: '06:00', end: '09:00', days: [...DISPLAY_WEEKDAYS]};
@@ -514,6 +522,16 @@ export default function PresetsScreen() {
     },
     [scheduleBrightnessCommit],
   );
+
+  const toggleBrightnessControl = useCallback((displayId: string) => {
+    LayoutAnimation.configureNext({
+      duration: 220,
+      create: {type: LayoutAnimation.Types.easeInEaseOut, property: LayoutAnimation.Properties.opacity},
+      update: {type: LayoutAnimation.Types.easeInEaseOut},
+      delete: {type: LayoutAnimation.Types.easeInEaseOut, property: LayoutAnimation.Properties.opacity},
+    });
+    setExpandedBrightnessControls(prev => ({...prev, [displayId]: !prev[displayId]}));
+  }, []);
 
   const handleScheduleChange = useCallback((displayId: string, schedule: ScheduleDraft) => {
     setScheduleOverrides(prev => ({...prev, [displayId]: schedule}));
@@ -694,17 +712,30 @@ export default function PresetsScreen() {
                   <View style={styles.settingItem}>
                     <View style={styles.settingItemRow}>
                       <Text style={styles.settingItemLabel}>Brightness</Text>
-                      <View style={styles.brightnessValueBadge}>
+                      <Pressable
+                        style={({pressed}) => [
+                          styles.brightnessValueBadge,
+                          isBrightnessControlExpanded && styles.brightnessValueBadgeActive,
+                          pressed && styles.brightnessValueBadgePressed,
+                        ]}
+                        onPress={() => toggleBrightnessControl(currentDisplay.displayId)}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Brightness ${currentBrightness}%`}
+                        accessibilityHint={
+                          isBrightnessControlExpanded ? 'Hide the brightness slider' : 'Show the brightness slider'
+                        }>
                         <Text style={styles.brightnessValueText}>{currentBrightness}%</Text>
-                      </View>
+                      </Pressable>
                     </View>
-                    <BrightnessSlider
-                      value={currentBrightness}
-                      min={MIN_BRIGHTNESS}
-                      max={MAX_BRIGHTNESS}
-                      onChange={value => handleBrightnessChange(currentDisplay, value)}
-                      onCommit={() => {}}
-                    />
+                    {isBrightnessControlExpanded ? (
+                      <BrightnessSlider
+                        value={currentBrightness}
+                        min={MIN_BRIGHTNESS}
+                        max={MAX_BRIGHTNESS}
+                        onChange={value => handleBrightnessChange(currentDisplay, value)}
+                        onCommit={() => {}}
+                      />
+                    ) : null}
                   </View>
 
                   <View style={[styles.settingItem, styles.settingItemBorder]}>
@@ -1309,6 +1340,13 @@ const styles = StyleSheet.create({
     backgroundColor: colors.card,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  brightnessValueBadgeActive: {
+    borderColor: colors.accent,
+    backgroundColor: colors.surface,
+  },
+  brightnessValueBadgePressed: {
+    opacity: 0.82,
   },
   brightnessValueText: {
     color: colors.text,
