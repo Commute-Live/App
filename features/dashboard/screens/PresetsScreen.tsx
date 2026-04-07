@@ -1206,13 +1206,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
   },
   navLeft: {
-    flex: 1,
+    width: layout.iconButton,
+    flexShrink: 0,
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.xs,
   },
   navRight: {
-    flex: 1,
+    width: layout.iconButton,
+    flexShrink: 0,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'flex-end',
@@ -1239,7 +1241,8 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   navCenter: {
-    flex: 1.5,
+    flex: 1,
+    minWidth: 0,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
