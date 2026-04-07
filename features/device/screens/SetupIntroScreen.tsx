@@ -7,8 +7,8 @@ import {useMutation, useQuery} from '@tanstack/react-query';
 import {colors, layout, radii, spacing, typography} from '../../../theme';
 import {useAppState} from '../../../state/appState';
 import {apiFetch} from '../../../lib/api';
+import {registerAndLinkDevice} from '../../../lib/devicePairing';
 import {queryKeys} from '../../../lib/queryKeys';
-import {getCurrentIanaTimeZone} from '../../../lib/schedules';
 import {useAuth} from '../../../state/authProvider';
 import {supportsLocalDeviceSetup, unsupportedDeviceSetupMessage} from '../../../lib/deviceSetup';
 
@@ -43,49 +43,7 @@ export default function SetupIntroScreen() {
   });
 
   const registerAndLinkMutation = useMutation({
-    mutationFn: async (deviceIdToLink: string) => {
-      const registerResponse = await apiFetch('/device/register', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({
-          id: deviceIdToLink,
-          timezone: getCurrentIanaTimeZone(),
-        }),
-      });
-      if (!registerResponse.ok && registerResponse.status !== 409) {
-        const registerData = await registerResponse.json().catch(() => null);
-        return {
-          ok: false as const,
-          error:
-            typeof registerData?.error === 'string'
-              ? `Device register failed: ${registerData.error}`
-              : `Device register failed (${registerResponse.status})`,
-        };
-      }
-
-      const linkResponse = await apiFetch('/user/device/link', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({deviceId: deviceIdToLink}),
-      });
-
-      if (!linkResponse.ok) {
-        const linkData = await linkResponse.json().catch(() => null);
-        const linkError =
-          typeof linkData?.error === 'string' ? linkData.error : '';
-        return {
-          ok: false as const,
-          error:
-            linkError === 'DEVICE_COMMAND_CLEAR_FAILED'
-              ? 'Wi-Fi connected, but pairing could not finish. Try again in a moment.'
-              : typeof linkData?.error === 'string'
-              ? `Wi-Fi connected, but device link failed: ${linkData.error}`
-              : `Wi-Fi connected, but device link failed (${linkResponse.status})`,
-        };
-      }
-
-      return {ok: true as const};
-    },
+    mutationFn: registerAndLinkDevice,
   });
 
   const connectWifiMutation = useMutation({

@@ -17,12 +17,13 @@ import {useRouter} from 'expo-router';
 import {colors, layout, radii, spacing, typography} from '../../../theme';
 import {useAppState} from '../../../state/appState';
 import {apiFetch, API_BASE} from '../../../lib/api';
+import {registerAndLinkDevice} from '../../../lib/devicePairing';
 import {useAuth} from '../../../state/authProvider';
 import {useBleProvision, WifiNetwork} from '../hooks/useBleProvision';
 import {AppBrandHeader} from '../../../components/AppBrandHeader';
 import {supportsBleProvisioning, unsupportedDeviceSetupMessage} from '../../../lib/deviceSetup';
 
-type ProvisionStep = 'idle' | 'online';
+type ProvisionStep = 'idle' | 'linking';
 
 const SignalBars = ({rssi}: {rssi: number}) => {
   const bars = rssi > -50 ? 3 : rssi > -70 ? 2 : 1;
@@ -291,23 +292,6 @@ export default function BleProvisionScreen() {
     }
   };
 
-  const pollUntilOnline = async (espDeviceId: string): Promise<boolean> => {
-    const INTERVAL_MS = 2000;
-    const TIMEOUT_MS = 20000;
-    const start = Date.now();
-    while (Date.now() - start < TIMEOUT_MS) {
-      const res = await apiFetch(`/device/${encodeURIComponent(espDeviceId)}/online`).catch(
-        () => null,
-      );
-      if (res?.ok) {
-        const data = await res.json().catch(() => null);
-        if (data?.online === true) return true;
-      }
-      await new Promise(r => setTimeout(r, INTERVAL_MS));
-    }
-    return false;
-  };
-
   const openNetworkModal = (network: WifiNetwork) => {
     setModalNetwork(network);
     setIsManualEntry(false);
@@ -335,16 +319,24 @@ export default function BleProvisionScreen() {
 
     // Keep modal open showing progress, close once done
     setDeviceId(espDeviceId);
-    setProvisionStep('online');
-    const online = await pollUntilOnline(espDeviceId);
-    if (!online) {
-      setLinkError('Device registered but took too long to come online — try reloading the app.');
+    setDeviceStatus('pairedOffline');
+    setProvisionStep('linking');
+
+    try {
+      const result = await registerAndLinkDevice(espDeviceId);
+      if (!result.ok) {
+        setLinkError(result.error);
+        return;
+      }
+
+      setModalVisible(false);
+      await hydrate();
+      router.replace('/dashboard');
+    } catch {
+      setLinkError('Wi-Fi connected, but pairing could not reach the server. Check your internet connection and try again.');
+    } finally {
+      setProvisionStep('idle');
     }
-    setProvisionStep('idle');
-    setModalVisible(false);
-    setDeviceStatus('pairedOnline');
-    await hydrate();
-    router.replace('/dashboard');
   };
 
   const StatusLine = ({label, active}: {label: string; active: boolean}) => (
@@ -538,8 +530,7 @@ export default function BleProvisionScreen() {
               <View style={styles.progressCard}>
                 <StatusLine label="Credentials sent" active />
                 <StatusLine label="Wi-Fi connected" active={state.phase !== 'waiting_wifi'} />
-                <StatusLine label="Device registered" active={provisionStep === 'online'} />
-                <StatusLine label="Coming online..." active={false} />
+                <StatusLine label="Pairing with account" active={provisionStep === 'linking'} />
                 <ActivityIndicator color={colors.accent} style={{marginTop: spacing.sm}} />
               </View>
             )}
