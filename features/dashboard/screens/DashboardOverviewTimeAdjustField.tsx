@@ -76,9 +76,6 @@ export function DashboardOverviewTimeAdjustField({
         {IS_IOS || IS_ANDROID ? (
           <Pressable style={styles.timePickerButton} onPress={openPicker} disabled={disabled}>
             <Text style={styles.timePickerValue}>{formatTimeValueLabel(value)}</Text>
-            <Text style={styles.timePickerMeta}>
-              {IS_IOS ? 'Open iPhone time picker' : 'Open system time picker'}
-            </Text>
           </Pressable>
         ) : (
           <View style={styles.timeFieldControls}>
