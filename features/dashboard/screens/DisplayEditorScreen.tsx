@@ -1069,12 +1069,20 @@ export default function DisplayEditorScreen() {
       .filter(line => line.stationId && line.routeId)
       .map(line => {
         const normalizedMode = normalizeMode(city, line.mode);
+        const station = resolveSelectedStationForLine(line, city, stationsByMode, stationsByLine);
         const route =
           (routesByStation[routeLookupKey(normalizedMode, line.stationId)] ?? []).find(item => item.id === line.routeId) ??
           (linesByMode[normalizedMode] ?? []).find(item => item.id === line.routeId);
         const direction = serializeUiDirection(city, line.mode, line.direction).trim();
         const provider = city === 'boston' ? 'mbta' : resolveBackendProvider(city, line.mode);
         const providerMode = city === 'boston' ? resolveBackendProviderMode(city, line.mode) : undefined;
+        const selectedPreset = displayPresetsByLine[line.id] ?? inferDisplayPreset(line);
+        const presetBehavior = getPresetBehavior(selectedPreset);
+        const primaryContent = line.label.trim().length > 0 ? 'custom' : presetBehavior.primaryContent;
+        const secondaryContent =
+          presetBehavior.supportsBottomCustom && line.secondaryLabel.trim().length > 0
+            ? 'custom'
+            : presetBehavior.secondaryContent;
 
         return {
           ...(direction ? {direction} : {}),
@@ -1083,18 +1091,19 @@ export default function DisplayEditorScreen() {
           line: line.routeId,
           shortName: route?.shortName ?? undefined,
           stop: line.stationId,
+          stopName: station?.name ?? undefined,
           headsign0: route?.headsign0 ?? undefined,
           headsign1: route?.headsign1 ?? undefined,
           directions: route?.directions ?? undefined,
-          displayType: getPersistedDisplayType(displayPresetsByLine[line.id] ?? inferDisplayPreset(line)),
+          displayType: getPersistedDisplayType(selectedPreset),
           scrolling: line.scrolling,
           label: line.label.trim() || undefined,
           secondaryLabel: line.secondaryLabel.trim() || undefined,
           textColor: line.textColor || undefined,
-          nextStops: line.displayFormat === 'times-line' ? line.nextStops : undefined,
-          displayFormat: line.displayFormat,
-          primaryContent: line.primaryContent,
-          secondaryContent: line.displayFormat === 'two-line' ? line.secondaryContent : undefined,
+          nextStops: presetBehavior.displayFormat === 'times-line' ? line.nextStops : undefined,
+          displayFormat: presetBehavior.displayFormat,
+          primaryContent,
+          secondaryContent: presetBehavior.displayFormat === 'two-line' ? secondaryContent : undefined,
         };
       });
 
@@ -1114,7 +1123,7 @@ export default function DisplayEditorScreen() {
         lines: payloadLines,
       },
     };
-  }, [city, customDisplayScheduleEnabled, displayDays, displayMetadata.brightness, displayMetadata.paused, displayMetadata.priority, displayMetadata.scrolling, displayMetadata.sortOrder, displayPresetsByLine, displaySchedule.end, displaySchedule.start, lines, linesByMode, presetName, routesByStation]);
+  }, [city, customDisplayScheduleEnabled, displayDays, displayMetadata.brightness, displayMetadata.paused, displayMetadata.priority, displayMetadata.scrolling, displayMetadata.sortOrder, displayPresetsByLine, displaySchedule.end, displaySchedule.start, lines, linesByMode, presetName, routesByStation, stationsByLine, stationsByMode]);
 
   const displayValidationError = useMemo(() => validateDisplayDraft(draftPayload), [draftPayload]);
   const canAutoConfirmCurrentPreset =

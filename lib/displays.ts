@@ -16,6 +16,7 @@ export type LineConfig = {
   line: string;
   shortName?: string;
   stop?: string;
+  stopName?: string;
   direction?: string;
   headsign0?: string;
   headsign1?: string;
