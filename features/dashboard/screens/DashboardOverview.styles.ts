@@ -327,7 +327,6 @@ export const styles = StyleSheet.create({
     gap: spacing.xxs,
   },
   timePickerValue: {color: colors.text, fontSize: 15, fontWeight: '800'},
-  timePickerMeta: {color: colors.textMuted, fontSize: 11, fontWeight: '600'},
   timePickerModalBackdrop: {
     flex: 1,
     backgroundColor: colors.overlay,
