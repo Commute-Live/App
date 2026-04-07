@@ -104,6 +104,7 @@ type StationsByMode = Partial<Record<ModeId, Station[]>>;
 type RoutesByStation = Record<string, Route[]>;
 type EditorStep = 'city' | 'format' | 'lines' | 'stops' | 'done';
 type WizardStepDef = {id: EditorStep; label: string; complete: boolean; reachable: boolean};
+type SelectionSheetOption = {id: string; label: string; description?: string};
 
 const DEFAULT_TEXT_COLOR = colors.text;
 const BOROUGH_ORDER = ['Manhattan', 'Bronx', 'Brooklyn', 'Queens', 'Staten Island'];
@@ -2285,30 +2286,18 @@ function LayoutSelectorModal({
   onSelect: (slots: number) => void;
 }) {
   return (
-    <Modal transparent visible={visible} animationType="fade" onRequestClose={onClose}>
-      <View style={styles.layoutSelectorOverlay}>
-        <Pressable style={styles.modalBackdrop} onPress={onClose} />
-        <View style={styles.modalSheet}>
-          <View style={styles.modalHeader}>
-            <Text style={styles.modalTitle}>Number of Lines</Text>
-            <Pressable style={styles.modalCloseButton} onPress={onClose}>
-              <Text style={styles.modalCloseButtonText}>X</Text>
-            </Pressable>
-          </View>
-          {[1, 2].map(option => {
-            const active = option === layoutSlots;
-            return (
-              <Pressable
-                key={option}
-                style={[styles.modalOption, active && styles.modalOptionActive]}
-                onPress={() => onSelect(option)}>
-                <Text style={[styles.modalOptionText, active && styles.modalOptionTextActive]}>{option}</Text>
-              </Pressable>
-            );
-          })}
-        </View>
-      </View>
-    </Modal>
+    <SelectionSheet
+      visible={visible}
+      title="Number of Lines"
+      subtitle="Choose how many lines this display should show."
+      options={[
+        {id: '1', label: 'Single Line', description: 'Keep one destination large and easy to scan.'},
+        {id: '2', label: 'Two Lines', description: 'Split the display to show a second line.'},
+      ]}
+      value={String(layoutSlots)}
+      onSelect={id => onSelect(Number(id))}
+      onClose={onClose}
+    />
   );
 }
 
@@ -2527,6 +2516,135 @@ function SaveBar({
   );
 }
 
+function SelectionSheet({
+  visible,
+  title,
+  subtitle,
+  options,
+  value,
+  onSelect,
+  onClose,
+}: {
+  visible: boolean;
+  title: string;
+  subtitle?: string;
+  options: SelectionSheetOption[];
+  value: string;
+  onSelect: (id: string) => void;
+  onClose: () => void;
+}) {
+  const [mounted, setMounted] = useState(visible);
+  const progress = useRef(new Animated.Value(visible ? 1 : 0)).current;
+
+  useEffect(() => {
+    if (visible) {
+      setMounted(true);
+    }
+
+    Animated.timing(progress, {
+      toValue: visible ? 1 : 0,
+      duration: visible ? 240 : 170,
+      easing: visible ? Easing.out(Easing.cubic) : Easing.in(Easing.cubic),
+      useNativeDriver: true,
+    }).start(({finished}) => {
+      if (finished && !visible) {
+        setMounted(false);
+      }
+    });
+  }, [progress, visible]);
+
+  if (!mounted) return null;
+
+  return (
+    <Modal transparent visible animationType="none" onRequestClose={onClose}>
+      <View style={styles.selectionSheetOverlay}>
+        <Animated.View
+          style={[
+            styles.selectionSheetBackdrop,
+            {
+              opacity: progress.interpolate({
+                inputRange: [0, 1],
+                outputRange: [0, 1],
+              }),
+            },
+          ]}>
+          <Pressable style={styles.selectionSheetBackdropPressable} onPress={onClose} />
+        </Animated.View>
+        <Animated.View
+          pointerEvents="box-none"
+          style={[
+            styles.selectionSheetFrame,
+            {
+              opacity: progress,
+              transform: [
+                {
+                  translateY: progress.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [36, 0],
+                  }),
+                },
+                {
+                  scale: progress.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [0.98, 1],
+                  }),
+                },
+              ],
+            },
+          ]}>
+          <View style={styles.selectionSheetSurface}>
+            <View style={styles.selectionSheetHandle} />
+            <View style={styles.selectionSheetHeader}>
+              <View style={styles.selectionSheetHeaderCopy}>
+                <Text style={styles.selectionSheetTitle}>{title}</Text>
+                {subtitle ? <Text style={styles.selectionSheetSubtitle}>{subtitle}</Text> : null}
+              </View>
+              <Pressable style={styles.selectionSheetCloseButton} onPress={onClose}>
+                <Text style={styles.selectionSheetCloseButtonText}>Close</Text>
+              </Pressable>
+            </View>
+            <View style={styles.selectionSheetOptionList}>
+              {options.map((option, index) => {
+                const active = option.id === value;
+                const last = index === options.length - 1;
+                return (
+                  <Pressable
+                    key={option.id}
+                    style={[
+                      styles.selectionSheetOption,
+                      active && styles.selectionSheetOptionActive,
+                      !last && styles.selectionSheetOptionDivider,
+                    ]}
+                    onPress={() => {
+                      onSelect(option.id);
+                      onClose();
+                    }}>
+                    <View style={styles.selectionSheetOptionCopy}>
+                      <Text style={[styles.selectionSheetOptionLabel, active && styles.selectionSheetOptionLabelActive]}>
+                        {option.label}
+                      </Text>
+                      {option.description ? (
+                        <Text style={[styles.selectionSheetOptionDescription, active && styles.selectionSheetOptionDescriptionActive]}>
+                          {option.description}
+                        </Text>
+                      ) : null}
+                    </View>
+                    <View style={[styles.selectionSheetOptionBadge, active && styles.selectionSheetOptionBadgeActive]}>
+                      <Text style={[styles.selectionSheetOptionBadgeText, active && styles.selectionSheetOptionBadgeTextActive]}>
+                        {active ? 'Selected' : 'Choose'}
+                      </Text>
+                    </View>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </View>
+        </Animated.View>
+      </View>
+    </Modal>
+  );
+}
+
 function SimplePicker({
   visible,
   options,
@@ -2535,36 +2653,21 @@ function SimplePicker({
   onClose,
 }: {
   visible: boolean;
-  options: {id: string; label: string}[];
+  options: SelectionSheetOption[];
   value: string;
   onSelect: (id: string) => void;
   onClose: () => void;
 }) {
   return (
-    <Modal transparent visible={visible} animationType="fade" onRequestClose={onClose}>
-      <View style={styles.modalOverlay}>
-        <Pressable style={styles.modalBackdrop} onPress={onClose} />
-        <View style={styles.modalSheet}>
-          <View style={styles.modalHeader}>
-            <Text style={styles.modalTitle}>Display Layout</Text>
-            <Pressable style={styles.modalCloseButton} onPress={onClose}>
-              <Text style={styles.modalCloseButtonText}>X</Text>
-            </Pressable>
-          </View>
-          {options.map(option => (
-            <Pressable
-              key={option.id}
-              style={[styles.modalOption, option.id === value && styles.modalOptionActive]}
-              onPress={() => {
-                onSelect(option.id);
-                onClose();
-              }}>
-              <Text style={[styles.modalOptionText, option.id === value && styles.modalOptionTextActive]}>{option.label}</Text>
-            </Pressable>
-          ))}
-        </View>
-      </View>
-    </Modal>
+    <SelectionSheet
+      visible={visible}
+      title="Choose Service Pattern"
+      subtitle="Pick the version of this line you want to show."
+      options={options}
+      value={value}
+      onSelect={onSelect}
+      onClose={onClose}
+    />
   );
 }
 
@@ -3524,7 +3627,10 @@ function LinePickerStep({
         visible={!!variantPickerEntry}
         options={(variantPickerEntry?.routes ?? []).map(route => ({
           id: route.id,
-          label: isExpressVariant(route) ? `Express (${route.label})` : `Regular (${route.label})`,
+          label: isExpressVariant(route) ? `Express ${route.label}` : `Regular ${route.label}`,
+          description: isExpressVariant(route)
+            ? 'Faster pattern with fewer stops.'
+            : 'Standard pattern with the regular stop sequence.',
         }))}
         value={selectedRouteId}
         onSelect={id => {
