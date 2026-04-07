@@ -1906,7 +1906,6 @@ export default function DisplayEditorScreen() {
                   city={city}
                   line={selectedLine}
                   displayPreset={selectedDisplayPreset}
-                  presetConfirmed={selectedLinePresetConfirmed}
                   selectedRoute={selectedRouteForEditor}
                   selectedStation={selectedStationForEditor}
                   presetName={presetName}
@@ -1915,7 +1914,6 @@ export default function DisplayEditorScreen() {
                   displaySchedule={displaySchedule}
                   displayDays={displayDays}
                   scheduleExpanded={scheduleExpanded}
-                  layoutSlots={layoutSlots}
                   onChangeLine={next => updateLine(selectedLine.id, next)}
                   onClearLine={() => clearLineSelection(selectedLine.id)}
                   onClearStop={() => clearStopSelection(selectedLine.id)}
@@ -1928,8 +1926,6 @@ export default function DisplayEditorScreen() {
                   onScheduleEndChange={end => setDisplaySchedule(prev => ({...prev, end}))}
                   onToggleDay={day => setDisplayDays(prev => prev.includes(day) ? prev.filter(d => d !== day) : [...prev, day])}
                   onToggleScheduleExpanded={toggleScheduleEditor}
-                  onExpandToTwoStops={expandToTwoStops}
-                  onRemoveStop={() => removeStopFromLayout(selectedLine.id)}
                 />
               ) : null}
 
@@ -1946,6 +1942,10 @@ export default function DisplayEditorScreen() {
                 success={saveDone}
                 disabled={!canSaveToDevice}
                 message={liveStatusText}
+                secondaryActionLabel={layoutSlots < 2 && selectedLinePresetConfirmed ? 'Add Another Line' : undefined}
+                onSecondaryActionPress={layoutSlots < 2 && selectedLinePresetConfirmed ? expandToTwoStops : undefined}
+                dangerActionLabel={layoutSlots > 1 && selectedLine ? 'Remove a Line' : undefined}
+                onDangerActionPress={layoutSlots > 1 && selectedLine ? () => removeStopFromLayout(selectedLine.id) : undefined}
                 onPress={handleSave}
               />
             ) : null}
@@ -2451,6 +2451,10 @@ function SaveBar({
   success,
   disabled,
   message,
+  secondaryActionLabel,
+  onSecondaryActionPress,
+  dangerActionLabel,
+  onDangerActionPress,
   onPress,
 }: {
   dirty: boolean;
@@ -2458,6 +2462,10 @@ function SaveBar({
   success: boolean;
   disabled: boolean;
   message: string;
+  secondaryActionLabel?: string;
+  onSecondaryActionPress?: () => void;
+  dangerActionLabel?: string;
+  onDangerActionPress?: () => void;
   onPress: () => void;
 }) {
   const visibilityAnim = useRef(new Animated.Value(dirty || loading || success ? 1 : 0.92)).current;
@@ -2496,6 +2504,16 @@ function SaveBar({
           ],
         },
       ]}>
+      {secondaryActionLabel && onSecondaryActionPress ? (
+        <Pressable style={styles.reviewActionButton} onPress={onSecondaryActionPress}>
+          <Text style={styles.reviewActionButtonText}>{secondaryActionLabel}</Text>
+        </Pressable>
+      ) : null}
+      {dangerActionLabel && onDangerActionPress ? (
+        <Pressable style={styles.reviewRemoveButton} onPress={onDangerActionPress}>
+          <Text style={styles.reviewRemoveButtonText}>{dangerActionLabel}</Text>
+        </Pressable>
+      ) : null}
       <Animated.View style={{transform: [{scale: buttonScale}]}}>
         <Pressable
           disabled={disabled}
@@ -4227,7 +4245,6 @@ function WizardReviewStep({
   city,
   line,
   displayPreset,
-  presetConfirmed,
   selectedRoute,
   selectedStation,
   presetName,
@@ -4236,7 +4253,6 @@ function WizardReviewStep({
   displaySchedule,
   displayDays,
   scheduleExpanded,
-  layoutSlots,
   onChangeLine,
   onClearLine,
   onClearStop,
@@ -4249,13 +4265,10 @@ function WizardReviewStep({
   onScheduleEndChange,
   onToggleDay,
   onToggleScheduleExpanded,
-  onExpandToTwoStops,
-  onRemoveStop,
 }: {
   city: CityId;
   line: LinePick;
   displayPreset: number;
-  presetConfirmed: boolean;
   selectedRoute: Route | undefined;
   selectedStation: Station | undefined;
   presetName: string;
@@ -4264,7 +4277,6 @@ function WizardReviewStep({
   displaySchedule: {start: string; end: string};
   displayDays: DayId[];
   scheduleExpanded: boolean;
-  layoutSlots: number;
   onChangeLine: (next: Partial<LinePick>) => void;
   onClearLine: () => void;
   onClearStop: () => void;
@@ -4277,8 +4289,6 @@ function WizardReviewStep({
   onScheduleEndChange: (end: string) => void;
   onToggleDay: (day: DayId) => void;
   onToggleScheduleExpanded: () => void;
-  onExpandToTwoStops: () => void;
-  onRemoveStop: () => void;
 }) {
   const presetOption = DISPLAY_PRESET_OPTIONS.find(o => o.id === displayPreset);
   const directionLabel = getDirectionSummaryLabel(city, line.mode, line.direction, selectedRoute ?? line.routeId);
@@ -4416,15 +4426,6 @@ function WizardReviewStep({
           ) : null}
         </View>
       </View>
-      {layoutSlots < 2 && presetConfirmed ? (
-        <View style={styles.stepFooterActionRow}>
-          <Pressable style={styles.reviewActionButton} onPress={onExpandToTwoStops}>
-            <Text style={styles.reviewActionButtonText}>add another line</Text>
-          </Pressable>
-        </View>
-      ) : null}
-
-
     </View>
   );
 }
