@@ -416,20 +416,9 @@ const getDirectionToggleLabel = (
   direction: Direction,
   route?: Route | string,
 ) => {
-  if (city === 'boston') {
-    const cue = getDirectionCueLabel(city, mode, direction, route);
-    const headsign = getRouteHeadsign(city, mode, route, direction);
-    if (headsign) return `${cue}\n${headsign}`;
-    return cue;
-  }
-  const toggleLabel = getLocalDirectionLabel(city, mode, direction, route, 'toggle');
-  if (toggleLabel) return toggleLabel;
   const cue = getDirectionCueLabel(city, mode, direction, route);
-  if (city === 'new-york' && mode === 'train') {
-    const headsign = getRouteHeadsign(city, mode, route, direction);
-    if (headsign) return `${cue}: ${headsign}`;
-  }
-  return cue;
+  const headsign = getRouteHeadsign(city, mode, route, direction);
+  return `${cue}: ${headsign ?? 'Not Found'}`;
 };
 
 const getDirectionSummaryLabel = (city: CityId, mode: ModeId, direction: Direction, route?: Route | string) => {
