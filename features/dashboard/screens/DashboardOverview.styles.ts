@@ -57,10 +57,10 @@ export const styles = StyleSheet.create({
     paddingVertical: spacing.xs,
     minHeight: 36,
   },
-  statusPillOn: {backgroundColor: '#0E2B21', borderColor: '#1B5E4A'},
+  statusPillOn: {backgroundColor: colors.successSurface, borderColor: colors.successBorder},
   statusPillOff: {backgroundColor: colors.surface, borderColor: colors.border},
   statusDot: {width: 8, height: 8, borderRadius: 4},
-  statusDotOn: {backgroundColor: '#34D399'},
+  statusDotOn: {backgroundColor: colors.successText},
   statusDotOff: {backgroundColor: colors.textMuted},
   statusPillText: {color: colors.text, fontSize: 13, fontWeight: '700'},
 
@@ -257,10 +257,10 @@ export const styles = StyleSheet.create({
     flexShrink: 0,
     minHeight: 36,
   },
-  toggleChipOn: {backgroundColor: '#0E2B21', borderColor: '#1B5E4A'},
+  toggleChipOn: {backgroundColor: colors.successSurface, borderColor: colors.successBorder},
   toggleChipOff: {backgroundColor: colors.surface, borderColor: colors.border},
   toggleDot: {width: 7, height: 7, borderRadius: 4},
-  toggleDotOn: {backgroundColor: '#34D399'},
+  toggleDotOn: {backgroundColor: colors.successText},
   toggleDotOff: {backgroundColor: colors.textMuted},
   toggleChipText: {color: colors.text, fontSize: 13, fontWeight: '700'},
 
@@ -330,7 +330,7 @@ export const styles = StyleSheet.create({
   timePickerMeta: {color: colors.textMuted, fontSize: 11, fontWeight: '600'},
   timePickerModalBackdrop: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.55)',
+    backgroundColor: colors.overlay,
     justifyContent: 'flex-end',
   },
   timePickerModalSheet: {

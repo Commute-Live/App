@@ -197,7 +197,7 @@ const styles = StyleSheet.create({
   resultRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#0B0F13',
+    backgroundColor: colors.surfaceMuted,
     borderRadius: radii.md,
     minHeight: layout.buttonHeight,
     padding: layout.cardPadding,
@@ -209,5 +209,5 @@ const styles = StyleSheet.create({
   resultText: {color: colors.text, fontWeight: '700'},
   resultMeta: {color: colors.textMuted, fontSize: typography.label},
   addText: {color: colors.accent, fontWeight: '700'},
-  errorText: {color: '#FCA5A5', fontSize: typography.body},
+  errorText: {color: colors.dangerText, fontSize: typography.body},
 });

@@ -3,7 +3,7 @@ import {Alert, Pressable, ScrollView, StyleSheet, Text, View} from 'react-native
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
 import {Ionicons} from '@expo/vector-icons';
 import {useRouter} from 'expo-router';
-import {colors, layout, radii, spacing, typography} from '../../../theme';
+import {colors, layout, radii, settingsSectionColors, spacing, typography} from '../../../theme';
 import {useAuth} from '../../../state/authProvider';
 import {AppBrandHeader} from '../../../components/AppBrandHeader';
 import {TabScreen} from '../../../components/TabScreen';
@@ -13,12 +13,12 @@ import {logger} from '../../../lib/datadog';
 type SectionKey = 'Account' | 'Session' | 'Device' | 'Time Format' | 'Notifications' | 'Privacy';
 
 const SECTIONS: {key: SectionKey; label: string; icon: keyof typeof Ionicons.glyphMap; iconBg: string; iconColor: string}[] = [
-  {key: 'Account',       label: 'Account',        icon: 'person-outline',          iconBg: '#1A2744', iconColor: '#6EA8FE'},
-  {key: 'Device',        label: 'Device',          icon: 'hardware-chip-outline',   iconBg: '#1A2B1A', iconColor: '#6EE7B7'},
-  {key: 'Time Format',   label: 'Time Format',     icon: 'time-outline',            iconBg: '#1E1A2B', iconColor: '#C4B5FD'},
-  {key: 'Notifications', label: 'Notifications',   icon: 'notifications-outline',   iconBg: '#2B1A1A', iconColor: '#FCA5A5'},
-  {key: 'Privacy',       label: 'Privacy & Legal', icon: 'shield-checkmark-outline',iconBg: '#1A2428', iconColor: '#67E8F9'},
-  {key: 'Session',       label: 'Session',        icon: 'log-out-outline',         iconBg: '#241A28', iconColor: '#F9A8D4'},
+  {key: 'Account',       label: 'Account',        icon: 'person-outline',          iconBg: settingsSectionColors.account.bg,       iconColor: settingsSectionColors.account.fg},
+  {key: 'Device',        label: 'Device',          icon: 'hardware-chip-outline',   iconBg: settingsSectionColors.device.bg,        iconColor: settingsSectionColors.device.fg},
+  {key: 'Time Format',   label: 'Time Format',     icon: 'time-outline',            iconBg: settingsSectionColors.timeFormat.bg,    iconColor: settingsSectionColors.timeFormat.fg},
+  {key: 'Notifications', label: 'Notifications',   icon: 'notifications-outline',   iconBg: settingsSectionColors.notifications.bg, iconColor: settingsSectionColors.notifications.fg},
+  {key: 'Privacy',       label: 'Privacy & Legal', icon: 'shield-checkmark-outline',iconBg: settingsSectionColors.privacy.bg,       iconColor: settingsSectionColors.privacy.fg},
+  {key: 'Session',       label: 'Session',        icon: 'log-out-outline',         iconBg: settingsSectionColors.session.bg,       iconColor: settingsSectionColors.session.fg},
 ];
 
 export default function SettingsScreen() {
@@ -415,8 +415,8 @@ const styles = StyleSheet.create({
 
   // ─── Buttons ──────────────────────────────────────────────────────────────
   destructiveButton: {
-    backgroundColor: '#2B1010',
-    borderColor: '#5B1C1C',
+    backgroundColor: colors.dangerSurface,
+    borderColor: colors.dangerBorder,
     borderWidth: 1,
     minHeight: layout.buttonHeight,
     borderRadius: radii.md,
@@ -424,13 +424,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: spacing.md,
   },
-  destructiveButtonText: {color: '#FCA5A5', fontWeight: '700', fontSize: typography.body},
+  destructiveButtonText: {color: colors.dangerText, fontWeight: '700', fontSize: typography.body},
   ghostButton: {minHeight: 40, alignItems: 'center', justifyContent: 'center', paddingHorizontal: spacing.md},
   ghostButtonText: {color: colors.textMuted, fontWeight: '600', fontSize: typography.label},
   buttonDisabled: {opacity: 0.5},
 
   // ─── Notices ─────────────────────────────────────────────────────────────
   notice: {fontSize: 12, lineHeight: 18},
-  noticeError: {color: '#FCA5A5'},
+  noticeError: {color: colors.dangerText},
   noticeSuccess: {color: colors.textMuted},
 });

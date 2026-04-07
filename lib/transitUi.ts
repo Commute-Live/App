@@ -2,6 +2,7 @@ import type {CityId} from '../constants/cities';
 import type {TransitLineDirection, TransitUiMode} from '../types/transit';
 import type {DirectionVariant, TransitRouteRecord, UiDirection} from './transit/frontendTypes';
 import {getTransitCityModule, resolveCityModeFromBackendProvider} from './transit/registry';
+import {getBostonFullDirectionLabel} from './transit/cities/boston';
 
 type LocalMode = TransitUiMode;
 type LocalRouteRef =
@@ -44,7 +45,6 @@ const PROVIDER_MODE_TO_UI_MODE: Partial<Record<string, LocalMode>> = {
   'mbta/subway': 'train',
   'mbta/bus': 'bus',
   'mbta/rail': 'commuter-rail',
-  'mbta/ferry': 'ferry',
   'cta/subway': 'train',
   'cta/bus': 'bus',
   'njt/rail': 'train',
@@ -111,6 +111,12 @@ const NEW_JERSEY_DIRECTION_OPTIONS: Partial<Record<LocalMode, UiDirection[]>> = 
   bus: ['dir0', 'dir1'],
 };
 
+const BOSTON_DIRECTION_OPTIONS: Partial<Record<LocalMode, UiDirection[]>> = {
+  train: ['outbound', 'inbound'],
+  bus: ['outbound', 'inbound'],
+  'commuter-rail': ['outbound', 'inbound'],
+};
+
 const DEFAULT_DIRECTION_OPTIONS: UiDirection[] = ['uptown', 'downtown'];
 
 export const getLocalDirectionOptions = (
@@ -135,6 +141,10 @@ export const getLocalDirectionOptions = (
     return NEW_JERSEY_DIRECTION_OPTIONS[mode] ?? DEFAULT_DIRECTION_OPTIONS;
   }
 
+  if (city === 'boston') {
+    return BOSTON_DIRECTION_OPTIONS[mode] ?? DEFAULT_DIRECTION_OPTIONS;
+  }
+
   return DEFAULT_DIRECTION_OPTIONS;
 };
 
@@ -153,7 +163,6 @@ export const getDefaultUiDirection = (
 export const inferMbtaMode = (stopId: string | null | undefined, lineId?: string | null): LocalMode => {
   const normalizedStopId = (stopId ?? '').trim();
   const normalizedLineId = normalizeToken(lineId);
-  if (/^BOAT-/i.test(normalizedStopId) || normalizedLineId.startsWith('BOAT-')) return 'ferry';
   if (normalizedLineId === 'CAPEFLYER' || normalizedLineId.startsWith('CR-')) return 'commuter-rail';
   if (BOSTON_SUBWAY_ROUTE_IDS.has(normalizedLineId)) return 'train';
   if (/^PLACE-/i.test(normalizedStopId)) return 'train';
@@ -196,7 +205,6 @@ export const getLocalModeLabel = (city: CityId, mode: LocalMode) => {
   }
   if (mode === 'bus') return 'Bus';
   if (mode === 'trolley') return 'Trolley';
-  if (mode === 'ferry') return 'Ferry';
   if (mode === 'lirr') return 'LIRR';
   if (mode === 'mnr') return 'Metro-North';
   if (mode === 'commuter-rail') return 'Commuter Rail';
@@ -250,6 +258,10 @@ export const getLocalDirectionLabel = (
 ) => {
   const metadataLabel = getRouteDirectionMetadataLabel(route, direction, variant);
   if (metadataLabel) return metadataLabel;
+
+  if (city === 'boston' && route && typeof route !== 'string') {
+    return getBostonFullDirectionLabel(mode, direction, route, variant);
+  }
 
   if (city === 'new-york') {
     if (mode === 'train') {

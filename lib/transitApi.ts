@@ -444,13 +444,11 @@ const KNOWN_PROVIDER_MODES = new Set([
   'mbta/subway',
   'mbta/bus',
   'mbta/rail',
-  'mbta/ferry',
   'cta/subway',
   'cta/bus',
 ]);
 
 const inferMbtaModeFromStopId = (stopId: string): TransitBackendMode => {
-  if (/^Boat-/i.test(stopId)) return 'ferry';
   if (/^\d+$/.test(stopId)) return 'bus';
   if (!/^place-/i.test(stopId)) return 'rail';
   return 'subway';

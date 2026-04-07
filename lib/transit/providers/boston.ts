@@ -7,7 +7,7 @@ import type {
   UiDirection,
 } from '../frontendTypes';
 
-type BostonMode = Extract<ModeId, 'train' | 'bus' | 'commuter-rail' | 'ferry'>;
+type BostonMode = Extract<ModeId, 'train' | 'bus' | 'commuter-rail'>;
 
 const BOSTON_SUBWAY_BADGE_LABELS: Record<string, string> = {
   RED: 'RED',
@@ -38,20 +38,9 @@ const BOSTON_COMMUTER_RAIL_BADGE_LABELS: Record<string, string> = {
   'CR-WORCESTER': 'WORC',
 };
 
-const BOSTON_FERRY_BADGE_LABELS: Record<string, string> = {
-  'BOAT-EASTBOSTON': 'EB',
-  'BOAT-F1': 'F1',
-  'BOAT-F4': 'F4',
-  'BOAT-F6': 'F6',
-  'BOAT-F7': 'F7',
-  'BOAT-F8': 'F8',
-  'BOAT-LYNN': 'LYNN',
-};
-
 const BOSTON_TRAIN_ORDER = ['RED', 'ORANGE', 'BLUE', 'GREEN-B', 'GREEN-C', 'GREEN-D', 'GREEN-E', 'MATTAPAN'];
 const BOSTON_GREEN_BRANCH_IDS = new Set(['GREEN-B', 'GREEN-C', 'GREEN-D', 'GREEN-E']);
 const BOSTON_BUS_APPEARANCE = {color: '#0F4CBA', textColor: '#FFFFFF'};
-const BOSTON_FERRY_APPEARANCE = {color: '#0EA5E9', textColor: '#FFFFFF'};
 
 const naturalRouteLabelCompare = (left: string, right: string) =>
   left.localeCompare(right, undefined, {numeric: true, sensitivity: 'base'});
@@ -68,14 +57,6 @@ const compactBostonCommuterRailLabel = (value: string) =>
     .replace(/\s+Event Service$/i, '')
     .trim();
 
-const compactBostonFerryLabel = (routeId: string, label: string) => {
-  const normalizedId = normalizeToken(routeId);
-  if (normalizedId === 'BOAT-EASTBOSTON') return 'East Boston';
-  if (normalizedId === 'BOAT-LYNN') return 'Lynn';
-  if (/^BOAT-F\d+$/i.test(normalizedId)) return normalizedId.replace(/^BOAT-/i, '');
-  return label.trim();
-};
-
 const routeToPickerItem = (
   mode: BostonMode,
   route: TransitRouteRecord,
@@ -84,9 +65,7 @@ const routeToPickerItem = (
   const appearance =
     mode === 'bus'
       ? BOSTON_BUS_APPEARANCE
-      : mode === 'ferry'
-          ? BOSTON_FERRY_APPEARANCE
-          : {color: route.color, textColor: route.textColor ?? '#FFFFFF'};
+      : {color: route.color, textColor: route.textColor ?? '#FFFFFF'};
 
   return {
     id: route.id,
@@ -180,32 +159,12 @@ const getBostonBusGroupOrder = (key: string) => {
   }
 };
 
-const getBostonFerrySortParts = (route: TransitRouteRecord | TransitRoutePickerItem) => {
-  const normalized = normalizeToken(route.id);
-  const numberedMatch = normalized.match(/^BOAT-F(\d+)$/);
-  if (numberedMatch) {
-    return {family: 0, number: Number(numberedMatch[1]), label: normalizeToken(route.label)};
-  }
-
-  return {family: 1, number: Number.MAX_SAFE_INTEGER, label: normalizeToken(route.label)};
-};
-
-const sortBostonFerryRoutes = (routes: TransitRouteRecord[]) =>
-  [...routes].sort((left, right) => {
-    const leftParts = getBostonFerrySortParts(left);
-    const rightParts = getBostonFerrySortParts(right);
-    if (leftParts.family !== rightParts.family) return leftParts.family - rightParts.family;
-    if (leftParts.number !== rightParts.number) return leftParts.number - rightParts.number;
-    return naturalRouteLabelCompare(left.label, right.label);
-  });
-
 export const isBostonMode = (mode: ModeId): mode is BostonMode =>
-  mode === 'train' || mode === 'bus' || mode === 'commuter-rail' || mode === 'ferry';
+  mode === 'train' || mode === 'bus' || mode === 'commuter-rail';
 
 export const getBostonModeLabel = (mode: BostonMode) => {
   if (mode === 'train') return 'T';
   if (mode === 'commuter-rail') return 'Commuter Rail';
-  if (mode === 'ferry') return 'Ferry';
   return 'Bus';
 };
 
@@ -223,13 +182,6 @@ export const formatBostonRoutePickerLabel = (
       ? stripBostonRoutePrefix(routeId)
       : routeLabel;
     return compactBostonCommuterRailLabel(sourceLabel);
-  }
-
-  if (mode === 'ferry') {
-    const sourceLabel = !routeLabel || normalizeToken(routeLabel) === normalizeToken(routeId)
-      ? routeId
-      : routeLabel;
-    return compactBostonFerryLabel(routeId, sourceLabel);
   }
 
   return routeLabel.trim();
@@ -266,10 +218,6 @@ export const getBostonRouteBadgeLabel = (
     );
   }
 
-  if (mode === 'ferry') {
-    return BOSTON_FERRY_BADGE_LABELS[normalizedId] ?? compactBostonFerryLabel(routeId, safeLabel).toUpperCase().slice(0, 5);
-  }
-
   return safeLabel.toUpperCase().slice(0, 4);
 };
 
@@ -277,7 +225,7 @@ export const getBostonDirectionLabel = (
   _mode: BostonMode,
   direction: UiDirection,
   _variant: DirectionVariant = 'bound',
-) => (direction === 'uptown' ? 'Outbound' : 'Inbound');
+) => (direction === 'uptown' || direction === 'outbound' ? 'Outbound' : 'Inbound');
 
 type BostonRouteRef =
   | string
@@ -300,7 +248,9 @@ export const getBostonRouteHeadsign = (
   direction: UiDirection,
 ): string | null => {
   if (!route || typeof route === 'string') return null;
-  return trimOptionalString(direction === 'uptown' ? route.headsign0 : route.headsign1);
+  return trimOptionalString(
+    direction === 'uptown' || direction === 'outbound' ? route.headsign0 : route.headsign1,
+  );
 };
 
 export const getBostonFullDirectionLabel = (
@@ -309,8 +259,7 @@ export const getBostonFullDirectionLabel = (
   route?: BostonRouteRef,
   variant: DirectionVariant = 'bound',
 ): string => {
-  const baseTerm = direction === 'uptown' ? 'Outbound' : 'Inbound';
-  if (mode !== 'commuter-rail' && mode !== 'ferry') return baseTerm;
+  const baseTerm = direction === 'uptown' || direction === 'outbound' ? 'Outbound' : 'Inbound';
   const headsign = getBostonRouteHeadsign(route, direction);
   if (!headsign) return baseTerm;
   if (variant === 'toggle' || variant === 'summary') return `${baseTerm}: ${headsign}`;
@@ -318,13 +267,13 @@ export const getBostonFullDirectionLabel = (
 };
 
 export const serializeBostonDirection = (direction: UiDirection) =>
-  direction === 'uptown' ? '0' : '1';
+  direction === 'uptown' || direction === 'outbound' ? '0' : '1';
 
 export const deserializeBostonDirection = (
   value: string | null | undefined,
 ): UiDirection => {
   const normalized = normalizeToken(value);
-  return normalized === '1' || normalized === 'INBOUND' ? 'downtown' : 'uptown';
+  return normalized === '1' || normalized === 'INBOUND' ? 'inbound' : 'outbound';
 };
 
 export const prepareBostonRouteEntries = (
@@ -337,12 +286,8 @@ export const prepareBostonRouteEntries = (
     );
   }
 
-  if (mode === 'bus' || mode === 'commuter-rail' || mode === 'ferry') {
-    const sortedRoutes =
-      mode === 'ferry'
-        ? sortBostonFerryRoutes(routes)
-        : sortRoutesAlphabetically(routes);
-
+  if (mode === 'bus' || mode === 'commuter-rail') {
+    const sortedRoutes = sortRoutesAlphabetically(routes);
     return sortedRoutes.map(route =>
       routeToPickerItem(mode, route, getBostonLineLabel(mode, route.id, route.label)),
     );
@@ -387,16 +332,6 @@ export const buildBostonRouteGroups = (
 
   if (mode === 'commuter-rail') {
     return routes.length > 0 ? [{key: 'boston-commuter-rail', title: 'Commuter rail lines', routes}] : [];
-  }
-
-  if (mode === 'ferry') {
-    const numberedRoutes = routes.filter(route => getBostonFerrySortParts(route).family === 0);
-    const namedRoutes = routes.filter(route => getBostonFerrySortParts(route).family === 1);
-
-    return [
-      {key: 'boston-ferry-numbered', title: 'Route ferries', routes: numberedRoutes},
-      {key: 'boston-ferry-named', title: 'Named ferries', routes: namedRoutes},
-    ].filter(group => group.routes.length > 0);
   }
 
   return null;

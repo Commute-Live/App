@@ -39,7 +39,7 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: radii.md,
-    backgroundColor: '#0F1A1D',
+    backgroundColor: colors.accentSurface,
     alignItems: 'center',
     justifyContent: 'center',
   },

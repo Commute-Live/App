@@ -23,13 +23,13 @@ export const getPhiladelphiaRailDirectionLabel = (
   variant: DirectionVariant = 'bound',
   terminal?: string | null,
 ) => {
-  const base = direction === 'southbound' ? 'Southbound' : 'Northbound';
+  const base = direction === 'southbound' ? 'Outbound' : 'Inbound';
   if (!terminal) return base;
   return variant === 'summary' ? `${base} · ${terminal}` : `${base}: ${terminal}`;
 };
 
 export const serializePhiladelphiaRailDirection = (direction: UiDirection) =>
-  direction === 'southbound' || direction === 'downtown' ? 'S' : 'N';
+  direction === 'southbound' || direction === 'outbound' || direction === 'downtown' ? 'S' : 'N';
 
 export const deserializePhiladelphiaRailDirection = (
   value: string | null | undefined,
@@ -39,10 +39,14 @@ export const deserializePhiladelphiaRailDirection = (
   if (
     normalized === 'S' ||
     normalized === 'SOUTHBOUND' ||
+    normalized === 'OUTBOUND' ||
     normalized === 'DOWNTOWN' ||
     (!normalized && (stopId?.trim().toUpperCase() ?? '').endsWith('S'))
   ) {
     return 'southbound' as const;
+  }
+  if (normalized === 'INBOUND') {
+    return 'northbound' as const;
   }
   return 'northbound' as const;
 };

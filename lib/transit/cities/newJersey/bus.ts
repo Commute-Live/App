@@ -46,11 +46,11 @@ export const getNjtBusRouteBadgeLabel = (
 ) => routeId.trim().toUpperCase() || (routeLabel ?? routeId).trim().toUpperCase().slice(0, 4);
 
 export const getNjtBusDirectionLabel = (
-  direction: string,
+  _direction: string,
   headsign?: string | null,
 ): string => {
   if (headsign) return `To ${headsign}`;
-  return direction === 'dir1' ? 'Direction 1' : 'Direction 0';
+  return 'To destination';
 };
 
 export const serializeNjtBusDirection = (direction: string) =>

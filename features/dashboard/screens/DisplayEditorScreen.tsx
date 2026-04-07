@@ -105,7 +105,7 @@ type RoutesByStation = Record<string, Route[]>;
 type EditorStep = 'city' | 'format' | 'lines' | 'stops' | 'done';
 type WizardStepDef = {id: EditorStep; label: string; complete: boolean; reachable: boolean};
 
-const DEFAULT_TEXT_COLOR = '#E9ECEF';
+const DEFAULT_TEXT_COLOR = colors.text;
 const BOROUGH_ORDER = ['Manhattan', 'Bronx', 'Brooklyn', 'Queens', 'Staten Island'];
 const DEFAULT_NEXT_STOPS = 3;
 const MIN_NEXT_STOPS = 1;
@@ -138,7 +138,7 @@ const getCityAgencyPillPalette = (city: CityId) => {
   if (city === 'new-york') {
     return {
       borderColor: brand.badgeBorder,
-      textColor: '#D7E7FF',
+      textColor: colors.previewText,
       backgroundColor: withHexAlpha(brand.badgeBg, '38'),
     };
   }
@@ -154,7 +154,6 @@ const getMockStopName = (city: CityId, mode: ModeId) => {
   if (city === 'chicago' && mode === 'train') return 'Clark/Lake';
   if (city === 'boston' && mode === 'train') return 'Park Street';
   if (city === 'boston' && mode === 'commuter-rail') return 'Back Bay';
-  if (city === 'boston' && mode === 'ferry') return 'Long Wharf';
   if (city === 'philadelphia' && mode === 'train') return '30th Street Station';
   if (city === 'philadelphia' && mode === 'trolley') return '13th St';
   if (city === 'philadelphia' && mode === 'bus') return '69th St TC';
@@ -196,17 +195,25 @@ const getPresetDescriptionForMode = (
     if (presetId === 2) return 'Inbound or Outbound terminal on the left, next arrival on the right.';
     if (presetId === 5) return 'Inbound or Outbound terminal with upcoming arrivals.';
   }
+  if (city === 'chicago' && mode === 'train') {
+    if (presetId === 2) return 'Terminal-bound direction on the left, next arrival on the right.';
+    if (presetId === 5) return 'Terminal-bound direction with upcoming arrivals.';
+  }
+  if (city === 'chicago' && mode === 'bus') {
+    if (presetId === 2) return 'Trip destination on the left, next arrival on the right.';
+    if (presetId === 5) return 'Trip destination with upcoming arrivals.';
+  }
   if (city === 'philadelphia' && mode === 'train') {
-    if (presetId === 2) return 'Northbound or Southbound on the left, next arrival on the right.';
-    if (presetId === 5) return 'Northbound or Southbound with upcoming arrivals.';
+    if (presetId === 2) return 'Inbound or Outbound on the left, next arrival on the right.';
+    if (presetId === 5) return 'Inbound or Outbound with upcoming arrivals.';
   }
   if (city === 'philadelphia' && (mode === 'bus' || mode === 'trolley')) {
-    if (presetId === 2) return 'Trip direction on the left, next arrival on the right.';
-    if (presetId === 5) return 'Trip direction with upcoming arrivals.';
+    if (presetId === 2) return 'Trip destination on the left, next arrival on the right.';
+    if (presetId === 5) return 'Trip destination with upcoming arrivals.';
   }
   if (city === 'new-jersey' && (mode === 'train' || mode === 'bus')) {
-    if (presetId === 2) return 'Trip direction on the left, next arrival on the right.';
-    if (presetId === 5) return 'Trip direction with upcoming arrivals.';
+    if (presetId === 2) return 'Trip destination on the left, next arrival on the right.';
+    if (presetId === 5) return 'Trip destination with upcoming arrivals.';
   }
   return defaultDescription;
 };
@@ -462,7 +469,7 @@ const getWizardStepDefs = ({
 ];
 
 const WIZARD_STEP_DEFAULT_COLOR = colors.accent;
-const WIZARD_STEP_ACTIVE_COLOR = '#10B981';
+const WIZARD_STEP_ACTIVE_COLOR = colors.editorStepComplete;
 
 export default function DisplayEditorScreen() {
   const queryClient = useQueryClient();
@@ -1541,12 +1548,12 @@ export default function DisplayEditorScreen() {
             : displayPreset === 4 || displayPreset === 5 || displayPreset === 6
                 ? etaListText
                 : undefined;
-        const previewSubLineColor = displayPreset === 4 || displayPreset === 5 || displayPreset === 6 ? '#E5C15A' : undefined;
+        const previewSubLineColor =
+          displayPreset === 4 || displayPreset === 5 || displayPreset === 6 ? colors.highlight : undefined;
 
         const isBusBadge = isNycBusBadge(city, safeMode);
         const isChicagoTrainBadge = city === 'chicago' && safeMode === 'train';
         const isBostonTrainBadge = city === 'boston' && safeMode === 'train';
-        const isBostonFerryBadge = city === 'boston' && safeMode === 'ferry';
         const isPhillyRailBadge = city === 'philadelphia' && (safeMode === 'train' || safeMode === 'trolley');
         const isNjtRailBadge = city === 'new-jersey' && safeMode === 'train';
         const isRailLineBadge = isNycRailMode(safeMode);
@@ -1555,7 +1562,7 @@ export default function DisplayEditorScreen() {
         const badgeShape: Display3DSlot['badgeShape'] =
           city === 'new-york' && (safeMode === 'lirr' || safeMode === 'mnr')
             ? 'bar'
-            : (isBusBadge || isRailLineBadge || isChicagoTrainBadge || isBostonTrainBadge || isBostonFerryBadge || isPhillyRailBadge || isNjtRailBadge)
+            : (isBusBadge || isRailLineBadge || isChicagoTrainBadge || isBostonTrainBadge || isPhillyRailBadge || isNjtRailBadge)
                 ? 'pill'
                 : isCommuterRailBadge
                   ? 'rail'
@@ -1563,8 +1570,8 @@ export default function DisplayEditorScreen() {
 
         return {
           id: line.id,
-          color: route?.color ?? '#3A3A3A',
-          textColor: line.textColor || route?.textColor || '#FFFFFF',
+          color: route?.color ?? colors.border,
+          textColor: line.textColor || route?.textColor || colors.text,
           routeLabel: isRailLineBadge
             ? (route ? '' : '?')
             : getLocalRouteBadgeLabel(
@@ -2355,7 +2362,7 @@ function RouteGridPicker({
             style={[styles.routeTile, active && styles.routeTileActive]}
             onPress={() => onToggle(route.id)}>
             <View style={[styles.routeCircle, {backgroundColor: route.color}]}>
-              <Text style={[styles.routeCircleText, {color: route.textColor ?? '#fff'}]}>{route.label}</Text>
+              <Text style={[styles.routeCircleText, {color: route.textColor ?? colors.text}]}>{route.label}</Text>
             </View>
           </Pressable>
         );
@@ -2577,8 +2584,8 @@ function DisplayPresetPickerStep({
   const routeBadgeLabel = getLocalRouteBadgeLabel(city, line.mode, line.routeId, routeLabel, selectedRoute?.shortName);
   const directionLabel = getDirectionCueLabel(city, line.mode, line.direction, selectedRoute ?? line.routeId);
   const headsignLabel = getHeadsignLabel(city, line.mode, line.direction, selectedRoute ?? line.routeId, routeLabel);
-  const routeColor = selectedRoute?.color ?? '#0C7A59';
-  const routeTextColor = selectedRoute?.textColor ?? '#E8FFF8';
+  const routeColor = selectedRoute?.color ?? colors.routeFallback;
+  const routeTextColor = selectedRoute?.textColor ?? colors.routeFallbackText;
   const stopLabel = selectedStation?.name?.trim() || 'Selected stop';
   const secondaryStopLabel = isRailLinePreviewMode(city, line.mode)
     ? getRailPreviewRouteLabel(city, line.mode, routeLabel, line.routeId)
@@ -2848,8 +2855,8 @@ function PresetChoiceCard({
 function PresetDiagram({
   presetId,
   routeLabel = '4',
-  routeColor = '#0C7A59',
-  routeTextColor = '#E8FFF8',
+  routeColor = colors.routeFallback,
+  routeTextColor = colors.routeFallbackText,
   primaryText = 'Woodlawn',
   secondaryText = 'Uptown',
   etaText = '3m',
@@ -2948,7 +2955,7 @@ function StepTransitionMessage({
   return (
     <Animated.View style={[styles.transitionContainer, {opacity: fadeAnim, transform: [{scale: scaleAnim}]}]}>
       {badgeLabel ? (
-        <View style={[styles.transitionBadge, {backgroundColor: badgeColor ?? '#333'}]}>
+        <View style={[styles.transitionBadge, {backgroundColor: badgeColor ?? colors.border}]}>
           <Text style={styles.transitionBadgeText}>{badgeLabel}</Text>
         </View>
       ) : (
@@ -3099,7 +3106,6 @@ const CITY_MODE_COLORS: Partial<Record<CityId, Partial<Record<ModeId, string>>>>
     train: '#DA291C',
     bus: '#7C878E',
     'commuter-rail': '#7B61FF',
-    ferry: '#0EA5E9',
   },
   chicago: {
     train: '#00A1DE',
@@ -3146,12 +3152,6 @@ const getBostonRouteCardTitle = (mode: ModeId, route: RoutePickerItem) => {
     return route.displayLabel.trim() || fallbackLabel;
   }
 
-  if (mode === 'ferry') {
-    const compactLabel = route.displayLabel.trim();
-    if (/^F\d+$/i.test(compactLabel)) return `Route ${compactLabel}`;
-    return /ferry$/i.test(compactLabel) ? compactLabel : `${compactLabel} Ferry`;
-  }
-
   return fallbackLabel;
 };
 
@@ -3170,13 +3170,6 @@ const getBostonRouteCardSubtitle = (mode: ModeId, route: RoutePickerItem) => {
       return fullLabel;
     }
     return 'MBTA commuter rail line';
-  }
-
-  if (mode === 'ferry') {
-    if (fullLabel.length > 0 && fullLabel.toLowerCase() !== route.displayLabel.trim().toLowerCase()) {
-      return fullLabel;
-    }
-    return 'MBTA ferry route';
   }
 
   return null;
@@ -3218,7 +3211,7 @@ function LinePickerStep({
 
   const isBusGrouped = selectedMode === 'bus' && (city === 'new-york' || city === 'boston');
   const isBostonRouteCardMode =
-    city === 'boston' && (selectedMode === 'train' || selectedMode === 'commuter-rail' || selectedMode === 'ferry');
+    city === 'boston' && (selectedMode === 'train' || selectedMode === 'commuter-rail');
   const isWidePillMode =
     (city === 'chicago' && selectedMode === 'train') ||
     (city === 'new-jersey' && selectedMode === 'train');
@@ -3370,14 +3363,14 @@ function LinePickerStep({
                           key={route.id}
                           style={[
                             styles.lirrBranchRow,
-                            {backgroundColor: route.color, borderColor: isSelected ? '#FFFFFF' : route.color},
+                            {backgroundColor: route.color, borderColor: isSelected ? colors.text : route.color},
                             isSelected && styles.lirrBranchRowSelected,
                           ]}
                           onPress={() => handleSelectLine(route)}>
                           <Text
                             style={[
                               styles.lirrBranchName,
-                              {color: route.textColor || '#FFFFFF'},
+                              {color: route.textColor || colors.text},
                               isSelected && styles.lirrBranchNameSelected,
                             ]}
                             numberOfLines={1}
@@ -3385,7 +3378,7 @@ function LinePickerStep({
                             minimumFontScale={0.8}>
                             {route.displayLabel}
                           </Text>
-                          {isSelected && <Text style={[styles.lirrBranchCheck, {color: route.textColor || '#FFFFFF'}]}>✓</Text>}
+                          {isSelected && <Text style={[styles.lirrBranchCheck, {color: route.textColor || colors.text}]}>✓</Text>}
                         </Pressable>
                       );
                     })}
@@ -3420,7 +3413,7 @@ function LinePickerStep({
                                 style={[
                                   styles.bostonRouteCardBadgeText,
                                   routeBadgeLabel.length >= 4 && styles.bostonRouteCardBadgeTextCompact,
-                                  {color: route.textColor ?? '#FFFFFF'},
+                                  {color: route.textColor ?? colors.text},
                                 ]}>
                                 {routeBadgeLabel}
                               </Text>
@@ -3453,7 +3446,7 @@ function LinePickerStep({
                       const isSelected = route.routes.some(item => item.id === selectedRouteId);
                       const isBusBadge = isNycBusBadge(city, selectedMode);
                       const isChicagoTrainBadge = city === 'chicago' && selectedMode === 'train';
-                      const isBostonWideBadge = city === 'boston' && (selectedMode === 'train' || selectedMode === 'ferry');
+                      const isBostonWideBadge = city === 'boston' && selectedMode === 'train';
                       const isCommuterRailBadge = false;
                       const routeBadgeLabel = getLocalRouteBadgeLabel(city, selectedMode, route.id, route.label, route.shortName);
                       const isExpress = !isBusBadge && isExpressRouteBadge(city, selectedMode, route);
@@ -3493,7 +3486,7 @@ function LinePickerStep({
                                   (isChicagoTrainBadge || isBostonWideBadge) && styles.lineBadgeChicagoTrainText,
                                   isCommuterRailBadge && styles.lineBadgeCommuterRailText,
                                   useCompactBadgeText && styles.lineBadgeTextCompact,
-                                  {color: route.textColor ?? '#fff'},
+                                  {color: route.textColor ?? colors.text},
                                   isExpress && styles.lineBadgeTextDiamond,
                                 ]}>
                                 {routeBadgeLabel}
@@ -3593,6 +3586,9 @@ function StopPickerStep({
   const isNjtTrainMode = city === 'new-jersey' && selectedMode === 'train';
   const isNjtBusMode = city === 'new-jersey' && selectedMode === 'bus';
   const isBostonTrainMode = city === 'boston' && selectedMode === 'train';
+  const isBostonDirectionMode =
+    city === 'boston' &&
+    (selectedMode === 'train' || selectedMode === 'bus' || selectedMode === 'commuter-rail');
   const useWideDirectionToggle =
     isChicagoTrainMode || isNycSubwayMode || isNycLirrMode || isNycBusMode || isNycMnrMode || isNjtTrainMode || isNjtBusMode || isBostonTrainMode;
   const directionOptions = getLocalDirectionOptions(city, selectedMode, selectedRoute ?? selectedRouteId);
@@ -3639,9 +3635,10 @@ function StopPickerStep({
                     style={[
                       styles.stopPickerDirText,
                       useWideDirectionToggle && styles.stopPickerDirTextChicagoTrain,
+                      isBostonDirectionMode && styles.stopPickerDirTextBoston,
                       active && styles.stopPickerDirTextActive,
                     ]}
-                    numberOfLines={useWideDirectionToggle ? 2 : 1}>
+                    numberOfLines={isBostonDirectionMode ? 1 : useWideDirectionToggle ? 2 : 1}>
                     {label}
                   </Text>
                 </Pressable>
@@ -3799,7 +3796,7 @@ function DoneStep({
                 adjustsFontSizeToFit
                 minimumFontScale={0.74}
                 numberOfLines={1}
-                style={[styles.contextChipBadgeText, showBusBadge && styles.contextChipBadgeTextBus, {color: selectedRoute.textColor ?? '#fff'}]}>
+                style={[styles.contextChipBadgeText, showBusBadge && styles.contextChipBadgeTextBus, {color: selectedRoute.textColor ?? colors.text}]}>
                 {selectedRouteBadgeLabel}
               </Text>
             </View>
@@ -4142,7 +4139,7 @@ function LedStylePickerStep({
   };
 
   const routeLabel = selectedRoute?.label ?? line.routeId;
-  const routeColor = selectedRoute?.color ?? '#1C3A2A';
+  const routeColor = selectedRoute?.color ?? colors.routeFallback;
   const selectedStopLabel = selectedStation?.name?.trim() || 'Selected stop';
   const activeNextStops = line.nextStops >= 2 ? line.nextStops : 2;
   const isNycRail = isNycRailMode(line.mode);
@@ -4189,7 +4186,7 @@ function LedStylePickerStep({
                   branchLabel={shouldUseRailBranchLabel ? linePreviewLabel : undefined}
                   badgeShape={city === 'new-york' && (line.mode === 'lirr' || line.mode === 'mnr')
                     ? 'bar'
-                    : isNycBusBadge(city, line.mode) || isNycRail || isChicagoTrain || isPhillyRail || isNjtRail || (city === 'boston' && line.mode === 'train') || (city === 'boston' && line.mode === 'ferry')
+                    : isNycBusBadge(city, line.mode) || isNycRail || isChicagoTrain || isPhillyRail || isNjtRail || (city === 'boston' && line.mode === 'train')
                       ? 'pill'
                       : isCommuterRail
                         ? 'rail'

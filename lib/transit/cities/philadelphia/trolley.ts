@@ -46,11 +46,11 @@ export const getPhiladelphiaTrolleyRouteBadgeLabel = (
 ) => getPhiladelphiaSurfaceBadgeLabel(routeId) || resolvePhiladelphiaTrolleyLabel(routeId, (routeLabel ?? routeId).trim());
 
 export const getPhiladelphiaTrolleyDirectionLabel = (
-  direction: UiDirection,
+  _direction: UiDirection,
   headsign?: string | null,
 ): string => {
   if (headsign) return `To ${headsign}`;
-  return direction === 'dir1' ? 'Direction 1' : 'Direction 0';
+  return 'To destination';
 };
 
 export const serializePhiladelphiaTrolleyDirection = (direction: UiDirection) =>

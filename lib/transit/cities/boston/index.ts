@@ -21,7 +21,6 @@ export const bostonTransitModule: TransitCityModule = {
     train: 'mbta-subway',
     bus: 'mbta-bus',
     'commuter-rail': 'mbta-rail',
-    ferry: 'mbta-ferry',
   },
   getModeLabel: mode => (isBostonMode(mode) ? getBostonModeLabel(mode) : null),
   formatRoutePickerLabel: (mode, routeId, routeLabel) =>

@@ -678,7 +678,7 @@ export default function PresetsScreen() {
                     {/* Right: Delete */}
                     <View style={styles.navRight}>
                       <Pressable style={styles.deleteBtn} onPress={() => confirmDelete(currentDisplay)}>
-                        <Ionicons name="trash-outline" size={14} color="#F87171" />
+                        <Ionicons name="trash-outline" size={14} color={colors.dangerTextSoft} />
                       </Pressable>
                     </View>
                   </View>
@@ -1096,7 +1096,7 @@ const styles = StyleSheet.create({
   displayCard: {},
   displayCardActive: {
     borderWidth: 1,
-    borderColor: '#34D399',
+    borderColor: colors.successText,
     borderRadius: radii.lg,
   },
 
@@ -1132,9 +1132,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.xs,
     paddingVertical: spacing.xxs,
   },
-  badgeActive: {backgroundColor: '#0A2218', borderColor: '#1B5E4A'},
+  badgeActive: {backgroundColor: colors.successSurfaceStrong, borderColor: colors.successBorder},
   badgePaused: {backgroundColor: colors.card, borderColor: colors.border},
-  badgeDot: {width: 6, height: 6, borderRadius: 3, backgroundColor: '#34D399'},
+  badgeDot: {width: 6, height: 6, borderRadius: 3, backgroundColor: colors.successText},
   badgeText: {color: colors.text, fontSize: 11, fontWeight: '700'},
 
   // LED preview area — extra padding lets the glow breathe
@@ -1149,15 +1149,15 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.xxs,
-    backgroundColor: 'rgba(0,0,0,0.6)',
+    backgroundColor: colors.overlay,
     paddingHorizontal: spacing.xs,
     paddingVertical: spacing.xxs,
     borderRadius: radii.md,
     borderWidth: 1,
-    borderColor: '#34D399',
+    borderColor: colors.successText,
   },
   activeOverlayText: {
-    color: '#34D399',
+    color: colors.successText,
     fontSize: 11,
     fontWeight: '600',
     letterSpacing: 0.4,
@@ -1181,6 +1181,27 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'flex-end',
+  },
+  navActiveLabel: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xxs,
+    borderWidth: 1,
+    borderColor: colors.successText,
+    borderRadius: radii.md,
+    paddingHorizontal: spacing.xs,
+    paddingVertical: spacing.xxs,
+  },
+  navActiveDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+    backgroundColor: colors.successText,
+  },
+  navActiveLabelText: {
+    color: colors.successText,
+    fontSize: 12,
+    fontWeight: '600',
   },
   navCenter: {
     flexDirection: 'row',
@@ -1460,8 +1481,8 @@ const styles = StyleSheet.create({
     height: layout.iconButton,
     borderRadius: radii.sm,
     borderWidth: 1,
-    borderColor: '#2A1212',
-    backgroundColor: '#160A0A',
+    borderColor: colors.dangerBorderMuted,
+    backgroundColor: colors.dangerSurfaceMuted,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1469,7 +1490,7 @@ const styles = StyleSheet.create({
   // ─── Reorder Modal ───────────────────────────────────────────────────────
   reorderBackdrop: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.62)',
+    backgroundColor: colors.overlay,
     justifyContent: 'center',
     paddingHorizontal: layout.screenPadding,
   },
@@ -1532,7 +1553,7 @@ const styles = StyleSheet.create({
   reorderRowDragging: {
     borderColor: colors.accent,
     backgroundColor: colors.surface,
-    shadowColor: '#000',
+    shadowColor: colors.shadow,
     shadowOpacity: 0.2,
     shadowRadius: 8,
     shadowOffset: {width: 0, height: 4},
@@ -1616,14 +1637,14 @@ const styles = StyleSheet.create({
     minHeight: 28,
     borderRadius: radii.md,
     borderWidth: 1,
-    borderColor: '#1B5E4A',
-    backgroundColor: '#0A2218',
+    borderColor: colors.successBorder,
+    backgroundColor: colors.successSurfaceStrong,
     paddingHorizontal: spacing.sm,
     alignItems: 'center',
     justifyContent: 'center',
   },
   reorderActivePillText: {
-    color: '#7CE4BF',
+    color: colors.successTextSoft,
     fontSize: 11,
     fontWeight: '800',
   },
@@ -1690,7 +1711,7 @@ const styles = StyleSheet.create({
     width: 7,
     height: 7,
     borderRadius: 4,
-    backgroundColor: '#34D399',
+    backgroundColor: colors.successText,
   },
   activeStatusText: {
     color: colors.textMuted,

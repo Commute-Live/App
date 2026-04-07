@@ -130,7 +130,7 @@ export const getChicagoDirectionLabel = (
   routeId?: string | null,
   variant: DirectionVariant = 'bound',
 ) => {
-  if (mode !== 'train') return null;
+  if (mode === 'bus') return 'To destination';
   if (direction !== 'dir0' && direction !== 'dir1') return null;
   const copy = CTA_TRAIN_DIRECTION_COPY[normalizeToken(routeId)];
   if (!copy) return null;

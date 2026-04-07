@@ -17,6 +17,7 @@ import {
   SUPPORTED_TRANSIT_CITIES,
 } from '../../../lib/transit/registry';
 import {formatLocalRoutePickerLabel, getDefaultUiDirection, getLocalDirectionOptions, getLocalModeLabel, inferMbtaMode, serializeUiDirection} from '../../../lib/transitUi';
+import {colors} from '../../../theme';
 import type {DisplayContent, DisplayFormat, TransitArrival, TransitStationLine, TransitUiMode} from '../../../types/transit';
 
 type Station = {id: string; name: string; area: string; lines: TransitStationLine[]};
@@ -44,7 +45,7 @@ type RoutePickerItem = TransitRoutePickerItem;
 type RouteGroup = TransitRouteGroup;
 type StationRouteResult = {stopId: string; routes: Route[]};
 
-const DEFAULT_TEXT_COLOR = '#E9ECEF';
+const DEFAULT_TEXT_COLOR = colors.text;
 const DEFAULT_NEXT_STOPS = 3;
 const MIN_NEXT_STOPS = 1;
 const MAX_NEXT_STOPS = 5;
@@ -347,7 +348,7 @@ function resolveRouteTextColor(city: CityId, mode: ModeId, lineId: string, label
   const mapped = resolveMappedRouteAppearance(city, mode, lineId, label);
   if (mapped) return mapped.textColor;
   if (apiTextColor) return apiTextColor;
-  return '#FFFFFF';
+  return colors.text;
 }
 
 export function formatRoutePickerLabel(city: CityId, mode: ModeId, route: Route) {

@@ -119,7 +119,6 @@ const KNOWN_PROVIDER_MODES = new Set([
   'mbta/subway',
   'mbta/bus',
   'mbta/rail',
-  'mbta/ferry',
   'cta/subway',
   'cta/bus',
 ]);
@@ -131,7 +130,6 @@ const inferMbtaProviderMode = (
   const mode = inferUiModeFromProvider('mbta', stopId, lineId);
   if (mode === 'bus') return 'mbta/bus';
   if (mode === 'commuter-rail') return 'mbta/rail';
-  if (mode === 'ferry') return 'mbta/ferry';
   return 'mbta/subway';
 };
 
@@ -583,7 +581,7 @@ export const toPreviewSlots = (
         ? 'pill'
         : city === 'chicago' && line.provider === 'cta-subway'
           ? 'pill'
-        : city === 'boston' && (mode === 'train' || mode === 'ferry')
+        : city === 'boston' && mode === 'train'
           ? 'pill'
         : city === 'new-jersey' && mode === 'train'
           ? 'pill'

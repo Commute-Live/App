@@ -178,7 +178,7 @@ const styles = StyleSheet.create({
   googleIcon: {marginRight: 8},
   googleText: {color: colors.text, fontWeight: '700', fontSize: typography.bodyLg},
   buttonDisabled: {opacity: 0.5},
-  errorText: {color: '#FCA5A5', fontSize: typography.label, fontWeight: '700', textAlign: 'center'},
+  errorText: {color: colors.dangerText, fontSize: typography.label, fontWeight: '700', textAlign: 'center'},
   securityText: {
     color: colors.textMuted,
     fontSize: typography.label,

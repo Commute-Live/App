@@ -26,11 +26,11 @@ export const getNjtRailRouteBadgeLabel = (
 };
 
 export const getNjtRailDirectionLabel = (
-  direction: string,
+  _direction: string,
   headsign?: string | null,
 ): string => {
   if (headsign) return `To ${headsign}`;
-  return direction === 'dir1' ? 'Direction 1' : 'Direction 0';
+  return 'To destination';
 };
 
 export const serializeNjtRailDirection = (direction: string) =>

@@ -8,7 +8,7 @@ export type DisplayFormat =
 export type DisplayContent = 'destination' | 'direction' | 'headsign' | 'custom';
 export type SupportedTransitCity = 'new-york' | 'philadelphia' | 'boston' | 'chicago' | 'new-jersey';
 
-export type TransitUiMode = 'train' | 'bus' | 'lirr' | 'mnr' | 'commuter-rail' | 'trolley' | 'ferry';
+export type TransitUiMode = 'train' | 'bus' | 'lirr' | 'mnr' | 'commuter-rail' | 'trolley';
 export type TransitUiDirection =
   | 'uptown'
   | 'downtown'
@@ -22,7 +22,7 @@ export type TransitUiDirection =
   | 'inbound';
 
 export type TransitProvider = 'mta' | 'septa' | 'cta' | 'mbta' | 'njt';
-export type TransitBackendMode = 'subway' | 'bus' | 'lirr' | 'mnr' | 'rail' | 'trolley' | 'ferry';
+export type TransitBackendMode = 'subway' | 'bus' | 'lirr' | 'mnr' | 'rail' | 'trolley';
 export type TransitBackendProviderId =
   | 'mta-subway'
   | 'mta-bus'
@@ -35,7 +35,6 @@ export type TransitBackendProviderId =
   | 'mbta-subway'
   | 'mbta-bus'
   | 'mbta-rail'
-  | 'mbta-ferry'
   | 'cta-subway'
   | 'cta-bus'
   | 'njt-rail'

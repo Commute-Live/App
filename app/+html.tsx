@@ -1,4 +1,5 @@
 import { ScrollViewStyleReset } from 'expo-router/html';
+import {colors} from '../theme';
 
 // This file is web-only and used to configure the root HTML for every
 // web page during static rendering.
@@ -30,7 +31,8 @@ export default function Root({ children }: { children: React.ReactNode }) {
 const responsiveBackground = `
 html,
 body {
-  background-color: #fff;
+  background-color: ${colors.background};
+  color: ${colors.text};
 }
 
 body,
@@ -44,11 +46,4 @@ body *::-webkit-scrollbar {
   display: none;
   width: 0;
   height: 0;
-}
-
-@media (prefers-color-scheme: dark) {
-  html,
-  body {
-    background-color: #000;
-  }
 }`;

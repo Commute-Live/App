@@ -1,7 +1,9 @@
 import {
+  BatchSize,
   DatadogProviderConfiguration,
   DdLogs,
   SdkVerbosity,
+  UploadFrequency,
 } from '@datadog/mobile-react-native';
 
 export function createDatadogConfig(): DatadogProviderConfiguration {
@@ -25,6 +27,8 @@ export function createDatadogConfig(): DatadogProviderConfiguration {
   );
 
   config.site = site;
+  config.batchSize = BatchSize.SMALL;
+  config.uploadFrequency = UploadFrequency.FREQUENT;
   config.verbosity = SdkVerbosity.ERROR;
   config.serviceName = 'commutelive-mobile';
   config.nativeCrashReportEnabled = true;
