@@ -25,6 +25,121 @@ import {supportsBleProvisioning, unsupportedDeviceSetupMessage} from '../../../l
 
 type ProvisionStep = 'idle' | 'linking';
 
+type ProgressDetail = {
+  label: string;
+  value: string;
+};
+
+const PHASE_LABELS: Record<string, string> = {
+  scanning: 'Scanning for network',
+  wifi_connecting: 'Joining Wi-Fi',
+  wifi_connected: 'Wi-Fi connected',
+  provisioning: 'Provisioning device',
+  provisioned: 'Provisioning complete',
+};
+
+const WIFI_STATUS_LABELS: Record<string, string> = {
+  WL_IDLE_STATUS: 'Waiting for the network',
+  WL_NO_SSID_AVAIL: 'Network not found',
+  WL_SCAN_COMPLETED: 'Network scan completed',
+  WL_CONNECTED: 'Connected',
+  WL_CONNECT_FAILED: 'Password rejected',
+  WL_CONNECTION_LOST: 'Connection lost',
+  WL_DISCONNECTED: 'Disconnected',
+};
+
+const humanizeToken = (value: string) =>
+  value
+    .toLowerCase()
+    .split('_')
+    .filter(Boolean)
+    .map(part => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ');
+
+const getProvisionProgressCopy = ({
+  statusUpdate,
+  provisionStep,
+}: {
+  statusUpdate: ReturnType<typeof useBleProvision>['state']['statusUpdate'];
+  provisionStep: ProvisionStep;
+}): {
+  title: string;
+  message: string;
+  details: ProgressDetail[];
+} => {
+  if (provisionStep === 'linking') {
+    return {
+      title: 'Finishing setup',
+      message: 'Wi-Fi is connected. Linking the display to your account now.',
+      details: statusUpdate?.deviceId
+        ? [{label: 'Display', value: statusUpdate.deviceId}]
+        : [],
+    };
+  }
+
+  const phaseLabel = statusUpdate?.phase ? (PHASE_LABELS[statusUpdate.phase] ?? humanizeToken(statusUpdate.phase)) : null;
+  const wifiStatusLabel = statusUpdate?.wifiStatus
+    ? (WIFI_STATUS_LABELS[statusUpdate.wifiStatus] ?? humanizeToken(statusUpdate.wifiStatus))
+    : null;
+
+  let title = 'Connecting to Wi-Fi';
+  let message = 'The display is joining your network. This usually takes a few seconds.';
+
+  switch (statusUpdate?.phase) {
+    case 'scanning':
+      title = 'Scanning for your network';
+      message = 'The display is looking for the Wi-Fi network you selected.';
+      break;
+    case 'wifi_connecting':
+      title = 'Joining Wi-Fi';
+      message = 'The display is trying to connect to your network.';
+      break;
+    case 'wifi_connected':
+      title = 'Wi-Fi connected';
+      message = 'The display joined your network. Finalizing device setup.';
+      break;
+    case 'provisioning':
+      title = 'Provisioning device';
+      message = 'Sending the final setup details to your display.';
+      break;
+    case 'provisioned':
+      title = 'Provisioning complete';
+      message = 'The display finished setup. Finalizing your account link.';
+      break;
+    default:
+      if (statusUpdate?.status === 'connected') {
+        title = 'Wi-Fi connected';
+        message = 'The display is online. Wrapping up setup now.';
+      } else if (statusUpdate?.status === 'connecting') {
+        title = 'Working on it';
+        message = 'The display is still processing your Wi-Fi connection.';
+      }
+      break;
+  }
+
+  const details: ProgressDetail[] = [];
+
+  if (phaseLabel) {
+    details.push({label: 'Latest update', value: phaseLabel});
+  }
+
+  if (statusUpdate?.attempt !== null && statusUpdate?.attempt !== undefined) {
+    details.push({
+      label: 'Attempt',
+      value:
+        statusUpdate.attempts !== null && statusUpdate.attempts !== undefined
+          ? `${statusUpdate.attempt} of ${statusUpdate.attempts}`
+          : `${statusUpdate.attempt}`,
+    });
+  }
+
+  if (wifiStatusLabel) {
+    details.push({label: 'Wi-Fi status', value: wifiStatusLabel});
+  }
+
+  return {title, message, details};
+};
+
 const SignalBars = ({rssi}: {rssi: number}) => {
   const bars = rssi > -50 ? 3 : rssi > -70 ? 2 : 1;
   return (
@@ -88,6 +203,10 @@ interface PasswordModalProps {
   isManual: boolean;
   isBusy: boolean;
   errorMsg: string;
+  showProgress: boolean;
+  progressTitle: string;
+  progressMessage: string;
+  progressDetails: ProgressDetail[];
   onClose: () => void;
   onConnect: (ssid: string, password: string, username: string) => void;
 }
@@ -98,6 +217,10 @@ function PasswordModal({
   isManual,
   isBusy,
   errorMsg,
+  showProgress,
+  progressTitle,
+  progressMessage,
+  progressDetails,
   onClose,
   onConnect,
 }: PasswordModalProps) {
@@ -126,106 +249,140 @@ function PasswordModal({
   };
 
   return (
-    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet">
+    <Modal
+      visible={visible}
+      animationType="slide"
+      presentationStyle="pageSheet"
+      onRequestClose={() => {
+        if (!showProgress) {
+          onClose();
+        }
+      }}>
       <SafeAreaView style={modal.container} edges={['top', 'left', 'right', 'bottom']}>
         <KeyboardAvoidingView
           style={{flex: 1}}
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-          {/* Navigation bar */}
           <View style={modal.navBar}>
-            <Pressable style={modal.navBtn} onPress={onClose} hitSlop={12}>
+            <Pressable
+              style={[modal.navBtn, showProgress && modal.navBtnDisabled]}
+              onPress={onClose}
+              disabled={showProgress}
+              hitSlop={12}>
               <Text style={modal.navCancel}>✕</Text>
             </Pressable>
             <Text style={modal.navTitle} numberOfLines={1}>
               {title}
             </Text>
-            <Pressable
-              style={[modal.navBtn, modal.navBtnRight]}
-              onPress={handleConnect}
-              disabled={!canConnect || isBusy}
-              hitSlop={12}>
-              {isBusy ? (
-                <ActivityIndicator size="small" color={colors.accent} />
-              ) : (
+            {showProgress ? (
+              <View style={[modal.navBtn, modal.navBtnRight]} />
+            ) : (
+              <Pressable
+                style={[modal.navBtn, modal.navBtnRight]}
+                onPress={handleConnect}
+                disabled={!canConnect || isBusy}
+                hitSlop={12}>
                 <Text style={[modal.navConnect, (!canConnect || isBusy) && modal.navConnectDim]}>
                   Connect
                 </Text>
-              )}
-            </Pressable>
+              </Pressable>
+            )}
           </View>
 
           <ScrollView
-            contentContainerStyle={modal.body}
+            contentContainerStyle={[modal.body, showProgress && modal.progressBody]}
             keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={false}>
-            {/* Fields grouped card */}
-            <View style={modal.fieldGroup}>
-              {isManual && (
-                <>
-                  <View style={modal.fieldRow}>
-                    <Text style={modal.fieldLabel}>Network name</Text>
-                    <TextInput
-                      style={modal.fieldInput}
-                      value={ssid}
-                      onChangeText={setSsid}
-                      placeholder="SSID"
-                      placeholderTextColor={colors.textMuted}
-                      autoCapitalize="none"
-                      autoCorrect={false}
-                      editable={!isBusy}
-                      autoFocus
-                    />
-                  </View>
-                  <View style={modal.fieldDivider} />
-                </>
-              )}
-
-              {(isEnterprise || isManual) && (
-                <>
-                  <View style={modal.fieldRow}>
-                    <Text style={modal.fieldLabel}>Username</Text>
-                    <TextInput
-                      style={modal.fieldInput}
-                      value={username}
-                      onChangeText={setUsername}
-                      placeholder="Optional"
-                      placeholderTextColor={colors.textMuted}
-                      autoCapitalize="none"
-                      autoCorrect={false}
-                      editable={!isBusy}
-                    />
-                  </View>
-                  <View style={modal.fieldDivider} />
-                </>
-              )}
-
-              {!isOpen && (
-                <View style={modal.fieldRow}>
-                  <Text style={modal.fieldLabel}>Password</Text>
-                  <TextInput
-                    style={modal.fieldInput}
-                    value={password}
-                    onChangeText={setPassword}
-                    placeholder="Required"
-                    placeholderTextColor={colors.textMuted}
-                    secureTextEntry
-                    editable={!isBusy}
-                    autoFocus={!isManual}
-                    returnKeyType="go"
-                    onSubmitEditing={canConnect && !isBusy ? handleConnect : undefined}
-                  />
+            {showProgress ? (
+              <View style={modal.progressShell}>
+                <View style={modal.progressSpinnerWrap}>
+                  <ActivityIndicator size="large" color={colors.accent} style={modal.progressSpinner} />
                 </View>
-              )}
-
-              {isOpen && !isManual && (
-                <View style={modal.openRow}>
-                  <Text style={modal.openText}>This network is open — no password required.</Text>
+                <View style={modal.progressCopy}>
+                  <Text style={modal.progressTitle}>{progressTitle}</Text>
+                  <Text style={modal.progressMessage}>{progressMessage}</Text>
                 </View>
-              )}
-            </View>
+                {progressDetails.length > 0 && (
+                  <View style={modal.progressDetails}>
+                    {progressDetails.map(detail => (
+                      <View key={`${detail.label}-${detail.value}`} style={modal.progressDetailRow}>
+                        <Text style={modal.progressDetailLabel}>{detail.label}</Text>
+                        <Text style={modal.progressDetailValue}>{detail.value}</Text>
+                      </View>
+                    ))}
+                  </View>
+                )}
+              </View>
+            ) : (
+              <>
+                <View style={modal.fieldGroup}>
+                  {isManual && (
+                    <>
+                      <View style={modal.fieldRow}>
+                        <Text style={modal.fieldLabel}>Network name</Text>
+                        <TextInput
+                          style={modal.fieldInput}
+                          value={ssid}
+                          onChangeText={setSsid}
+                          placeholder="SSID"
+                          placeholderTextColor={colors.textMuted}
+                          autoCapitalize="none"
+                          autoCorrect={false}
+                          editable={!isBusy}
+                          autoFocus
+                        />
+                      </View>
+                      <View style={modal.fieldDivider} />
+                    </>
+                  )}
 
-            {errorMsg.length > 0 && (
-              <Text style={modal.errorText}>{errorMsg}</Text>
+                  {(isEnterprise || isManual) && (
+                    <>
+                      <View style={modal.fieldRow}>
+                        <Text style={modal.fieldLabel}>Username</Text>
+                        <TextInput
+                          style={modal.fieldInput}
+                          value={username}
+                          onChangeText={setUsername}
+                          placeholder="Optional"
+                          placeholderTextColor={colors.textMuted}
+                          autoCapitalize="none"
+                          autoCorrect={false}
+                          editable={!isBusy}
+                        />
+                      </View>
+                      <View style={modal.fieldDivider} />
+                    </>
+                  )}
+
+                  {!isOpen && (
+                    <View style={modal.fieldRow}>
+                      <Text style={modal.fieldLabel}>Password</Text>
+                      <TextInput
+                        style={modal.fieldInput}
+                        value={password}
+                        onChangeText={setPassword}
+                        placeholder="Required"
+                        placeholderTextColor={colors.textMuted}
+                        secureTextEntry
+                        editable={!isBusy}
+                        autoFocus={!isManual}
+                        returnKeyType="go"
+                        onSubmitEditing={canConnect && !isBusy ? handleConnect : undefined}
+                      />
+                    </View>
+                  )}
+
+                  {isOpen && !isManual && (
+                    <View style={modal.openRow}>
+                      <Text style={modal.openText}>This network is open. No password is required.</Text>
+                    </View>
+                  )}
+                </View>
+
+                {errorMsg.length > 0 && (
+                  <Text style={modal.errorText}>{errorMsg}</Text>
+                )}
+              </>
             )}
           </ScrollView>
         </KeyboardAvoidingView>
@@ -240,7 +397,7 @@ export default function BleProvisionScreen() {
   const {setDeviceId, setDeviceStatus} = useAppState();
   const {hydrate} = useAuth();
 
-  const {state, startScan, selectFoundDevice, connectToDevice, sendCredentials, requestWifiScan, reset} =
+  const {state, startScan, selectFoundDevice, connectToDevice, sendCredentials, requestWifiScan, clearError, reset} =
     useBleProvision();
 
   const [modalVisible, setModalVisible] = useState(false);
@@ -265,6 +422,18 @@ export default function BleProvisionScreen() {
   const modalError =
     state.errorMsg ??
     (linkError.length > 0 ? linkError : '');
+  const showProvisionProgress =
+    modalVisible &&
+    (
+      state.phase === 'provisioning' ||
+      state.phase === 'waiting_wifi' ||
+      provisionStep !== 'idle' ||
+      (state.statusUpdate?.status === 'connected' && !state.errorMsg)
+    );
+  const provisionProgress = getProvisionProgressCopy({
+    statusUpdate: state.statusUpdate,
+    provisionStep,
+  });
 
   useEffect(() => {
     if (state.phase === 'connected' && !hasRequestedScanRef.current) {
@@ -272,13 +441,6 @@ export default function BleProvisionScreen() {
       requestWifiScan();
     }
   }, [state.phase, requestWifiScan]);
-
-  // Re-open modal on wifi failure so user can retry
-  useEffect(() => {
-    if (state.phase === 'connected' && state.errorMsg && !modalVisible) {
-      setModalVisible(true);
-    }
-  }, [state.phase, state.errorMsg, modalVisible]);
 
   const fetchPairingToken = async () => {
     try {
@@ -293,6 +455,7 @@ export default function BleProvisionScreen() {
   };
 
   const openNetworkModal = (network: WifiNetwork) => {
+    clearError();
     setModalNetwork(network);
     setIsManualEntry(false);
     setLinkError('');
@@ -300,10 +463,19 @@ export default function BleProvisionScreen() {
   };
 
   const openManualModal = () => {
+    clearError();
     setModalNetwork(null);
     setIsManualEntry(true);
     setLinkError('');
     setModalVisible(true);
+  };
+
+  const handleCloseModal = () => {
+    clearError();
+    setLinkError('');
+    setModalNetwork(null);
+    setIsManualEntry(false);
+    setModalVisible(false);
   };
 
   const handleConnect = async (ssid: string, password: string, username: string) => {
@@ -338,13 +510,6 @@ export default function BleProvisionScreen() {
       setProvisionStep('idle');
     }
   };
-
-  const StatusLine = ({label, active}: {label: string; active: boolean}) => (
-    <View style={styles.statusRow}>
-      <View style={[styles.dot, active ? styles.dotActive : styles.dotIdle]} />
-      <Text style={styles.statusLabel}>{label}</Text>
-    </View>
-  );
 
   if (!supportsBleProvisioning) {
     return (
@@ -475,7 +640,7 @@ export default function BleProvisionScreen() {
           state.phase === 'waiting_wifi') && (
           <Animated.View entering={FadeIn.duration(350)} style={styles.section}>
             <View style={styles.connectedBadge}>
-              <View style={styles.dotActive} />
+              <View style={[styles.dot, styles.dotActive]} />
               <Text style={styles.connectedText}>
                 Connected to {state.foundDevice?.name ?? 'device'}
               </Text>
@@ -524,16 +689,6 @@ export default function BleProvisionScreen() {
                 <Text style={styles.rescanText}>Rescan</Text>
               </Pressable>
             )}
-
-            {/* Progress shown while waiting for WiFi/online */}
-            {(state.phase === 'waiting_wifi' || provisionStep !== 'idle') && (
-              <View style={styles.progressCard}>
-                <StatusLine label="Credentials sent" active />
-                <StatusLine label="Wi-Fi connected" active={state.phase !== 'waiting_wifi'} />
-                <StatusLine label="Pairing with account" active={provisionStep === 'linking'} />
-                <ActivityIndicator color={colors.accent} style={{marginTop: spacing.sm}} />
-              </View>
-            )}
           </Animated.View>
         )}
 
@@ -549,15 +704,21 @@ export default function BleProvisionScreen() {
         </Pressable>
       </ScrollView>
 
-      <PasswordModal
-        visible={modalVisible}
-        network={modalNetwork}
-        isManual={isManualEntry}
-        isBusy={isBusy}
-        errorMsg={modalError}
-        onClose={() => setModalVisible(false)}
-        onConnect={handleConnect}
-      />
+      {modalVisible && (
+        <PasswordModal
+          visible
+          network={modalNetwork}
+          isManual={isManualEntry}
+          isBusy={isBusy}
+          errorMsg={modalError}
+          showProgress={showProvisionProgress}
+          progressTitle={provisionProgress.title}
+          progressMessage={provisionProgress.message}
+          progressDetails={provisionProgress.details}
+          onClose={handleCloseModal}
+          onConnect={handleConnect}
+        />
+      )}
     </SafeAreaView>
   );
 }
@@ -723,18 +884,7 @@ const styles = StyleSheet.create({
   manualEntryText: {flex: 1, color: colors.accent, fontSize: typography.bodyLg, fontWeight: '600'},
   rescanRow: {alignSelf: 'center', marginTop: spacing.sm, paddingVertical: spacing.xs},
   rescanText: {color: colors.accent, fontSize: typography.body, fontWeight: '600'},
-  progressCard: {
-    backgroundColor: colors.surface,
-    borderColor: colors.border,
-    borderWidth: 1,
-    borderRadius: radii.md,
-    padding: spacing.md,
-    gap: spacing.xs,
-  },
-  statusRow: {flexDirection: 'row', alignItems: 'center', gap: spacing.xs},
-  statusLabel: {color: colors.text, fontSize: typography.body},
   dot: {width: 8, height: 8, borderRadius: 4},
-  dotIdle: {backgroundColor: colors.textMuted},
   dotActive: {backgroundColor: colors.success},
   primaryButton: {
     backgroundColor: colors.accent,
@@ -811,6 +961,9 @@ const modal = StyleSheet.create({
     alignItems: 'flex-start',
     paddingVertical: spacing.xs,
   },
+  navBtnDisabled: {
+    opacity: 0.3,
+  },
   navBtnRight: {
     alignItems: 'flex-end',
   },
@@ -838,6 +991,73 @@ const modal = StyleSheet.create({
     padding: layout.cardPaddingLg,
     paddingTop: spacing.xl,
     gap: spacing.md,
+  },
+  progressBody: {
+    flexGrow: 1,
+    justifyContent: 'center',
+    paddingBottom: spacing.xxl,
+  },
+  progressShell: {
+    minHeight: 420,
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: spacing.xl,
+  },
+  progressSpinnerWrap: {
+    width: 112,
+    height: 112,
+    borderRadius: 56,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.card,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  progressSpinner: {
+    transform: [{scale: 1.8}],
+  },
+  progressCopy: {
+    gap: spacing.xs,
+    alignItems: 'center',
+  },
+  progressTitle: {
+    color: colors.text,
+    fontSize: typography.titleLg,
+    fontWeight: '800',
+    textAlign: 'center',
+  },
+  progressMessage: {
+    color: colors.textMuted,
+    fontSize: typography.bodyLg,
+    lineHeight: 20,
+    textAlign: 'center',
+    maxWidth: 320,
+  },
+  progressDetails: {
+    width: '100%',
+    maxWidth: 340,
+    borderRadius: radii.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.card,
+    overflow: 'hidden',
+  },
+  progressDetailRow: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    gap: spacing.xxs,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.border,
+  },
+  progressDetailLabel: {
+    color: colors.textMuted,
+    fontSize: typography.label,
+    fontWeight: '600',
+  },
+  progressDetailValue: {
+    color: colors.text,
+    fontSize: typography.bodyLg,
+    fontWeight: '600',
   },
   fieldGroup: {
     backgroundColor: colors.card,

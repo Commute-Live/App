@@ -41,11 +41,18 @@ export interface BleProvisionState {
   bluetoothMessage: string | null;
   wifiNetworks: WifiNetwork[];
   isScanning: boolean;
+  statusUpdate: BleStatusPayload | null;
 }
 
 type BleStatusPayload = {
   status: string | null;
+  phase: string | null;
   deviceId: string | null;
+  reason: string | null;
+  wifiStatus: string | null;
+  attempt: number | null;
+  attempts: number | null;
+  raw: string | null;
 };
 
 type PendingWifiResult = {
@@ -72,17 +79,60 @@ const getBluetoothMessage = (bleState: string | null | undefined): string | null
 
 const parseBleStatusPayload = (value: string | null | undefined): BleStatusPayload => {
   if (!value) {
-    return {status: null, deviceId: null};
+    return {
+      status: null,
+      phase: null,
+      deviceId: null,
+      reason: null,
+      wifiStatus: null,
+      attempt: null,
+      attempts: null,
+      raw: null,
+    };
   }
 
   try {
-    const data = JSON.parse(value) as {status?: unknown; deviceId?: unknown};
+    const data = JSON.parse(value) as {
+      status?: unknown;
+      phase?: unknown;
+      deviceId?: unknown;
+      reason?: unknown;
+      wifiStatus?: unknown;
+      attempt?: unknown;
+      attempts?: unknown;
+    };
     return {
       status: typeof data.status === 'string' ? data.status : null,
+      phase: typeof data.phase === 'string' ? data.phase : null,
       deviceId: typeof data.deviceId === 'string' ? data.deviceId : null,
+      reason: typeof data.reason === 'string' ? data.reason : null,
+      wifiStatus: typeof data.wifiStatus === 'string' ? data.wifiStatus : null,
+      attempt: typeof data.attempt === 'number' ? data.attempt : null,
+      attempts: typeof data.attempts === 'number' ? data.attempts : null,
+      raw: value,
     };
   } catch {
-    return {status: null, deviceId: null};
+    return {
+      status: null,
+      phase: null,
+      deviceId: null,
+      reason: null,
+      wifiStatus: null,
+      attempt: null,
+      attempts: null,
+      raw: value,
+    };
+  }
+};
+
+const getWifiFailureMessage = (payload: BleStatusPayload): string => {
+  switch (payload.reason) {
+    case 'auth_error':
+      return 'The display could not join Wi-Fi. Check the password and try again.';
+    case 'provision_error':
+      return 'The display joined Wi-Fi but could not finish setup. Try again.';
+    default:
+      return 'Display could not connect to Wi-Fi. Check your network name, username, and password, then try again.';
   }
 };
 
@@ -133,6 +183,7 @@ export function useBleProvision() {
     bluetoothMessage: null,
     wifiNetworks: [],
     isScanning: false,
+    statusUpdate: null,
   });
 
   const deviceRef      = useRef<Device | null>(null);
@@ -243,7 +294,13 @@ export function useBleProvision() {
   // Firmware advertises as "esp32-XXXX" — device.name IS the deviceId.
   const startScan = useCallback(async () => {
     cleanup();
-    setPhase('requesting_permission', {errorMsg: null, foundDevice: null, foundDevices: [], deviceId: null});
+    setPhase('requesting_permission', {
+      errorMsg: null,
+      foundDevice: null,
+      foundDevices: [],
+      deviceId: null,
+      statusUpdate: null,
+    });
 
     const mgr = getManager();
     if (!mgr) {
@@ -300,6 +357,7 @@ export function useBleProvision() {
         foundDevice: null,
         deviceId: null,
         errorMsg: null,
+        statusUpdate: null,
       });
       console.log(
         '[BLE] Found devices =',
@@ -339,6 +397,7 @@ export function useBleProvision() {
       ...prev,
       foundDevice: device,
       deviceId: device.name ?? prev.deviceId,
+      statusUpdate: null,
     }));
   }, []);
 
@@ -354,6 +413,7 @@ export function useBleProvision() {
       ...prev,
       foundDevice: device,
       deviceId: device.name ?? prev.deviceId,
+      statusUpdate: null,
     }));
     setPhase('connecting', {errorMsg: null});
     try {
@@ -382,18 +442,31 @@ export function useBleProvision() {
             console.log('[BLE] status update:', rawValue);
           }
 
+          setState(prev => ({
+            ...prev,
+            statusUpdate: payload,
+            deviceId: nextDeviceId ?? prev.deviceId,
+          }));
+
           if (payload.status === 'ready') {
-            setState(prev => ({...prev, deviceId: nextDeviceId ?? prev.deviceId}));
             return;
           }
 
           if (payload.status === 'connecting') {
-            setPhase('waiting_wifi', {deviceId: nextDeviceId, errorMsg: null});
+            setPhase('waiting_wifi', {
+              deviceId: nextDeviceId,
+              errorMsg: null,
+              statusUpdate: payload,
+            });
             return;
           }
 
           if (payload.status === 'connected') {
-            setPhase('connected', {deviceId: nextDeviceId, errorMsg: null});
+            setPhase('connected', {
+              deviceId: nextDeviceId,
+              errorMsg: null,
+              statusUpdate: payload,
+            });
             if (pendingWifiResultRef.current) {
               clearTimeout(pendingWifiResultRef.current.timeout);
               pendingWifiResultRef.current.resolve(nextDeviceId);
@@ -406,7 +479,8 @@ export function useBleProvision() {
             logger.error('BLE device WiFi connection failed', {deviceId: nextDeviceId});
             setPhase('connected', {
               deviceId: nextDeviceId,
-              errorMsg: 'Display could not connect to Wi-Fi. Check the SSID, username, and password, then try again.',
+              errorMsg: getWifiFailureMessage(payload),
+              statusUpdate: payload,
             });
             if (pendingWifiResultRef.current) {
               clearTimeout(pendingWifiResultRef.current.timeout);
@@ -434,7 +508,7 @@ export function useBleProvision() {
         fail('Device not connected.');
         return null;
       }
-      setPhase('provisioning', {errorMsg: null});
+      setPhase('provisioning', {errorMsg: null, statusUpdate: null});
 
       const payload = JSON.stringify({ssid, password, username, token, server_url: serverUrl});
       const encoded = Buffer.from(payload, 'utf8').toString('base64');
@@ -451,6 +525,7 @@ export function useBleProvision() {
             pendingWifiResultRef.current = null;
             setPhase('connected', {
               errorMsg: 'Timed out waiting for the display to join Wi-Fi. Check the credentials and try again.',
+              statusUpdate: null,
             });
             resolve(null);
           }, WIFI_RESULT_TIMEOUT_MS);
@@ -463,7 +538,7 @@ export function useBleProvision() {
           BLE_PROVISION_UUID,
           encoded,
         );
-        setPhase('waiting_wifi', {errorMsg: null});
+        setPhase('waiting_wifi', {errorMsg: null, statusUpdate: null});
         const deviceId = await wifiResult;
         console.log('[BLE] Credentials result deviceId =', deviceId);
         return deviceId;
@@ -564,6 +639,10 @@ export function useBleProvision() {
     }
   }, []);
 
+  const clearError = useCallback(() => {
+    setState(prev => ({...prev, errorMsg: null}));
+  }, []);
+
   const reset = useCallback(() => {
     cleanup();
     deviceRef.current = null;
@@ -577,8 +656,9 @@ export function useBleProvision() {
       bluetoothMessage: prev.bluetoothMessage,
       wifiNetworks: [],
       isScanning: false,
+      statusUpdate: null,
     }));
   }, [cleanup]);
 
-  return {state, startScan, selectFoundDevice, connectToDevice, sendCredentials, requestWifiScan, reset};
+  return {state, startScan, selectFoundDevice, connectToDevice, sendCredentials, requestWifiScan, clearError, reset};
 }
