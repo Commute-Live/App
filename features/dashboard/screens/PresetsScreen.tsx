@@ -11,7 +11,6 @@ import {
   Text,
   UIManager,
   View,
-  type LayoutChangeEvent,
 } from 'react-native';
 import {GestureHandlerRootView} from 'react-native-gesture-handler';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
@@ -26,21 +25,17 @@ import {AppBrandHeader} from '../../../components/AppBrandHeader';
 import DraggableFlatList, {type RenderItemParams} from 'react-native-draggable-flatlist';
 import {TabScreen, useTabRouteIsActive} from '../../../components/TabScreen';
 import DashboardPreviewSection from '../components/DashboardPreviewSection';
-import {DashboardOverviewTimeAdjustField as TimeAdjustField} from './DashboardOverviewTimeAdjustField';
 import {CITY_BRANDS, CITY_LABELS} from '../../../constants/cities';
 import {useAppState} from '../../../state/appState';
 import {useAuth} from '../../../state/authProvider';
 import {
   buildStopLookupKey,
   deleteDisplay,
-  DISPLAY_WEEKDAYS,
   fetchDisplays,
   getLiveArrivalLookup,
   providerToCity,
   toPreviewSlots,
-  toDisplayScheduleText,
   updateDisplay,
-  type DisplayWeekday,
   type DisplaySavePayload,
   type DeviceDisplay,
 } from '../../../lib/displays';
@@ -53,70 +48,20 @@ const MIN_BRIGHTNESS = 10;
 const MAX_BRIGHTNESS = 100;
 const BRIGHTNESS_COMMIT_DELAY_MS = 2000;
 const REORDER_ROW_HEIGHT = 76;
-const DAY_OPTIONS: Array<{id: DisplayWeekday; label: string}> = [
-  {id: 'sun', label: 'S'},
-  {id: 'mon', label: 'M'},
-  {id: 'tue', label: 'T'},
-  {id: 'wed', label: 'W'},
-  {id: 'thu', label: 'T'},
-  {id: 'fri', label: 'F'},
-  {id: 'sat', label: 'S'},
-];
-
-type ScheduleDraft = {
-  enabled: boolean;
-  start: string;
-  end: string;
-  days: DisplayWeekday[];
-};
-
-const formatScheduleSummary = (display: DeviceDisplay) => {
-  const hasCustomSchedule =
-    !!display.scheduleStart ||
-    !!display.scheduleEnd ||
-    (Array.isArray(display.scheduleDays) && display.scheduleDays.length > 0);
-  return hasCustomSchedule ? toDisplayScheduleText(display) : 'Always on';
-};
-
-const getScheduleDraft = (display: DeviceDisplay): ScheduleDraft => {
-  const enabled =
-    !!display.scheduleStart ||
-    !!display.scheduleEnd ||
-    (Array.isArray(display.scheduleDays) && display.scheduleDays.length > 0);
-  return {
-    enabled,
-    start: display.scheduleStart ?? '06:00',
-    end: display.scheduleEnd ?? '09:00',
-    days:
-      Array.isArray(display.scheduleDays) && display.scheduleDays.length > 0
-        ? display.scheduleDays
-        : [...DISPLAY_WEEKDAYS],
-  };
-};
-
-const formatScheduleDraftSummary = (draft: ScheduleDraft) => {
-  if (!draft.enabled) return 'Always on';
-  const dayLabel =
-    draft.days.length === 0 || draft.days.length === DISPLAY_WEEKDAYS.length
-      ? 'Every day'
-      : draft.days.map(day => day.toUpperCase()).join(', ');
-  return `${dayLabel} ${draft.start}-${draft.end}`;
-};
 
 const buildDisplayPayload = (
   display: DeviceDisplay,
-  options: {brightness?: number; schedule?: ScheduleDraft},
+  options: {brightness?: number},
 ): DisplaySavePayload => {
   const brightness = options.brightness ?? display.config.brightness ?? 60;
-  const schedule = options.schedule ?? getScheduleDraft(display);
   return {
     name: display.name,
     paused: display.paused,
     priority: display.priority,
     sortOrder: display.sortOrder,
-    scheduleStart: schedule.enabled ? schedule.start : null,
-    scheduleEnd: schedule.enabled ? schedule.end : null,
-    scheduleDays: schedule.enabled ? schedule.days : [],
+    scheduleStart: display.scheduleStart,
+    scheduleEnd: display.scheduleEnd,
+    scheduleDays: display.scheduleDays,
     config: {
       ...display.config,
       brightness,
@@ -181,18 +126,12 @@ export default function PresetsScreen() {
   const [carouselIndex, setCarouselIndex] = useState(0);
   const [brightnessOverrides, setBrightnessOverrides] = useState<Record<string, number>>({});
   const [expandedBrightnessControls, setExpandedBrightnessControls] = useState<Record<string, boolean>>({});
-  const [scheduleOverrides, setScheduleOverrides] = useState<Record<string, ScheduleDraft>>({});
   const [reorderVisible, setReorderVisible] = useState(false);
   const [isDisplayGestureRegionActive, setIsDisplayGestureRegionActive] = useState(false);
   const [pendingFocusDisplayId, setPendingFocusDisplayId] = useState<string | null>(
     typeof params.focusDisplayId === 'string' ? params.focusDisplayId : null,
   );
   const brightnessCommitTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const scheduleRevealTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const scrollViewRef = useRef<ScrollView | null>(null);
-  const scrollViewportHeightRef = useRef(0);
-  const scheduleSectionLayoutRef = useRef({y: 0, height: 0});
-  const footerHeightRef = useRef(0);
 
   useEffect(() => {
     if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -377,14 +316,12 @@ export default function PresetsScreen() {
     mutationFn: async ({
       display,
       brightness,
-      schedule,
     }: {
       display: DeviceDisplay;
       brightness?: number;
-      schedule?: ScheduleDraft;
     }) => {
       if (!deviceId) return;
-      const payload = buildDisplayPayload(display, {brightness, schedule});
+      const payload = buildDisplayPayload(display, {brightness});
       await updateDisplay(deviceId, display.displayId, payload);
       if (display.displayId === activeDisplayId) {
         const refreshRes = await apiFetch(`/refresh/device/${deviceId}`, {method: 'POST'});
@@ -418,12 +355,6 @@ export default function PresetsScreen() {
     ? brightnessOverrides[currentDisplay.displayId] ?? currentDisplay.config.brightness ?? 60
     : 60;
   const isBrightnessControlExpanded = currentDisplay ? !!expandedBrightnessControls[currentDisplay.displayId] : false;
-  const currentScheduleDraft = currentDisplay
-    ? scheduleOverrides[currentDisplay.displayId] ?? getScheduleDraft(currentDisplay)
-    : {enabled: false, start: '06:00', end: '09:00', days: [...DISPLAY_WEEKDAYS]};
-  const currentScheduleText = currentDisplay
-    ? formatScheduleDraftSummary(currentScheduleDraft)
-    : 'Always on';
   const showSetActiveButton = !!currentDisplay && currentDisplay.displayId !== activeDisplayId;
 
   useEffect(() => {
@@ -552,24 +483,6 @@ export default function PresetsScreen() {
     setExpandedBrightnessControls(prev => ({...prev, [displayId]: !prev[displayId]}));
   }, []);
 
-  const handleScheduleChange = useCallback((displayId: string, schedule: ScheduleDraft) => {
-    setScheduleOverrides(prev => ({...prev, [displayId]: schedule}));
-  }, []);
-
-  const handleScheduleCommit = useCallback(
-    async (display: DeviceDisplay, schedule: ScheduleDraft) => {
-      const previousSchedule = getScheduleDraft(display);
-      setScheduleOverrides(prev => ({...prev, [display.displayId]: schedule}));
-      try {
-        await updateDisplaySettingsMutation.mutateAsync({display, schedule});
-      } catch (err) {
-        setScheduleOverrides(prev => ({...prev, [display.displayId]: previousSchedule}));
-        Alert.alert('Schedule update failed', err instanceof Error ? err.message : 'Could not update schedule');
-      }
-    },
-    [updateDisplaySettingsMutation],
-  );
-
   const handleSaveReorder = useCallback(
     async (orderedIds: string[]) => {
       try {
@@ -587,48 +500,8 @@ export default function PresetsScreen() {
       if (brightnessCommitTimeoutRef.current) {
         clearTimeout(brightnessCommitTimeoutRef.current);
       }
-      if (scheduleRevealTimeoutRef.current) {
-        clearTimeout(scheduleRevealTimeoutRef.current);
-      }
     };
   }, []);
-
-  useEffect(() => {
-    if (!showSetActiveButton) {
-      footerHeightRef.current = 0;
-    }
-  }, [showSetActiveButton]);
-
-  const handleScrollViewportLayout = useCallback(({nativeEvent}: LayoutChangeEvent) => {
-    scrollViewportHeightRef.current = nativeEvent.layout.height;
-  }, []);
-
-  const handleScheduleSectionLayout = useCallback(({nativeEvent}: LayoutChangeEvent) => {
-    scheduleSectionLayoutRef.current = nativeEvent.layout;
-  }, []);
-
-  const handleFooterLayout = useCallback(({nativeEvent}: LayoutChangeEvent) => {
-    footerHeightRef.current = nativeEvent.layout.height;
-  }, []);
-
-  const revealScheduleContents = useCallback(() => {
-    const viewportHeight = scrollViewportHeightRef.current;
-    const footerHeight = footerHeightRef.current;
-    const {y, height} = scheduleSectionLayoutRef.current;
-    const visibleHeight = Math.max(0, viewportHeight - footerHeight - spacing.lg);
-    const targetY = Math.max(0, y + height - visibleHeight);
-    scrollViewRef.current?.scrollTo({y: targetY, animated: true});
-  }, []);
-
-  const queueScheduleReveal = useCallback(() => {
-    if (scheduleRevealTimeoutRef.current) {
-      clearTimeout(scheduleRevealTimeoutRef.current);
-    }
-    scheduleRevealTimeoutRef.current = setTimeout(() => {
-      scheduleRevealTimeoutRef.current = null;
-      revealScheduleContents();
-    }, 180);
-  }, [revealScheduleContents]);
 
   return (
     <TabScreen
@@ -639,10 +512,8 @@ export default function PresetsScreen() {
 
       <View style={styles.content}>
         <ScrollView
-          ref={scrollViewRef}
           style={styles.scrollView}
           contentContainerStyle={[styles.scroll, showSetActiveButton && styles.scrollWithFooter]}
-          onLayout={handleScrollViewportLayout}
           bounces={false}>
         {/* ── Page Header ───────────────────────────────────────────────── */}
         <View style={styles.pageHeader}>
@@ -771,7 +642,7 @@ export default function PresetsScreen() {
                   </View>
                 </View>
 
-                {/* Settings: brightness + schedule */}
+                {/* Settings */}
                 <View style={styles.cardSettings}>
 
                   <View style={styles.settingItem}>
@@ -803,88 +674,6 @@ export default function PresetsScreen() {
                     ) : null}
                   </View>
 
-                  <View
-                    style={[styles.settingItem, styles.settingItemBorder]}
-                    onLayout={handleScheduleSectionLayout}>
-                    {/* Schedule header: label + toggle */}
-                    <View style={styles.scheduleMainRow}>
-                      <Text style={styles.settingItemLabel}>Schedule</Text>
-                      <Pressable
-                        style={styles.scheduleToggleWrap}
-                        onPress={() => {
-                          const nextSchedule = {
-                            ...currentScheduleDraft,
-                            enabled: !currentScheduleDraft.enabled,
-                          };
-                          handleScheduleChange(currentDisplay.displayId, nextSchedule);
-                          void handleScheduleCommit(currentDisplay, nextSchedule);
-                          if (nextSchedule.enabled) {
-                            queueScheduleReveal();
-                          } else if (scheduleRevealTimeoutRef.current) {
-                            clearTimeout(scheduleRevealTimeoutRef.current);
-                            scheduleRevealTimeoutRef.current = null;
-                          }
-                        }}>
-                        <View style={[styles.scheduleToggle, currentScheduleDraft.enabled && styles.scheduleToggleOn]}>
-                          <View style={[styles.scheduleToggleThumb, currentScheduleDraft.enabled && styles.scheduleToggleThumbOn]} />
-                        </View>
-                      </Pressable>
-                    </View>
-                    {/* Day circles — only shown when schedule is enabled */}
-                    {currentScheduleDraft.enabled ? <View style={styles.daysRow}>
-                      {DAY_OPTIONS.map(day => {
-                        const active = currentScheduleDraft.enabled && currentScheduleDraft.days.includes(day.id);
-                        return (
-                          <Pressable
-                            key={day.id}
-                            style={[styles.dayPill, active && styles.dayPillActive]}
-                            disabled={!currentScheduleDraft.enabled}
-                            onPress={() => {
-                              const nextDays = active
-                                ? currentScheduleDraft.days.filter(item => item !== day.id)
-                                : [...currentScheduleDraft.days, day.id];
-                              const nextSchedule = {...currentScheduleDraft, days: nextDays};
-                              handleScheduleChange(currentDisplay.displayId, nextSchedule);
-                              void handleScheduleCommit(currentDisplay, nextSchedule);
-                            }}>
-                            <Text style={[styles.dayPillText, active && styles.dayPillTextActive]}>{day.label}</Text>
-                          </Pressable>
-                        );
-                      })}
-                    </View> : null}
-
-                    {currentScheduleDraft.enabled ? (
-                      <>
-                        <View style={styles.timeRangeRow}>
-                          <TimeAdjustField
-                            label="Start"
-                            value={currentScheduleDraft.start}
-                            onChange={start => {
-                              const nextSchedule = {
-                                ...currentScheduleDraft,
-                                start,
-                              };
-                              handleScheduleChange(currentDisplay.displayId, nextSchedule);
-                              void handleScheduleCommit(currentDisplay, nextSchedule);
-                            }}
-                          />
-                          <TimeAdjustField
-                            label="End"
-                            value={currentScheduleDraft.end}
-                            onChange={end => {
-                              const nextSchedule = {
-                                ...currentScheduleDraft,
-                                end,
-                              };
-                              handleScheduleChange(currentDisplay.displayId, nextSchedule);
-                              void handleScheduleCommit(currentDisplay, nextSchedule);
-                            }}
-                          />
-                        </View>
-                      </>
-                    ) : null}
-                  </View>
-
                 </View>
               </View>
 
@@ -900,7 +689,7 @@ export default function PresetsScreen() {
         </ScrollView>
 
         {showSetActiveButton && currentDisplay ? (
-          <View style={styles.footerActionBar} onLayout={handleFooterLayout}>
+          <View style={styles.footerActionBar}>
             <Pressable
               style={[styles.setActiveBtn, activateDisplayMutation.isPending && styles.setActiveBtnDisabled]}
               disabled={activateDisplayMutation.isPending}
@@ -1490,109 +1279,6 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '600',
   },
-
-  // ─── Schedule Editor ──────────────────────────────────────────────────────
-  scheduleEditorCard: {
-    gap: spacing.sm,
-    paddingTop: spacing.sm,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
-  },
-  scheduleToggleWrap: {padding: 4},
-  scheduleToggleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: spacing.sm,
-  },
-  scheduleToggleLabel: {
-    color: colors.text,
-    fontSize: 13,
-    fontWeight: '700',
-  },
-  scheduleToggle: {
-    width: 42,
-    height: 24,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.background,
-    paddingHorizontal: 2,
-    justifyContent: 'center',
-  },
-  scheduleToggleOn: {borderColor: colors.accent, backgroundColor: colors.accentMuted},
-  scheduleToggleThumb: {
-    width: 18,
-    height: 18,
-    borderRadius: 9,
-    backgroundColor: colors.textMuted,
-  },
-  scheduleToggleThumbOn: {alignSelf: 'flex-end', backgroundColor: colors.accent},
-  scheduleAlwaysOnCard: {
-    borderRadius: radii.sm,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.card,
-    padding: spacing.sm,
-    gap: spacing.xxs,
-  },
-  scheduleAlwaysOnTitle: {color: colors.text, fontSize: 13, fontWeight: '800'},
-  scheduleAlwaysOnBody: {color: colors.textMuted, fontSize: 12},
-
-  // ─── Schedule Rows ────────────────────────────────────────────────────────
-  scheduleMainRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-
-  // ─── Days ─────────────────────────────────────────────────────────────────
-  daysRow: {flexDirection: 'row', justifyContent: 'center', gap: 10},
-  daysRowDisabled: {opacity: 0.35},
-  dayPill: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.card,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  dayPillActive: {borderColor: colors.accent, backgroundColor: colors.accentMuted},
-  dayPillText: {color: colors.textMuted, fontSize: 13, fontWeight: '700'},
-  dayPillTextActive: {color: colors.accent},
-
-  // ─── Time Range ───────────────────────────────────────────────────────────
-  timeRangeRow: {flexDirection: 'row', gap: spacing.sm},
-  timeField: {
-    flex: 1,
-    gap: spacing.xs,
-    borderRadius: radii.sm,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.card,
-    padding: spacing.sm,
-  },
-  timeFieldLabel: {color: colors.textMuted, fontSize: 11, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5},
-  timeFieldControls: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: spacing.xs,
-  },
-  timeAdjustButton: {
-    width: layout.chromeSize,
-    height: layout.chromeSize,
-    borderRadius: radii.sm,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  timeAdjustButtonText: {color: colors.text, fontSize: 16, fontWeight: '700'},
-  timeFieldValue: {color: colors.text, fontSize: 14, fontWeight: '800'},
 
   editBtn: {
     width: layout.iconButton,

@@ -51,7 +51,6 @@ import {
   buildRouteGroups,
   cityModeFromSavedLine,
   clampNextStops,
-  cycleTimeOption,
   ensureLineCount,
   formatRoutePickerLabel,
   getAvailableModes,
@@ -117,17 +116,6 @@ const DEFAULT_BRIGHTNESS = 40;
 const MIN_BRIGHTNESS = 10;
 const MAX_BRIGHTNESS = 100;
 const MIN_STEP_SWIPE_DISTANCE = 56;
-const TIME_OPTIONS = ['00:00', '05:00', '06:00', '07:00', '08:00', '09:00', '10:00', '17:00', '18:00', '20:00', '22:00', '23:00'];
-const DAY_OPTIONS = [
-  {id: 'mon', label: 'M'},
-  {id: 'tue', label: 'T'},
-  {id: 'wed', label: 'W'},
-  {id: 'thu', label: 'T'},
-  {id: 'fri', label: 'F'},
-  {id: 'sat', label: 'S'},
-  {id: 'sun', label: 'S'},
-] as const;
-type DayId = (typeof DAY_OPTIONS)[number]['id'];
 const LAYOUT_OPTIONS = [
   {id: 'layout-1', slots: 1, label: '1 line'},
   {id: 'layout-2', slots: 2, label: '2 lines'},
@@ -483,10 +471,6 @@ export default function DisplayEditorScreen() {
   const [lines, setLines] = useState<LinePick[]>(() => ensureLineCount([], city, DEFAULT_LAYOUT_SLOTS, {}, {}));
   const [selectedLineId, setSelectedLineId] = useState<string>('');
   const [stationSearch, setStationSearch] = useState<Record<string, string>>({});
-  const [scheduleExpanded, setScheduleExpanded] = useState(false);
-  const [customDisplayScheduleEnabled, setCustomDisplayScheduleEnabled] = useState(false);
-  const [displaySchedule, setDisplaySchedule] = useState({start: '06:00', end: '09:00'});
-  const [displayDays, setDisplayDays] = useState<DayId[]>(['mon', 'tue', 'wed', 'thu', 'fri']);
   const [presetName, setPresetName] = useState('Display 1');
   const [editingDisplayId, setEditingDisplayId] = useState<string | null>(
     typeof params.displayId === 'string' ? params.displayId : null,
@@ -799,21 +783,6 @@ export default function DisplayEditorScreen() {
             : DEFAULT_BRIGHTNESS,
         });
 
-        const hasCustomSchedule =
-          !!sourceDisplay.scheduleStart ||
-          !!sourceDisplay.scheduleEnd ||
-          (Array.isArray(sourceDisplay.scheduleDays) && sourceDisplay.scheduleDays.length > 0);
-        setCustomDisplayScheduleEnabled(hasCustomSchedule);
-        setDisplaySchedule({
-          start: sourceDisplay.scheduleStart ?? '06:00',
-          end: sourceDisplay.scheduleEnd ?? '09:00',
-        });
-        setDisplayDays(
-          Array.isArray(sourceDisplay.scheduleDays) && sourceDisplay.scheduleDays.length > 0
-            ? sourceDisplay.scheduleDays
-            : ['mon', 'tue', 'wed', 'thu', 'fri'],
-        );
-
         if (!cancelled) {
           setLayoutSlots(nextLayoutSlots);
         }
@@ -863,26 +832,11 @@ export default function DisplayEditorScreen() {
         }
 
         if (!cancelled) {
-          const nextCustomScheduleEnabled =
-            !!sourceDisplay.scheduleStart ||
-            !!sourceDisplay.scheduleEnd ||
-            (Array.isArray(sourceDisplay.scheduleDays) && sourceDisplay.scheduleDays.length > 0);
-          const nextDisplaySchedule = {
-            start: sourceDisplay.scheduleStart ?? '06:00',
-            end: sourceDisplay.scheduleEnd ?? '09:00',
-          };
-          const nextDisplayDays =
-            Array.isArray(sourceDisplay.scheduleDays) && sourceDisplay.scheduleDays.length > 0
-              ? sourceDisplay.scheduleDays
-              : ['mon', 'tue', 'wed', 'thu', 'fri'];
           const nextPresetName =
             typeof sourceDisplay.name === 'string' && sourceDisplay.name.trim().length > 0
               ? sourceDisplay.name
               : 'Display 1';
           setLines(nextLines);
-          setCustomDisplayScheduleEnabled(nextCustomScheduleEnabled);
-          setDisplaySchedule(nextDisplaySchedule);
-          setDisplayDays(nextDisplayDays);
           setPresetName(nextPresetName);
           const nextDisplayPresets = nextLines.reduce<Record<string, number>>((acc, line, index) => {
             const savedLine = citySavedLines[index];
@@ -899,10 +853,7 @@ export default function DisplayEditorScreen() {
             layoutSlots: nextLayoutSlots,
             displayPresetsByLine: nextDisplayPresets,
             lines: nextLines,
-            displaySchedule: nextDisplaySchedule,
-            displayDays: nextDisplayDays,
             presetName: nextPresetName,
-            customDisplayScheduleEnabled: nextCustomScheduleEnabled,
             scrolling: sourceDisplay.config?.scrolling === true,
             brightness: Number.isFinite(Number(sourceDisplay.config?.brightness))
               ? Math.max(MIN_BRIGHTNESS, Math.min(MAX_BRIGHTNESS, Math.trunc(Number(sourceDisplay.config?.brightness))))
@@ -1041,10 +992,7 @@ export default function DisplayEditorScreen() {
     layoutSlots,
     displayPresetsByLine,
     lines,
-    displaySchedule,
-    displayDays,
     presetName,
-    customDisplayScheduleEnabled,
     scrolling: displayMetadata.scrolling,
     brightness: displayMetadata.brightness,
   });
@@ -1055,15 +1003,11 @@ export default function DisplayEditorScreen() {
       snap.layoutSlots !== layoutSlots ||
       JSON.stringify(snap.displayPresetsByLine) !== JSON.stringify(displayPresetsByLine) ||
       snap.presetName !== presetName ||
-      snap.customDisplayScheduleEnabled !== customDisplayScheduleEnabled ||
       snap.scrolling !== displayMetadata.scrolling ||
       snap.brightness !== displayMetadata.brightness ||
-      snap.displaySchedule.start !== displaySchedule.start ||
-      snap.displaySchedule.end !== displaySchedule.end ||
-      JSON.stringify(snap.displayDays) !== JSON.stringify(displayDays) ||
       JSON.stringify(snap.lines) !== JSON.stringify(lines)
     );
-  }, [city, customDisplayScheduleEnabled, displayDays, displayMetadata.brightness, displayMetadata.scrolling, displayPresetsByLine, displaySchedule.end, displaySchedule.start, layoutSlots, lines, presetName]);
+  }, [city, displayMetadata.brightness, displayMetadata.scrolling, displayPresetsByLine, layoutSlots, lines, presetName]);
 
   const draftPayload = useMemo(() => {
     const payloadLines = lines
@@ -1113,9 +1057,9 @@ export default function DisplayEditorScreen() {
       paused: displayMetadata.paused,
       priority: displayMetadata.priority,
       sortOrder: displayMetadata.sortOrder,
-      scheduleStart: customDisplayScheduleEnabled ? displaySchedule.start : null,
-      scheduleEnd: customDisplayScheduleEnabled ? displaySchedule.end : null,
-      scheduleDays: customDisplayScheduleEnabled ? displayDays : [],
+      scheduleStart: null,
+      scheduleEnd: null,
+      scheduleDays: [],
       config: {
         brightness: displayMetadata.brightness,
         displayType: getPersistedDisplayType(displayPresetsByLine['line-1'] ?? DEFAULT_DISPLAY_PRESET),
@@ -1124,7 +1068,7 @@ export default function DisplayEditorScreen() {
         lines: payloadLines,
       },
     };
-  }, [city, customDisplayScheduleEnabled, displayDays, displayMetadata.brightness, displayMetadata.paused, displayMetadata.priority, displayMetadata.scrolling, displayMetadata.sortOrder, displayPresetsByLine, displaySchedule.end, displaySchedule.start, lines, linesByMode, presetName, routesByStation, stationsByLine, stationsByMode]);
+  }, [city, displayMetadata.brightness, displayMetadata.paused, displayMetadata.priority, displayMetadata.scrolling, displayMetadata.sortOrder, displayPresetsByLine, lines, linesByMode, presetName, routesByStation, stationsByLine, stationsByMode]);
 
   const displayValidationError = useMemo(() => validateDisplayDraft(draftPayload), [draftPayload]);
   const canAutoConfirmCurrentPreset =
@@ -1262,10 +1206,7 @@ export default function DisplayEditorScreen() {
         layoutSlots,
         displayPresetsByLine: saveDisplayPresetsByLine,
         lines,
-        displaySchedule,
-        displayDays,
         presetName,
-        customDisplayScheduleEnabled,
         scrolling: displayMetadata.scrolling,
         brightness: displayMetadata.brightness,
       };
@@ -1487,10 +1428,6 @@ export default function DisplayEditorScreen() {
     setEditorStep(resolveEditorStepForLine(line ?? null));
   };
 
-  const toggleScheduleEditor = () => {
-    animateSectionLayout();
-    setScheduleExpanded(prev => !prev);
-  };
   const reorderLineByHold = (id: string) => {
     setLines(prev => {
       const idx = prev.findIndex(line => line.id === id);
@@ -1911,10 +1848,6 @@ export default function DisplayEditorScreen() {
                   selectedStation={selectedStationForEditor}
                   presetName={presetName}
                   displayMetadata={displayMetadata}
-                  customScheduleEnabled={customDisplayScheduleEnabled}
-                  displaySchedule={displaySchedule}
-                  displayDays={displayDays}
-                  scheduleExpanded={scheduleExpanded}
                   onChangeLine={next => updateLine(selectedLine.id, next)}
                   onClearLine={() => clearLineSelection(selectedLine.id)}
                   onClearStop={() => clearStopSelection(selectedLine.id)}
@@ -1922,11 +1855,6 @@ export default function DisplayEditorScreen() {
                   onPresetNameChange={setPresetName}
                   onBrightnessChange={brightness => setDisplayMetadata(prev => ({...prev, brightness}))}
                   onScrollingChange={scrolling => updateLine(selectedLine.id, {scrolling})}
-                  onScheduleEnabledChange={() => setCustomDisplayScheduleEnabled(prev => !prev)}
-                  onScheduleStartChange={start => setDisplaySchedule(prev => ({...prev, start}))}
-                  onScheduleEndChange={end => setDisplaySchedule(prev => ({...prev, end}))}
-                  onToggleDay={day => setDisplayDays(prev => prev.includes(day) ? prev.filter(d => d !== day) : [...prev, day])}
-                  onToggleScheduleExpanded={toggleScheduleEditor}
                 />
               ) : null}
 
@@ -2354,82 +2282,6 @@ function RouteGridPicker({
           </Pressable>
         );
       })}
-    </View>
-  );
-}
-
-function ScheduleTimingEditor({
-  start,
-  end,
-  days,
-  onStartChange,
-  onEndChange,
-  onToggleDay,
-}: {
-  start: string;
-  end: string;
-  days: DayId[];
-  onStartChange: (next: string) => void;
-  onEndChange: (next: string) => void;
-  onToggleDay: (day: DayId) => void;
-}) {
-  return (
-    <View style={styles.sectionBlock}>
-      <Text style={styles.sectionHint}>Choose when this display is allowed to show.</Text>
-      <View style={styles.dayPillRow}>
-        {DAY_OPTIONS.map(day => {
-          const active = days.includes(day.id);
-          return (
-            <Pressable
-              key={day.id}
-              style={[styles.dayPill, active && styles.dayPillActive]}
-              onPress={() => onToggleDay(day.id)}>
-              <Text style={[styles.dayPillText, active && styles.dayPillTextActive]}>{day.label}</Text>
-            </Pressable>
-          );
-        })}
-      </View>
-      <View style={styles.timeRangeRow}>
-        <TimeStepper
-          label="From"
-          value={start}
-          onPrev={() => onStartChange(cycleTimeOption(start, -1))}
-          onNext={() => onStartChange(cycleTimeOption(start, 1))}
-        />
-        <TimeStepper
-          label="To"
-          value={end}
-          onPrev={() => onEndChange(cycleTimeOption(end, -1))}
-          onNext={() => onEndChange(cycleTimeOption(end, 1))}
-        />
-      </View>
-    </View>
-  );
-}
-
-function TimeStepper({
-  label,
-  value,
-  onPrev,
-  onNext,
-}: {
-  label: string;
-  value: string;
-  onPrev: () => void;
-  onNext: () => void;
-}) {
-  return (
-    <View style={styles.timeStepper}>
-      <Text style={styles.timeStepperLabel}>{label}</Text>
-      <View style={styles.timeStepperControls}>
-        <Pressable style={styles.timeAdjustButton} onPress={onPrev}>
-          <Text style={styles.timeAdjustButtonText}>-</Text>
-        </Pressable>
-        <Text style={styles.timeValue}>{value}</Text>
-        <Pressable style={styles.timeAdjustButton} onPress={onNext}>
-          <Text style={styles.timeAdjustButtonText}>+</Text>
-        </Pressable>
-      </View>
     </View>
   );
 }
@@ -3170,40 +3022,6 @@ function AnimatedChevron({expanded}: {expanded: boolean}) {
       }}>
       <Text style={styles.collapsibleArrow}>▼</Text>
     </Animated.View>
-  );
-}
-
-function ScheduleToggleControl({enabled}: {enabled: boolean}) {
-  const anim = useRef(new Animated.Value(enabled ? 1 : 0)).current;
-
-  useEffect(() => {
-    Animated.timing(anim, {
-      toValue: enabled ? 1 : 0,
-      duration: 170,
-      easing: Easing.out(Easing.cubic),
-      useNativeDriver: true,
-    }).start();
-  }, [anim, enabled]);
-
-  return (
-    <View style={[styles.scheduleToggle, enabled && styles.scheduleToggleOn]}>
-      <Animated.View
-        style={[
-          styles.scheduleToggleThumb,
-          enabled && styles.scheduleToggleThumbOn,
-          {
-            transform: [
-              {
-                translateX: anim.interpolate({
-                  inputRange: [0, 1],
-                  outputRange: [0, 18],
-                }),
-              },
-            ],
-          },
-        ]}
-      />
-    </View>
   );
 }
 
@@ -4355,10 +4173,6 @@ function WizardReviewStep({
   selectedStation,
   presetName,
   displayMetadata,
-  customScheduleEnabled,
-  displaySchedule,
-  displayDays,
-  scheduleExpanded,
   onChangeLine,
   onClearLine,
   onClearStop,
@@ -4366,11 +4180,6 @@ function WizardReviewStep({
   onPresetNameChange,
   onBrightnessChange,
   onScrollingChange,
-  onScheduleEnabledChange,
-  onScheduleStartChange,
-  onScheduleEndChange,
-  onToggleDay,
-  onToggleScheduleExpanded,
 }: {
   city: CityId;
   line: LinePick;
@@ -4379,10 +4188,6 @@ function WizardReviewStep({
   selectedStation: Station | undefined;
   presetName: string;
   displayMetadata: {brightness: number; scrolling: boolean; paused: boolean; priority: number; sortOrder: number};
-  customScheduleEnabled: boolean;
-  displaySchedule: {start: string; end: string};
-  displayDays: DayId[];
-  scheduleExpanded: boolean;
   onChangeLine: (next: Partial<LinePick>) => void;
   onClearLine: () => void;
   onClearStop: () => void;
@@ -4390,14 +4195,7 @@ function WizardReviewStep({
   onPresetNameChange: (name: string) => void;
   onBrightnessChange: (brightness: number) => void;
   onScrollingChange: (scrolling: boolean) => void;
-  onScheduleEnabledChange: () => void;
-  onScheduleStartChange: (start: string) => void;
-  onScheduleEndChange: (end: string) => void;
-  onToggleDay: (day: DayId) => void;
-  onToggleScheduleExpanded: () => void;
 }) {
-  const presetOption = DISPLAY_PRESET_OPTIONS.find(o => o.id === displayPreset);
-  const directionLabel = getDirectionSummaryLabel(city, line.mode, line.direction, selectedRoute ?? line.routeId);
   const activePresetBehavior = getPresetBehavior(displayPreset);
 
   return (
@@ -4490,46 +4288,6 @@ function WizardReviewStep({
               ))}
             </View>
           </View>
-        </View>
-      </View>
-
-      {/* Schedule */}
-      <View style={styles.wizardSection}>
-        <Text style={styles.wizardSectionLabel}>Schedule</Text>
-        <View style={styles.wizardCard}>
-          <View style={styles.wizardScheduleHeader}>
-            <Text style={styles.wizardSettingLabel}>Schedule</Text>
-            <Pressable onPress={onScheduleEnabledChange}>
-              <ScheduleToggleControl enabled={customScheduleEnabled} />
-            </Pressable>
-          </View>
-          {customScheduleEnabled ? (
-            <>
-              <View style={styles.wizardCardDivider} />
-              <View style={styles.wizardDayRow}>
-                {DAY_OPTIONS.map(day => {
-                  const active = displayDays.includes(day.id);
-                  return (
-                    <Pressable
-                      key={day.id}
-                      style={[styles.wizardDayPill, active && styles.wizardDayPillActive]}
-                      onPress={() => onToggleDay(day.id)}>
-                      <Text style={[styles.wizardDayPillText, active && styles.wizardDayPillTextActive]}>{day.label}</Text>
-                    </Pressable>
-                  );
-                })}
-              </View>
-            </>
-          ) : null}
-          {customScheduleEnabled ? (
-            <>
-              <View style={styles.wizardCardDivider} />
-              <View style={styles.wizardTimeRow}>
-                <TimeStepper label="Start" value={displaySchedule.start} onPrev={() => onScheduleStartChange(cycleTimeOption(displaySchedule.start, -1))} onNext={() => onScheduleStartChange(cycleTimeOption(displaySchedule.start, 1))} />
-                <TimeStepper label="End" value={displaySchedule.end} onPrev={() => onScheduleEndChange(cycleTimeOption(displaySchedule.end, -1))} onNext={() => onScheduleEndChange(cycleTimeOption(displaySchedule.end, 1))} />
-              </View>
-            </>
-          ) : null}
         </View>
       </View>
     </View>
