@@ -21,7 +21,7 @@ import {registerAndLinkDevice} from '../../../lib/devicePairing';
 import {useAuth} from '../../../state/authProvider';
 import {useBleProvision, WifiNetwork} from '../hooks/useBleProvision';
 import {AppBrandHeader} from '../../../components/AppBrandHeader';
-import {supportsBleProvisioning, unsupportedDeviceSetupMessage} from '../../../lib/deviceSetup';
+import {postPairingRoute, supportsBleProvisioning, unsupportedDeviceSetupMessage} from '../../../lib/deviceSetup';
 
 type ProvisionStep = 'idle' | 'linking';
 
@@ -503,7 +503,7 @@ export default function BleProvisionScreen() {
 
       setModalVisible(false);
       await hydrate();
-      router.replace('/dashboard');
+      router.replace(postPairingRoute);
     } catch {
       setLinkError('Wi-Fi connected, but pairing could not reach the server. Check your internet connection and try again.');
     } finally {

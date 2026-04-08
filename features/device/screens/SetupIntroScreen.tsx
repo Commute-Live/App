@@ -10,12 +10,12 @@ import {apiFetch} from '../../../lib/api';
 import {registerAndLinkDevice} from '../../../lib/devicePairing';
 import {queryKeys} from '../../../lib/queryKeys';
 import {useAuth} from '../../../state/authProvider';
-import {supportsLocalDeviceSetup, unsupportedDeviceSetupMessage} from '../../../lib/deviceSetup';
+import {postPairingRoute, supportsLocalDeviceSetup, unsupportedDeviceSetupMessage} from '../../../lib/deviceSetup';
 
 export default function SetupIntroScreen() {
   const router = useRouter();
   const {state, setDeviceStatus, setDeviceId} = useAppState();
-  const {deviceIds} = useAuth();
+  const {deviceIds, hydrate} = useAuth();
   const setupSsid = 'Commute-Live-Setup-xxx';
   const statusUrl = 'http://192.168.4.1/status';
   const [ssid, setSsid] = useState('');
@@ -110,6 +110,7 @@ export default function SetupIntroScreen() {
       setNeedsHomeWifiForLink(false);
       setDeviceStatus('pairedOnline');
       setErrorMsg('');
+      router.replace(postPairingRoute);
       return true;
     }
 
@@ -128,6 +129,8 @@ export default function SetupIntroScreen() {
       setNeedsHomeWifiForLink(false);
       setDeviceStatus('pairedOnline');
       setErrorMsg('');
+      await hydrate();
+      router.replace(postPairingRoute);
       return true;
     } catch {
       setPendingLinkDeviceId(deviceIdToLink);
@@ -316,9 +319,9 @@ export default function SetupIntroScreen() {
           <Pressable
             style={styles.finishLink}
             disabled={isConnecting || isLinking || needsHomeWifiForLink}
-            onPress={() => router.push('/dashboard')}
+            onPress={() => router.push(postPairingRoute)}
           >
-            <Text style={styles.finishText}>Finish setup</Text>
+            <Text style={styles.finishText}>Choose preset</Text>
           </Pressable>
         </View>
       </View>

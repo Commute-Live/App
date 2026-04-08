@@ -2,6 +2,7 @@ import {Platform} from 'react-native';
 
 export const supportsBleProvisioning = Platform.OS === 'ios' || Platform.OS === 'android';
 export const supportsLocalDeviceSetup = supportsBleProvisioning;
+export const postPairingRoute = '/presets';
 
 export const unsupportedDeviceSetupMessage =
   'Device setup is currently available only in the iOS and Android app. Finish onboarding on a phone or tablet, then come back here to manage your display.';
