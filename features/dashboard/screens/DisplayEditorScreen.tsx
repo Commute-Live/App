@@ -1169,18 +1169,25 @@ export default function DisplayEditorScreen() {
         if (saveDisplayPresetsByLine !== displayPresetsByLine) {
           setDisplayPresetsByLine(saveDisplayPresetsByLine);
         }
+        const cachedDisplays =
+          queryClient.getQueryData<{displays: DeviceDisplay[]; activeDisplayId: string | null}>(
+            queryKeys.displays(selectedDevice.id),
+          ) ?? (await fetchDisplays(selectedDevice.id));
+        const maxPriority = Math.max(0, ...cachedDisplays.displays.map(display => display.priority));
+        const shouldKeepActivePriority =
+          !!editingDisplayId && cachedDisplays.activeDisplayId === editingDisplayId;
         let payloadToSave = saveDraftPayload;
+        payloadToSave = {
+          ...payloadToSave,
+          priority: shouldKeepActivePriority ? payloadToSave.priority : maxPriority + 1,
+        };
         if (!editingDisplayId) {
-          const cachedDisplays =
-            queryClient.getQueryData<{displays: DeviceDisplay[]; activeDisplayId: string | null}>(
-              queryKeys.displays(selectedDevice.id),
-            ) ?? (await fetchDisplays(selectedDevice.id));
           const nextSortOrder =
             cachedDisplays.displays.length > 0
               ? Math.max(...cachedDisplays.displays.map(display => display.sortOrder)) + 1
               : 0;
           payloadToSave = {
-            ...saveDraftPayload,
+            ...payloadToSave,
             sortOrder: nextSortOrder,
           };
         }
