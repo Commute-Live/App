@@ -38,6 +38,16 @@ export interface BleProvisionState {
   bluetoothMessage: string | null;
   wifiNetworks: WifiNetwork[];
   isScanning: boolean;
+  statusUpdate: {
+    status: string | null;
+    phase: string | null;
+    deviceId: string | null;
+    reason: string | null;
+    wifiStatus: string | null;
+    attempt: number | null;
+    attempts: number | null;
+    raw: string | null;
+  } | null;
 }
 
 const unsupportedMessage =
@@ -54,6 +64,7 @@ export function useBleProvision() {
     bluetoothMessage: unsupportedMessage,
     wifiNetworks: [],
     isScanning: false,
+    statusUpdate: null,
   });
 
   const reset = useCallback(() => {
@@ -64,6 +75,7 @@ export function useBleProvision() {
       bluetoothMessage: unsupportedMessage,
       wifiNetworks: [],
       isScanning: false,
+      statusUpdate: null,
     }));
   }, []);
 
@@ -89,6 +101,12 @@ export function useBleProvision() {
     [],
   );
   const requestWifiScan = useCallback(async () => {}, []);
+  const clearError = useCallback(() => {
+    setState(prev => ({
+      ...prev,
+      errorMsg: null,
+    }));
+  }, []);
 
   return {
     state,
@@ -97,6 +115,7 @@ export function useBleProvision() {
     connectToDevice,
     sendCredentials,
     requestWifiScan,
+    clearError,
     reset,
   };
 }

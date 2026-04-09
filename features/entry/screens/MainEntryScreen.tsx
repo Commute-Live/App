@@ -5,10 +5,11 @@ import {useRouter} from 'expo-router';
 import {colors, spacing} from '../../../theme';
 import AuthScreen from '../../auth/screens/AuthScreen';
 import {useAuth} from '../../../state/authProvider';
+import {getPostAuthRoute} from '../../../lib/deviceSetup';
 
 export default function MainEntryScreen() {
   const router = useRouter();
-  const {status, isAuthenticated} = useAuth();
+  const {status, isAuthenticated, deviceIds} = useAuth();
   const [showLogo, setShowLogo] = useState(true);
 
   useEffect(() => {
@@ -18,8 +19,8 @@ export default function MainEntryScreen() {
 
   useEffect(() => {
     if (showLogo || status === 'loading' || !isAuthenticated) return;
-    router.replace('/dashboard');
-  }, [isAuthenticated, router, showLogo, status]);
+    router.replace(getPostAuthRoute(deviceIds));
+  }, [deviceIds, isAuthenticated, router, showLogo, status]);
 
   if (showLogo || status === 'loading') {
     return (

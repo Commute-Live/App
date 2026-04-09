@@ -1,5 +1,17 @@
 import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react';
-import {Alert, Modal, PanResponder, Pressable, ScrollView, StyleSheet, Text, View} from 'react-native';
+import {
+  Alert,
+  LayoutAnimation,
+  Modal,
+  PanResponder,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  UIManager,
+  View,
+} from 'react-native';
 import {GestureHandlerRootView} from 'react-native-gesture-handler';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
 import {Ionicons} from '@expo/vector-icons';
@@ -13,21 +25,17 @@ import {AppBrandHeader} from '../../../components/AppBrandHeader';
 import DraggableFlatList, {type RenderItemParams} from 'react-native-draggable-flatlist';
 import {TabScreen, useTabRouteIsActive} from '../../../components/TabScreen';
 import DashboardPreviewSection from '../components/DashboardPreviewSection';
-import {DashboardOverviewTimeAdjustField as TimeAdjustField} from './DashboardOverviewTimeAdjustField';
 import {CITY_BRANDS, CITY_LABELS} from '../../../constants/cities';
 import {useAppState} from '../../../state/appState';
 import {useAuth} from '../../../state/authProvider';
 import {
   buildStopLookupKey,
   deleteDisplay,
-  DISPLAY_WEEKDAYS,
   fetchDisplays,
   getLiveArrivalLookup,
   providerToCity,
   toPreviewSlots,
-  toDisplayScheduleText,
   updateDisplay,
-  type DisplayWeekday,
   type DisplaySavePayload,
   type DeviceDisplay,
 } from '../../../lib/displays';
@@ -40,70 +48,20 @@ const MIN_BRIGHTNESS = 10;
 const MAX_BRIGHTNESS = 100;
 const BRIGHTNESS_COMMIT_DELAY_MS = 2000;
 const REORDER_ROW_HEIGHT = 76;
-const DAY_OPTIONS: Array<{id: DisplayWeekday; label: string}> = [
-  {id: 'sun', label: 'S'},
-  {id: 'mon', label: 'M'},
-  {id: 'tue', label: 'T'},
-  {id: 'wed', label: 'W'},
-  {id: 'thu', label: 'T'},
-  {id: 'fri', label: 'F'},
-  {id: 'sat', label: 'S'},
-];
-
-type ScheduleDraft = {
-  enabled: boolean;
-  start: string;
-  end: string;
-  days: DisplayWeekday[];
-};
-
-const formatScheduleSummary = (display: DeviceDisplay) => {
-  const hasCustomSchedule =
-    !!display.scheduleStart ||
-    !!display.scheduleEnd ||
-    (Array.isArray(display.scheduleDays) && display.scheduleDays.length > 0);
-  return hasCustomSchedule ? toDisplayScheduleText(display) : 'Always on';
-};
-
-const getScheduleDraft = (display: DeviceDisplay): ScheduleDraft => {
-  const enabled =
-    !!display.scheduleStart ||
-    !!display.scheduleEnd ||
-    (Array.isArray(display.scheduleDays) && display.scheduleDays.length > 0);
-  return {
-    enabled,
-    start: display.scheduleStart ?? '06:00',
-    end: display.scheduleEnd ?? '09:00',
-    days:
-      Array.isArray(display.scheduleDays) && display.scheduleDays.length > 0
-        ? display.scheduleDays
-        : [...DISPLAY_WEEKDAYS],
-  };
-};
-
-const formatScheduleDraftSummary = (draft: ScheduleDraft) => {
-  if (!draft.enabled) return 'Always on';
-  const dayLabel =
-    draft.days.length === 0 || draft.days.length === DISPLAY_WEEKDAYS.length
-      ? 'Every day'
-      : draft.days.map(day => day.toUpperCase()).join(', ');
-  return `${dayLabel} ${draft.start}-${draft.end}`;
-};
 
 const buildDisplayPayload = (
   display: DeviceDisplay,
-  options: {brightness?: number; schedule?: ScheduleDraft},
+  options: {brightness?: number},
 ): DisplaySavePayload => {
   const brightness = options.brightness ?? display.config.brightness ?? 60;
-  const schedule = options.schedule ?? getScheduleDraft(display);
   return {
     name: display.name,
     paused: display.paused,
     priority: display.priority,
     sortOrder: display.sortOrder,
-    scheduleStart: schedule.enabled ? schedule.start : null,
-    scheduleEnd: schedule.enabled ? schedule.end : null,
-    scheduleDays: schedule.enabled ? schedule.days : [],
+    scheduleStart: display.scheduleStart,
+    scheduleEnd: display.scheduleEnd,
+    scheduleDays: display.scheduleDays,
     config: {
       ...display.config,
       brightness,
@@ -167,13 +125,19 @@ export default function PresetsScreen() {
   const isScreenFocused = useTabRouteIsActive('/presets');
   const [carouselIndex, setCarouselIndex] = useState(0);
   const [brightnessOverrides, setBrightnessOverrides] = useState<Record<string, number>>({});
-  const [scheduleOverrides, setScheduleOverrides] = useState<Record<string, ScheduleDraft>>({});
+  const [expandedBrightnessControls, setExpandedBrightnessControls] = useState<Record<string, boolean>>({});
   const [reorderVisible, setReorderVisible] = useState(false);
   const [isDisplayGestureRegionActive, setIsDisplayGestureRegionActive] = useState(false);
   const [pendingFocusDisplayId, setPendingFocusDisplayId] = useState<string | null>(
     typeof params.focusDisplayId === 'string' ? params.focusDisplayId : null,
   );
   const brightnessCommitTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+      UIManager.setLayoutAnimationEnabledExperimental(true);
+    }
+  }, []);
 
 
   const displaysQuery = useQuery({
@@ -352,14 +316,12 @@ export default function PresetsScreen() {
     mutationFn: async ({
       display,
       brightness,
-      schedule,
     }: {
       display: DeviceDisplay;
       brightness?: number;
-      schedule?: ScheduleDraft;
     }) => {
       if (!deviceId) return;
-      const payload = buildDisplayPayload(display, {brightness, schedule});
+      const payload = buildDisplayPayload(display, {brightness});
       await updateDisplay(deviceId, display.displayId, payload);
       if (display.displayId === activeDisplayId) {
         const refreshRes = await apiFetch(`/refresh/device/${deviceId}`, {method: 'POST'});
@@ -392,12 +354,8 @@ export default function PresetsScreen() {
   const currentBrightness = currentDisplay
     ? brightnessOverrides[currentDisplay.displayId] ?? currentDisplay.config.brightness ?? 60
     : 60;
-  const currentScheduleDraft = currentDisplay
-    ? scheduleOverrides[currentDisplay.displayId] ?? getScheduleDraft(currentDisplay)
-    : {enabled: false, start: '06:00', end: '09:00', days: [...DISPLAY_WEEKDAYS]};
-  const currentScheduleText = currentDisplay
-    ? formatScheduleDraftSummary(currentScheduleDraft)
-    : 'Always on';
+  const isBrightnessControlExpanded = currentDisplay ? !!expandedBrightnessControls[currentDisplay.displayId] : false;
+  const showSetActiveButton = !!currentDisplay && currentDisplay.displayId !== activeDisplayId;
 
   useEffect(() => {
     if (typeof params.focusDisplayId === 'string' && params.focusDisplayId.length > 0) {
@@ -515,23 +473,15 @@ export default function PresetsScreen() {
     [scheduleBrightnessCommit],
   );
 
-  const handleScheduleChange = useCallback((displayId: string, schedule: ScheduleDraft) => {
-    setScheduleOverrides(prev => ({...prev, [displayId]: schedule}));
+  const toggleBrightnessControl = useCallback((displayId: string) => {
+    LayoutAnimation.configureNext({
+      duration: 220,
+      create: {type: LayoutAnimation.Types.easeInEaseOut, property: LayoutAnimation.Properties.opacity},
+      update: {type: LayoutAnimation.Types.easeInEaseOut},
+      delete: {type: LayoutAnimation.Types.easeInEaseOut, property: LayoutAnimation.Properties.opacity},
+    });
+    setExpandedBrightnessControls(prev => ({...prev, [displayId]: !prev[displayId]}));
   }, []);
-
-  const handleScheduleCommit = useCallback(
-    async (display: DeviceDisplay, schedule: ScheduleDraft) => {
-      const previousSchedule = getScheduleDraft(display);
-      setScheduleOverrides(prev => ({...prev, [display.displayId]: schedule}));
-      try {
-        await updateDisplaySettingsMutation.mutateAsync({display, schedule});
-      } catch (err) {
-        setScheduleOverrides(prev => ({...prev, [display.displayId]: previousSchedule}));
-        Alert.alert('Schedule update failed', err instanceof Error ? err.message : 'Could not update schedule');
-      }
-    },
-    [updateDisplaySettingsMutation],
-  );
 
   const handleSaveReorder = useCallback(
     async (orderedIds: string[]) => {
@@ -560,7 +510,11 @@ export default function PresetsScreen() {
       tabRoute="/presets">
       <AppBrandHeader email={user?.email} />
 
-      <ScrollView contentContainerStyle={styles.scroll} bounces={false}>
+      <View style={styles.content}>
+        <ScrollView
+          style={styles.scrollView}
+          contentContainerStyle={[styles.scroll, showSetActiveButton && styles.scrollWithFooter]}
+          bounces={false}>
         {/* ── Page Header ───────────────────────────────────────────────── */}
         <View style={styles.pageHeader}>
           <View style={styles.pageHeaderRow}>
@@ -646,14 +600,16 @@ export default function PresetsScreen() {
 
                     {/* Center: ‹ Name › — truly centered */}
                     <View style={styles.navCenter}>
-                      {visibleDisplays.length > 1 ? (
-                        <Pressable
-                          style={[styles.arrowBtn, safeIndex === 0 && styles.arrowBtnDisabled]}
-                          onPress={() => goTo(safeIndex - 1)}
-                          disabled={safeIndex === 0}>
-                          <Ionicons name="chevron-back" size={15} color={colors.textMuted} />
-                        </Pressable>
-                      ) : null}
+                      <Pressable
+                        style={[
+                          styles.arrowBtn,
+                          (visibleDisplays.length <= 1 || safeIndex === 0) && styles.arrowBtnDisabled,
+                          visibleDisplays.length <= 1 && styles.arrowBtnHidden,
+                        ]}
+                        onPress={() => goTo(safeIndex - 1)}
+                        disabled={visibleDisplays.length <= 1 || safeIndex === 0}>
+                        <Ionicons name="chevron-back" size={22} color={colors.textMuted} />
+                      </Pressable>
                       <View style={styles.navTitleBlock}>
                         <Text style={styles.navDisplayName} numberOfLines={1}>{currentDisplay.name}</Text>
                         {currentDisplay.displayId === activeDisplayId ? (
@@ -665,14 +621,16 @@ export default function PresetsScreen() {
                           <Text style={styles.navDisplayCity}>{CITY_LABELS[currentDisplayCity]}</Text>
                         )}
                       </View>
-                      {visibleDisplays.length > 1 ? (
-                        <Pressable
-                          style={[styles.arrowBtn, safeIndex === visibleDisplays.length - 1 && styles.arrowBtnDisabled]}
-                          onPress={() => goTo(safeIndex + 1)}
-                          disabled={safeIndex === visibleDisplays.length - 1}>
-                          <Ionicons name="chevron-forward" size={15} color={colors.textMuted} />
-                        </Pressable>
-                      ) : null}
+                      <Pressable
+                        style={[
+                          styles.arrowBtn,
+                          (visibleDisplays.length <= 1 || safeIndex === visibleDisplays.length - 1) && styles.arrowBtnDisabled,
+                          visibleDisplays.length <= 1 && styles.arrowBtnHidden,
+                        ]}
+                        onPress={() => goTo(safeIndex + 1)}
+                        disabled={visibleDisplays.length <= 1 || safeIndex === visibleDisplays.length - 1}>
+                        <Ionicons name="chevron-forward" size={22} color={colors.textMuted} />
+                      </Pressable>
                     </View>
 
                     {/* Right: Delete */}
@@ -684,112 +642,37 @@ export default function PresetsScreen() {
                   </View>
                 </View>
 
-                {/* Settings: brightness + schedule */}
+                {/* Settings */}
                 <View style={styles.cardSettings}>
 
                   <View style={styles.settingItem}>
                     <View style={styles.settingItemRow}>
                       <Text style={styles.settingItemLabel}>Brightness</Text>
-                      <View style={styles.brightnessValueBadge}>
-                        <Text style={styles.brightnessValueText}>{currentBrightness}%</Text>
-                      </View>
-                    </View>
-                    <BrightnessSlider
-                      value={currentBrightness}
-                      min={MIN_BRIGHTNESS}
-                      max={MAX_BRIGHTNESS}
-                      onChange={value => handleBrightnessChange(currentDisplay, value)}
-                      onCommit={() => {}}
-                    />
-                  </View>
-
-                  <View style={[styles.settingItem, styles.settingItemBorder]}>
-                    {/* Schedule header: label + toggle */}
-                    <View style={styles.scheduleMainRow}>
-                      <Text style={styles.settingItemLabel}>Schedule</Text>
                       <Pressable
-                        style={styles.scheduleToggleWrap}
-                        onPress={() => {
-                          const nextSchedule = {
-                            ...currentScheduleDraft,
-                            enabled: !currentScheduleDraft.enabled,
-                          };
-                          handleScheduleChange(currentDisplay.displayId, nextSchedule);
-                          void handleScheduleCommit(currentDisplay, nextSchedule);
-                        }}>
-                        <View style={[styles.scheduleToggle, currentScheduleDraft.enabled && styles.scheduleToggleOn]}>
-                          <View style={[styles.scheduleToggleThumb, currentScheduleDraft.enabled && styles.scheduleToggleThumbOn]} />
-                        </View>
+                        style={({pressed}) => [
+                          styles.brightnessValueBadge,
+                          isBrightnessControlExpanded && styles.brightnessValueBadgeActive,
+                          pressed && styles.brightnessValueBadgePressed,
+                        ]}
+                        onPress={() => toggleBrightnessControl(currentDisplay.displayId)}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Brightness ${currentBrightness}%`}
+                        accessibilityHint={
+                          isBrightnessControlExpanded ? 'Hide the brightness slider' : 'Show the brightness slider'
+                        }>
+                        <Text style={styles.brightnessValueText}>{currentBrightness}%</Text>
                       </Pressable>
                     </View>
-                    {/* Day circles — only shown when schedule is enabled */}
-                    {currentScheduleDraft.enabled ? <View style={styles.daysRow}>
-                      {DAY_OPTIONS.map(day => {
-                        const active = currentScheduleDraft.enabled && currentScheduleDraft.days.includes(day.id);
-                        return (
-                          <Pressable
-                            key={day.id}
-                            style={[styles.dayPill, active && styles.dayPillActive]}
-                            disabled={!currentScheduleDraft.enabled}
-                            onPress={() => {
-                              const nextDays = active
-                                ? currentScheduleDraft.days.filter(item => item !== day.id)
-                                : [...currentScheduleDraft.days, day.id];
-                              const nextSchedule = {...currentScheduleDraft, days: nextDays};
-                              handleScheduleChange(currentDisplay.displayId, nextSchedule);
-                              void handleScheduleCommit(currentDisplay, nextSchedule);
-                            }}>
-                            <Text style={[styles.dayPillText, active && styles.dayPillTextActive]}>{day.label}</Text>
-                          </Pressable>
-                        );
-                      })}
-                    </View> : null}
-
-                    {currentScheduleDraft.enabled ? (
-                      <>
-                        <View style={styles.timeRangeRow}>
-                          <TimeAdjustField
-                            label="Start"
-                            value={currentScheduleDraft.start}
-                            onChange={start => {
-                              const nextSchedule = {
-                                ...currentScheduleDraft,
-                                start,
-                              };
-                              handleScheduleChange(currentDisplay.displayId, nextSchedule);
-                              void handleScheduleCommit(currentDisplay, nextSchedule);
-                            }}
-                          />
-                          <TimeAdjustField
-                            label="End"
-                            value={currentScheduleDraft.end}
-                            onChange={end => {
-                              const nextSchedule = {
-                                ...currentScheduleDraft,
-                                end,
-                              };
-                              handleScheduleChange(currentDisplay.displayId, nextSchedule);
-                              void handleScheduleCommit(currentDisplay, nextSchedule);
-                            }}
-                          />
-                        </View>
-                      </>
+                    {isBrightnessControlExpanded ? (
+                      <BrightnessSlider
+                        value={currentBrightness}
+                        min={MIN_BRIGHTNESS}
+                        max={MAX_BRIGHTNESS}
+                        onChange={value => handleBrightnessChange(currentDisplay, value)}
+                        onCommit={() => {}}
+                      />
                     ) : null}
                   </View>
-
-                  {/* Set Active */}
-                  {currentDisplay.displayId !== activeDisplayId ? (
-                    <View style={[styles.settingItem, styles.settingItemBorder]}>
-                      <Pressable
-                        style={[styles.setActiveBtn, activateDisplayMutation.isPending && styles.setActiveBtnDisabled]}
-                        disabled={activateDisplayMutation.isPending}
-                        onPress={() => activateDisplayMutation.mutate(currentDisplay)}>
-                        <Text style={styles.setActiveBtnText}>
-                          {activateDisplayMutation.isPending ? 'Activating…' : 'Set as Active'}
-                        </Text>
-                      </Pressable>
-                    </View>
-                  ) : null}
 
                 </View>
               </View>
@@ -803,7 +686,22 @@ export default function PresetsScreen() {
           )
         ) : null}
 
-      </ScrollView>
+        </ScrollView>
+
+        {showSetActiveButton && currentDisplay ? (
+          <View style={styles.footerActionBar}>
+            <Pressable
+              style={[styles.setActiveBtn, activateDisplayMutation.isPending && styles.setActiveBtnDisabled]}
+              disabled={activateDisplayMutation.isPending}
+              onPress={() => activateDisplayMutation.mutate(currentDisplay)}>
+              <Text style={styles.setActiveBtnText}>
+                {activateDisplayMutation.isPending ? 'Activating…' : 'Set as Active'}
+              </Text>
+            </Pressable>
+            <View style={styles.footerActionBarBottomSpacer} />
+          </View>
+        ) : null}
+      </View>
 
       <ReorderDisplaysModal
         visible={reorderVisible}
@@ -1037,11 +935,16 @@ function ReorderListRow({
 const styles = StyleSheet.create({
   // ─── Layout ───────────────────────────────────────────────────────────────
   container: {flex: 1, backgroundColor: colors.background},
+  content: {flex: 1},
+  scrollView: {flex: 1},
   scroll: {
     paddingHorizontal: layout.screenPadding,
     paddingTop: layout.screenPadding,
     paddingBottom: layout.bottomInset,
     gap: layout.screenGap,
+  },
+  scrollWithFooter: {
+    paddingBottom: spacing.lg,
   },
 
   // ─── Page Header ──────────────────────────────────────────────────────────
@@ -1171,13 +1074,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
   },
   navLeft: {
-    flex: 1,
+    width: layout.iconButton,
+    flexShrink: 0,
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.xs,
   },
   navRight: {
-    flex: 1,
+    width: layout.iconButton,
+    flexShrink: 0,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'flex-end',
@@ -1204,23 +1109,27 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   navCenter: {
+    flex: 1,
+    minWidth: 0,
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.xs,
   },
   navTitleBlock: {
+    flex: 1,
+    minWidth: 0,
     alignItems: 'center',
     justifyContent: 'center',
     gap: 2,
-    flexShrink: 1,
+    paddingHorizontal: spacing.xs,
   },
   navDisplayName: {
     color: colors.text,
     fontSize: 13,
     fontWeight: '700',
     textAlign: 'center',
-    flexShrink: 1,
-    paddingHorizontal: 4,
+    width: '100%',
   },
   navDisplayCity: {
     color: colors.textMuted,
@@ -1252,12 +1161,14 @@ const styles = StyleSheet.create({
     lineHeight: 12,
   },
   arrowBtn: {
-    width: layout.iconButton,
-    height: layout.iconButton,
+    width: 44,
+    height: 44,
+    flexShrink: 0,
     alignItems: 'center',
     justifyContent: 'center',
   },
   arrowBtnDisabled: {opacity: 0.25},
+  arrowBtnHidden: {opacity: 0},
   dotRow: {flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.xxs},
   dot: {width: 5, height: 5, borderRadius: 3, backgroundColor: colors.border},
   dotActive: {width: 14, height: 5, borderRadius: 3, backgroundColor: colors.accent},
@@ -1300,6 +1211,13 @@ const styles = StyleSheet.create({
     backgroundColor: colors.card,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  brightnessValueBadgeActive: {
+    borderColor: colors.accent,
+    backgroundColor: colors.surface,
+  },
+  brightnessValueBadgePressed: {
+    opacity: 0.82,
   },
   brightnessValueText: {
     color: colors.text,
@@ -1361,109 +1279,6 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '600',
   },
-
-  // ─── Schedule Editor ──────────────────────────────────────────────────────
-  scheduleEditorCard: {
-    gap: spacing.sm,
-    paddingTop: spacing.sm,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
-  },
-  scheduleToggleWrap: {padding: 4},
-  scheduleToggleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: spacing.sm,
-  },
-  scheduleToggleLabel: {
-    color: colors.text,
-    fontSize: 13,
-    fontWeight: '700',
-  },
-  scheduleToggle: {
-    width: 42,
-    height: 24,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.background,
-    paddingHorizontal: 2,
-    justifyContent: 'center',
-  },
-  scheduleToggleOn: {borderColor: colors.accent, backgroundColor: colors.accentMuted},
-  scheduleToggleThumb: {
-    width: 18,
-    height: 18,
-    borderRadius: 9,
-    backgroundColor: colors.textMuted,
-  },
-  scheduleToggleThumbOn: {alignSelf: 'flex-end', backgroundColor: colors.accent},
-  scheduleAlwaysOnCard: {
-    borderRadius: radii.sm,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.card,
-    padding: spacing.sm,
-    gap: spacing.xxs,
-  },
-  scheduleAlwaysOnTitle: {color: colors.text, fontSize: 13, fontWeight: '800'},
-  scheduleAlwaysOnBody: {color: colors.textMuted, fontSize: 12},
-
-  // ─── Schedule Rows ────────────────────────────────────────────────────────
-  scheduleMainRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-
-  // ─── Days ─────────────────────────────────────────────────────────────────
-  daysRow: {flexDirection: 'row', justifyContent: 'center', gap: 10},
-  daysRowDisabled: {opacity: 0.35},
-  dayPill: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.card,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  dayPillActive: {borderColor: colors.accent, backgroundColor: colors.accentMuted},
-  dayPillText: {color: colors.textMuted, fontSize: 13, fontWeight: '700'},
-  dayPillTextActive: {color: colors.accent},
-
-  // ─── Time Range ───────────────────────────────────────────────────────────
-  timeRangeRow: {flexDirection: 'row', gap: spacing.sm},
-  timeField: {
-    flex: 1,
-    gap: spacing.xs,
-    borderRadius: radii.sm,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.card,
-    padding: spacing.sm,
-  },
-  timeFieldLabel: {color: colors.textMuted, fontSize: 11, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5},
-  timeFieldControls: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: spacing.xs,
-  },
-  timeAdjustButton: {
-    width: layout.chromeSize,
-    height: layout.chromeSize,
-    borderRadius: radii.sm,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  timeAdjustButtonText: {color: colors.text, fontSize: 16, fontWeight: '700'},
-  timeFieldValue: {color: colors.text, fontSize: 14, fontWeight: '800'},
 
   editBtn: {
     width: layout.iconButton,
@@ -1701,6 +1516,16 @@ const styles = StyleSheet.create({
     color: colors.background,
     fontSize: 13,
     fontWeight: '800',
+  },
+  footerActionBar: {
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    backgroundColor: colors.background,
+    paddingTop: spacing.md,
+    paddingHorizontal: layout.screenPadding,
+  },
+  footerActionBarBottomSpacer: {
+    height: spacing.md,
   },
   activeStatusRow: {
     flexDirection: 'row',

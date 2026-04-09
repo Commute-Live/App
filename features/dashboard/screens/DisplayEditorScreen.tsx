@@ -51,7 +51,6 @@ import {
   buildRouteGroups,
   cityModeFromSavedLine,
   clampNextStops,
-  cycleTimeOption,
   ensureLineCount,
   formatRoutePickerLabel,
   getAvailableModes,
@@ -104,6 +103,7 @@ type StationsByMode = Partial<Record<ModeId, Station[]>>;
 type RoutesByStation = Record<string, Route[]>;
 type EditorStep = 'city' | 'format' | 'lines' | 'stops' | 'done';
 type WizardStepDef = {id: EditorStep; label: string; complete: boolean; reachable: boolean};
+type SelectionSheetOption = {id: string; label: string; description?: string};
 
 const DEFAULT_TEXT_COLOR = colors.text;
 const BOROUGH_ORDER = ['Manhattan', 'Bronx', 'Brooklyn', 'Queens', 'Staten Island'];
@@ -116,17 +116,6 @@ const DEFAULT_BRIGHTNESS = 40;
 const MIN_BRIGHTNESS = 10;
 const MAX_BRIGHTNESS = 100;
 const MIN_STEP_SWIPE_DISTANCE = 56;
-const TIME_OPTIONS = ['00:00', '05:00', '06:00', '07:00', '08:00', '09:00', '10:00', '17:00', '18:00', '20:00', '22:00', '23:00'];
-const DAY_OPTIONS = [
-  {id: 'mon', label: 'M'},
-  {id: 'tue', label: 'T'},
-  {id: 'wed', label: 'W'},
-  {id: 'thu', label: 'T'},
-  {id: 'fri', label: 'F'},
-  {id: 'sat', label: 'S'},
-  {id: 'sun', label: 'S'},
-] as const;
-type DayId = (typeof DAY_OPTIONS)[number]['id'];
 const LAYOUT_OPTIONS = [
   {id: 'layout-1', slots: 1, label: '1 line'},
   {id: 'layout-2', slots: 2, label: '2 lines'},
@@ -482,10 +471,6 @@ export default function DisplayEditorScreen() {
   const [lines, setLines] = useState<LinePick[]>(() => ensureLineCount([], city, DEFAULT_LAYOUT_SLOTS, {}, {}));
   const [selectedLineId, setSelectedLineId] = useState<string>('');
   const [stationSearch, setStationSearch] = useState<Record<string, string>>({});
-  const [scheduleExpanded, setScheduleExpanded] = useState(false);
-  const [customDisplayScheduleEnabled, setCustomDisplayScheduleEnabled] = useState(false);
-  const [displaySchedule, setDisplaySchedule] = useState({start: '06:00', end: '09:00'});
-  const [displayDays, setDisplayDays] = useState<DayId[]>(['mon', 'tue', 'wed', 'thu', 'fri']);
   const [presetName, setPresetName] = useState('Display 1');
   const [editingDisplayId, setEditingDisplayId] = useState<string | null>(
     typeof params.displayId === 'string' ? params.displayId : null,
@@ -798,21 +783,6 @@ export default function DisplayEditorScreen() {
             : DEFAULT_BRIGHTNESS,
         });
 
-        const hasCustomSchedule =
-          !!sourceDisplay.scheduleStart ||
-          !!sourceDisplay.scheduleEnd ||
-          (Array.isArray(sourceDisplay.scheduleDays) && sourceDisplay.scheduleDays.length > 0);
-        setCustomDisplayScheduleEnabled(hasCustomSchedule);
-        setDisplaySchedule({
-          start: sourceDisplay.scheduleStart ?? '06:00',
-          end: sourceDisplay.scheduleEnd ?? '09:00',
-        });
-        setDisplayDays(
-          Array.isArray(sourceDisplay.scheduleDays) && sourceDisplay.scheduleDays.length > 0
-            ? sourceDisplay.scheduleDays
-            : ['mon', 'tue', 'wed', 'thu', 'fri'],
-        );
-
         if (!cancelled) {
           setLayoutSlots(nextLayoutSlots);
         }
@@ -862,26 +832,11 @@ export default function DisplayEditorScreen() {
         }
 
         if (!cancelled) {
-          const nextCustomScheduleEnabled =
-            !!sourceDisplay.scheduleStart ||
-            !!sourceDisplay.scheduleEnd ||
-            (Array.isArray(sourceDisplay.scheduleDays) && sourceDisplay.scheduleDays.length > 0);
-          const nextDisplaySchedule = {
-            start: sourceDisplay.scheduleStart ?? '06:00',
-            end: sourceDisplay.scheduleEnd ?? '09:00',
-          };
-          const nextDisplayDays =
-            Array.isArray(sourceDisplay.scheduleDays) && sourceDisplay.scheduleDays.length > 0
-              ? sourceDisplay.scheduleDays
-              : ['mon', 'tue', 'wed', 'thu', 'fri'];
           const nextPresetName =
             typeof sourceDisplay.name === 'string' && sourceDisplay.name.trim().length > 0
               ? sourceDisplay.name
               : 'Display 1';
           setLines(nextLines);
-          setCustomDisplayScheduleEnabled(nextCustomScheduleEnabled);
-          setDisplaySchedule(nextDisplaySchedule);
-          setDisplayDays(nextDisplayDays);
           setPresetName(nextPresetName);
           const nextDisplayPresets = nextLines.reduce<Record<string, number>>((acc, line, index) => {
             const savedLine = citySavedLines[index];
@@ -898,10 +853,7 @@ export default function DisplayEditorScreen() {
             layoutSlots: nextLayoutSlots,
             displayPresetsByLine: nextDisplayPresets,
             lines: nextLines,
-            displaySchedule: nextDisplaySchedule,
-            displayDays: nextDisplayDays,
             presetName: nextPresetName,
-            customDisplayScheduleEnabled: nextCustomScheduleEnabled,
             scrolling: sourceDisplay.config?.scrolling === true,
             brightness: Number.isFinite(Number(sourceDisplay.config?.brightness))
               ? Math.max(MIN_BRIGHTNESS, Math.min(MAX_BRIGHTNESS, Math.trunc(Number(sourceDisplay.config?.brightness))))
@@ -1040,10 +992,7 @@ export default function DisplayEditorScreen() {
     layoutSlots,
     displayPresetsByLine,
     lines,
-    displaySchedule,
-    displayDays,
     presetName,
-    customDisplayScheduleEnabled,
     scrolling: displayMetadata.scrolling,
     brightness: displayMetadata.brightness,
   });
@@ -1054,15 +1003,11 @@ export default function DisplayEditorScreen() {
       snap.layoutSlots !== layoutSlots ||
       JSON.stringify(snap.displayPresetsByLine) !== JSON.stringify(displayPresetsByLine) ||
       snap.presetName !== presetName ||
-      snap.customDisplayScheduleEnabled !== customDisplayScheduleEnabled ||
       snap.scrolling !== displayMetadata.scrolling ||
       snap.brightness !== displayMetadata.brightness ||
-      snap.displaySchedule.start !== displaySchedule.start ||
-      snap.displaySchedule.end !== displaySchedule.end ||
-      JSON.stringify(snap.displayDays) !== JSON.stringify(displayDays) ||
       JSON.stringify(snap.lines) !== JSON.stringify(lines)
     );
-  }, [city, customDisplayScheduleEnabled, displayDays, displayMetadata.brightness, displayMetadata.scrolling, displayPresetsByLine, displaySchedule.end, displaySchedule.start, layoutSlots, lines, presetName]);
+  }, [city, displayMetadata.brightness, displayMetadata.scrolling, displayPresetsByLine, layoutSlots, lines, presetName]);
 
   const draftPayload = useMemo(() => {
     const payloadLines = lines
@@ -1112,9 +1057,9 @@ export default function DisplayEditorScreen() {
       paused: displayMetadata.paused,
       priority: displayMetadata.priority,
       sortOrder: displayMetadata.sortOrder,
-      scheduleStart: customDisplayScheduleEnabled ? displaySchedule.start : null,
-      scheduleEnd: customDisplayScheduleEnabled ? displaySchedule.end : null,
-      scheduleDays: customDisplayScheduleEnabled ? displayDays : [],
+      scheduleStart: null,
+      scheduleEnd: null,
+      scheduleDays: [],
       config: {
         brightness: displayMetadata.brightness,
         displayType: getPersistedDisplayType(displayPresetsByLine['line-1'] ?? DEFAULT_DISPLAY_PRESET),
@@ -1123,7 +1068,7 @@ export default function DisplayEditorScreen() {
         lines: payloadLines,
       },
     };
-  }, [city, customDisplayScheduleEnabled, displayDays, displayMetadata.brightness, displayMetadata.paused, displayMetadata.priority, displayMetadata.scrolling, displayMetadata.sortOrder, displayPresetsByLine, displaySchedule.end, displaySchedule.start, lines, linesByMode, presetName, routesByStation, stationsByLine, stationsByMode]);
+  }, [city, displayMetadata.brightness, displayMetadata.paused, displayMetadata.priority, displayMetadata.scrolling, displayMetadata.sortOrder, displayPresetsByLine, lines, linesByMode, presetName, routesByStation, stationsByLine, stationsByMode]);
 
   const displayValidationError = useMemo(() => validateDisplayDraft(draftPayload), [draftPayload]);
   const canAutoConfirmCurrentPreset =
@@ -1224,18 +1169,25 @@ export default function DisplayEditorScreen() {
         if (saveDisplayPresetsByLine !== displayPresetsByLine) {
           setDisplayPresetsByLine(saveDisplayPresetsByLine);
         }
+        const cachedDisplays =
+          queryClient.getQueryData<{displays: DeviceDisplay[]; activeDisplayId: string | null}>(
+            queryKeys.displays(selectedDevice.id),
+          ) ?? (await fetchDisplays(selectedDevice.id));
+        const maxPriority = Math.max(0, ...cachedDisplays.displays.map(display => display.priority));
+        const shouldKeepActivePriority =
+          !!editingDisplayId && cachedDisplays.activeDisplayId === editingDisplayId;
         let payloadToSave = saveDraftPayload;
+        payloadToSave = {
+          ...payloadToSave,
+          priority: shouldKeepActivePriority ? payloadToSave.priority : maxPriority + 1,
+        };
         if (!editingDisplayId) {
-          const cachedDisplays =
-            queryClient.getQueryData<{displays: DeviceDisplay[]; activeDisplayId: string | null}>(
-              queryKeys.displays(selectedDevice.id),
-            ) ?? (await fetchDisplays(selectedDevice.id));
           const nextSortOrder =
             cachedDisplays.displays.length > 0
               ? Math.max(...cachedDisplays.displays.map(display => display.sortOrder)) + 1
               : 0;
           payloadToSave = {
-            ...saveDraftPayload,
+            ...payloadToSave,
             sortOrder: nextSortOrder,
           };
         }
@@ -1261,10 +1213,7 @@ export default function DisplayEditorScreen() {
         layoutSlots,
         displayPresetsByLine: saveDisplayPresetsByLine,
         lines,
-        displaySchedule,
-        displayDays,
         presetName,
-        customDisplayScheduleEnabled,
         scrolling: displayMetadata.scrolling,
         brightness: displayMetadata.brightness,
       };
@@ -1486,10 +1435,6 @@ export default function DisplayEditorScreen() {
     setEditorStep(resolveEditorStepForLine(line ?? null));
   };
 
-  const toggleScheduleEditor = () => {
-    animateSectionLayout();
-    setScheduleExpanded(prev => !prev);
-  };
   const reorderLineByHold = (id: string) => {
     setLines(prev => {
       const idx = prev.findIndex(line => line.id === id);
@@ -1894,16 +1839,10 @@ export default function DisplayEditorScreen() {
                   city={city}
                   line={selectedLine}
                   displayPreset={selectedDisplayPreset}
-                  presetConfirmed={selectedLinePresetConfirmed}
                   selectedRoute={selectedRouteForEditor}
                   selectedStation={selectedStationForEditor}
                   presetName={presetName}
                   displayMetadata={displayMetadata}
-                  customScheduleEnabled={customDisplayScheduleEnabled}
-                  displaySchedule={displaySchedule}
-                  displayDays={displayDays}
-                  scheduleExpanded={scheduleExpanded}
-                  layoutSlots={layoutSlots}
                   onChangeLine={next => updateLine(selectedLine.id, next)}
                   onClearLine={() => clearLineSelection(selectedLine.id)}
                   onClearStop={() => clearStopSelection(selectedLine.id)}
@@ -1911,13 +1850,6 @@ export default function DisplayEditorScreen() {
                   onPresetNameChange={setPresetName}
                   onBrightnessChange={brightness => setDisplayMetadata(prev => ({...prev, brightness}))}
                   onScrollingChange={scrolling => updateLine(selectedLine.id, {scrolling})}
-                  onScheduleEnabledChange={() => setCustomDisplayScheduleEnabled(prev => !prev)}
-                  onScheduleStartChange={start => setDisplaySchedule(prev => ({...prev, start}))}
-                  onScheduleEndChange={end => setDisplaySchedule(prev => ({...prev, end}))}
-                  onToggleDay={day => setDisplayDays(prev => prev.includes(day) ? prev.filter(d => d !== day) : [...prev, day])}
-                  onToggleScheduleExpanded={toggleScheduleEditor}
-                  onExpandToTwoStops={expandToTwoStops}
-                  onRemoveStop={() => removeStopFromLayout(selectedLine.id)}
                 />
               ) : null}
 
@@ -1934,6 +1866,10 @@ export default function DisplayEditorScreen() {
                 success={saveDone}
                 disabled={!canSaveToDevice}
                 message={liveStatusText}
+                secondaryActionLabel={layoutSlots < 2 && selectedLinePresetConfirmed ? 'Add Another Line' : undefined}
+                onSecondaryActionPress={layoutSlots < 2 && selectedLinePresetConfirmed ? expandToTwoStops : undefined}
+                dangerActionLabel={layoutSlots > 1 && selectedLine ? 'Remove a Line' : undefined}
+                onDangerActionPress={layoutSlots > 1 && selectedLine ? () => removeStopFromLayout(selectedLine.id) : undefined}
                 onPress={handleSave}
               />
             ) : null}
@@ -2273,30 +2209,18 @@ function LayoutSelectorModal({
   onSelect: (slots: number) => void;
 }) {
   return (
-    <Modal transparent visible={visible} animationType="fade" onRequestClose={onClose}>
-      <View style={styles.layoutSelectorOverlay}>
-        <Pressable style={styles.modalBackdrop} onPress={onClose} />
-        <View style={styles.modalSheet}>
-          <View style={styles.modalHeader}>
-            <Text style={styles.modalTitle}>Number of Lines</Text>
-            <Pressable style={styles.modalCloseButton} onPress={onClose}>
-              <Text style={styles.modalCloseButtonText}>X</Text>
-            </Pressable>
-          </View>
-          {[1, 2].map(option => {
-            const active = option === layoutSlots;
-            return (
-              <Pressable
-                key={option}
-                style={[styles.modalOption, active && styles.modalOptionActive]}
-                onPress={() => onSelect(option)}>
-                <Text style={[styles.modalOptionText, active && styles.modalOptionTextActive]}>{option}</Text>
-              </Pressable>
-            );
-          })}
-        </View>
-      </View>
-    </Modal>
+    <SelectionSheet
+      visible={visible}
+      title="Number of Lines"
+      subtitle="Choose how many lines this display should show."
+      options={[
+        {id: '1', label: 'Single Line', description: 'Keep one destination large and easy to scan.'},
+        {id: '2', label: 'Two Lines', description: 'Split the display to show a second line.'},
+      ]}
+      value={String(layoutSlots)}
+      onSelect={id => onSelect(Number(id))}
+      onClose={onClose}
+    />
   );
 }
 
@@ -2357,88 +2281,16 @@ function RouteGridPicker({
   );
 }
 
-function ScheduleTimingEditor({
-  start,
-  end,
-  days,
-  onStartChange,
-  onEndChange,
-  onToggleDay,
-}: {
-  start: string;
-  end: string;
-  days: DayId[];
-  onStartChange: (next: string) => void;
-  onEndChange: (next: string) => void;
-  onToggleDay: (day: DayId) => void;
-}) {
-  return (
-    <View style={styles.sectionBlock}>
-      <Text style={styles.sectionHint}>Choose when this display is allowed to show.</Text>
-      <View style={styles.dayPillRow}>
-        {DAY_OPTIONS.map(day => {
-          const active = days.includes(day.id);
-          return (
-            <Pressable
-              key={day.id}
-              style={[styles.dayPill, active && styles.dayPillActive]}
-              onPress={() => onToggleDay(day.id)}>
-              <Text style={[styles.dayPillText, active && styles.dayPillTextActive]}>{day.label}</Text>
-            </Pressable>
-          );
-        })}
-      </View>
-      <View style={styles.timeRangeRow}>
-        <TimeStepper
-          label="From"
-          value={start}
-          onPrev={() => onStartChange(cycleTimeOption(start, -1))}
-          onNext={() => onStartChange(cycleTimeOption(start, 1))}
-        />
-        <TimeStepper
-          label="To"
-          value={end}
-          onPrev={() => onEndChange(cycleTimeOption(end, -1))}
-          onNext={() => onEndChange(cycleTimeOption(end, 1))}
-        />
-      </View>
-    </View>
-  );
-}
-
-function TimeStepper({
-  label,
-  value,
-  onPrev,
-  onNext,
-}: {
-  label: string;
-  value: string;
-  onPrev: () => void;
-  onNext: () => void;
-}) {
-  return (
-    <View style={styles.timeStepper}>
-      <Text style={styles.timeStepperLabel}>{label}</Text>
-      <View style={styles.timeStepperControls}>
-        <Pressable style={styles.timeAdjustButton} onPress={onPrev}>
-          <Text style={styles.timeAdjustButtonText}>-</Text>
-        </Pressable>
-        <Text style={styles.timeValue}>{value}</Text>
-        <Pressable style={styles.timeAdjustButton} onPress={onNext}>
-          <Text style={styles.timeAdjustButtonText}>+</Text>
-        </Pressable>
-      </View>
-    </View>
-  );
-}
-
 function SaveBar({
   dirty,
   loading,
   success,
   disabled,
   message,
+  secondaryActionLabel,
+  onSecondaryActionPress,
+  dangerActionLabel,
+  onDangerActionPress,
   onPress,
 }: {
   dirty: boolean;
@@ -2446,6 +2298,10 @@ function SaveBar({
   success: boolean;
   disabled: boolean;
   message: string;
+  secondaryActionLabel?: string;
+  onSecondaryActionPress?: () => void;
+  dangerActionLabel?: string;
+  onDangerActionPress?: () => void;
   onPress: () => void;
 }) {
   const visibilityAnim = useRef(new Animated.Value(dirty || loading || success ? 1 : 0.92)).current;
@@ -2484,6 +2340,16 @@ function SaveBar({
           ],
         },
       ]}>
+      {secondaryActionLabel && onSecondaryActionPress ? (
+        <Pressable style={styles.reviewActionButton} onPress={onSecondaryActionPress}>
+          <Text style={styles.reviewActionButtonText}>{secondaryActionLabel}</Text>
+        </Pressable>
+      ) : null}
+      {dangerActionLabel && onDangerActionPress ? (
+        <Pressable style={styles.reviewRemoveButton} onPress={onDangerActionPress}>
+          <Text style={styles.reviewRemoveButtonText}>{dangerActionLabel}</Text>
+        </Pressable>
+      ) : null}
       <Animated.View style={{transform: [{scale: buttonScale}]}}>
         <Pressable
           disabled={disabled}
@@ -2497,6 +2363,135 @@ function SaveBar({
   );
 }
 
+function SelectionSheet({
+  visible,
+  title,
+  subtitle,
+  options,
+  value,
+  onSelect,
+  onClose,
+}: {
+  visible: boolean;
+  title: string;
+  subtitle?: string;
+  options: SelectionSheetOption[];
+  value: string;
+  onSelect: (id: string) => void;
+  onClose: () => void;
+}) {
+  const [mounted, setMounted] = useState(visible);
+  const progress = useRef(new Animated.Value(visible ? 1 : 0)).current;
+
+  useEffect(() => {
+    if (visible) {
+      setMounted(true);
+    }
+
+    Animated.timing(progress, {
+      toValue: visible ? 1 : 0,
+      duration: visible ? 240 : 170,
+      easing: visible ? Easing.out(Easing.cubic) : Easing.in(Easing.cubic),
+      useNativeDriver: true,
+    }).start(({finished}) => {
+      if (finished && !visible) {
+        setMounted(false);
+      }
+    });
+  }, [progress, visible]);
+
+  if (!mounted) return null;
+
+  return (
+    <Modal transparent visible animationType="none" onRequestClose={onClose}>
+      <View style={styles.selectionSheetOverlay}>
+        <Animated.View
+          style={[
+            styles.selectionSheetBackdrop,
+            {
+              opacity: progress.interpolate({
+                inputRange: [0, 1],
+                outputRange: [0, 1],
+              }),
+            },
+          ]}>
+          <Pressable style={styles.selectionSheetBackdropPressable} onPress={onClose} />
+        </Animated.View>
+        <Animated.View
+          pointerEvents="box-none"
+          style={[
+            styles.selectionSheetFrame,
+            {
+              opacity: progress,
+              transform: [
+                {
+                  translateY: progress.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [36, 0],
+                  }),
+                },
+                {
+                  scale: progress.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [0.98, 1],
+                  }),
+                },
+              ],
+            },
+          ]}>
+          <View style={styles.selectionSheetSurface}>
+            <View style={styles.selectionSheetHandle} />
+            <View style={styles.selectionSheetHeader}>
+              <View style={styles.selectionSheetHeaderCopy}>
+                <Text style={styles.selectionSheetTitle}>{title}</Text>
+                {subtitle ? <Text style={styles.selectionSheetSubtitle}>{subtitle}</Text> : null}
+              </View>
+              <Pressable style={styles.selectionSheetCloseButton} onPress={onClose}>
+                <Text style={styles.selectionSheetCloseButtonText}>Close</Text>
+              </Pressable>
+            </View>
+            <View style={styles.selectionSheetOptionList}>
+              {options.map((option, index) => {
+                const active = option.id === value;
+                const last = index === options.length - 1;
+                return (
+                  <Pressable
+                    key={option.id}
+                    style={[
+                      styles.selectionSheetOption,
+                      active && styles.selectionSheetOptionActive,
+                      !last && styles.selectionSheetOptionDivider,
+                    ]}
+                    onPress={() => {
+                      onSelect(option.id);
+                      onClose();
+                    }}>
+                    <View style={styles.selectionSheetOptionCopy}>
+                      <Text style={[styles.selectionSheetOptionLabel, active && styles.selectionSheetOptionLabelActive]}>
+                        {option.label}
+                      </Text>
+                      {option.description ? (
+                        <Text style={[styles.selectionSheetOptionDescription, active && styles.selectionSheetOptionDescriptionActive]}>
+                          {option.description}
+                        </Text>
+                      ) : null}
+                    </View>
+                    <View style={[styles.selectionSheetOptionBadge, active && styles.selectionSheetOptionBadgeActive]}>
+                      <Text style={[styles.selectionSheetOptionBadgeText, active && styles.selectionSheetOptionBadgeTextActive]}>
+                        {active ? 'Selected' : 'Choose'}
+                      </Text>
+                    </View>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </View>
+        </Animated.View>
+      </View>
+    </Modal>
+  );
+}
+
 function SimplePicker({
   visible,
   options,
@@ -2505,36 +2500,21 @@ function SimplePicker({
   onClose,
 }: {
   visible: boolean;
-  options: {id: string; label: string}[];
+  options: SelectionSheetOption[];
   value: string;
   onSelect: (id: string) => void;
   onClose: () => void;
 }) {
   return (
-    <Modal transparent visible={visible} animationType="fade" onRequestClose={onClose}>
-      <View style={styles.modalOverlay}>
-        <Pressable style={styles.modalBackdrop} onPress={onClose} />
-        <View style={styles.modalSheet}>
-          <View style={styles.modalHeader}>
-            <Text style={styles.modalTitle}>Display Layout</Text>
-            <Pressable style={styles.modalCloseButton} onPress={onClose}>
-              <Text style={styles.modalCloseButtonText}>X</Text>
-            </Pressable>
-          </View>
-          {options.map(option => (
-            <Pressable
-              key={option.id}
-              style={[styles.modalOption, option.id === value && styles.modalOptionActive]}
-              onPress={() => {
-                onSelect(option.id);
-                onClose();
-              }}>
-              <Text style={[styles.modalOptionText, option.id === value && styles.modalOptionTextActive]}>{option.label}</Text>
-            </Pressable>
-          ))}
-        </View>
-      </View>
-    </Modal>
+    <SelectionSheet
+      visible={visible}
+      title="Choose Service Pattern"
+      subtitle="Pick the version of this line you want to show."
+      options={options}
+      value={value}
+      onSelect={onSelect}
+      onClose={onClose}
+    />
   );
 }
 
@@ -3040,40 +3020,6 @@ function AnimatedChevron({expanded}: {expanded: boolean}) {
   );
 }
 
-function ScheduleToggleControl({enabled}: {enabled: boolean}) {
-  const anim = useRef(new Animated.Value(enabled ? 1 : 0)).current;
-
-  useEffect(() => {
-    Animated.timing(anim, {
-      toValue: enabled ? 1 : 0,
-      duration: 170,
-      easing: Easing.out(Easing.cubic),
-      useNativeDriver: true,
-    }).start();
-  }, [anim, enabled]);
-
-  return (
-    <View style={[styles.scheduleToggle, enabled && styles.scheduleToggleOn]}>
-      <Animated.View
-        style={[
-          styles.scheduleToggleThumb,
-          enabled && styles.scheduleToggleThumbOn,
-          {
-            transform: [
-              {
-                translateX: anim.interpolate({
-                  inputRange: [0, 1],
-                  outputRange: [0, 18],
-                }),
-              },
-            ],
-          },
-        ]}
-      />
-    </View>
-  );
-}
-
 const NYC_MODE_COLORS: Partial<Record<ModeId, string>> = {
   train: '#0039A6',
   bus: '#17844B',
@@ -3494,7 +3440,10 @@ function LinePickerStep({
         visible={!!variantPickerEntry}
         options={(variantPickerEntry?.routes ?? []).map(route => ({
           id: route.id,
-          label: isExpressVariant(route) ? `Express (${route.label})` : `Regular (${route.label})`,
+          label: isExpressVariant(route) ? `Express ${route.label}` : `Regular ${route.label}`,
+          description: isExpressVariant(route)
+            ? 'Faster pattern with fewer stops.'
+            : 'Standard pattern with the regular stop sequence.',
         }))}
         value={selectedRouteId}
         onSelect={id => {
@@ -4205,16 +4154,10 @@ function WizardReviewStep({
   city,
   line,
   displayPreset,
-  presetConfirmed,
   selectedRoute,
   selectedStation,
   presetName,
   displayMetadata,
-  customScheduleEnabled,
-  displaySchedule,
-  displayDays,
-  scheduleExpanded,
-  layoutSlots,
   onChangeLine,
   onClearLine,
   onClearStop,
@@ -4222,27 +4165,14 @@ function WizardReviewStep({
   onPresetNameChange,
   onBrightnessChange,
   onScrollingChange,
-  onScheduleEnabledChange,
-  onScheduleStartChange,
-  onScheduleEndChange,
-  onToggleDay,
-  onToggleScheduleExpanded,
-  onExpandToTwoStops,
-  onRemoveStop,
 }: {
   city: CityId;
   line: LinePick;
   displayPreset: number;
-  presetConfirmed: boolean;
   selectedRoute: Route | undefined;
   selectedStation: Station | undefined;
   presetName: string;
   displayMetadata: {brightness: number; scrolling: boolean; paused: boolean; priority: number; sortOrder: number};
-  customScheduleEnabled: boolean;
-  displaySchedule: {start: string; end: string};
-  displayDays: DayId[];
-  scheduleExpanded: boolean;
-  layoutSlots: number;
   onChangeLine: (next: Partial<LinePick>) => void;
   onClearLine: () => void;
   onClearStop: () => void;
@@ -4250,16 +4180,7 @@ function WizardReviewStep({
   onPresetNameChange: (name: string) => void;
   onBrightnessChange: (brightness: number) => void;
   onScrollingChange: (scrolling: boolean) => void;
-  onScheduleEnabledChange: () => void;
-  onScheduleStartChange: (start: string) => void;
-  onScheduleEndChange: (end: string) => void;
-  onToggleDay: (day: DayId) => void;
-  onToggleScheduleExpanded: () => void;
-  onExpandToTwoStops: () => void;
-  onRemoveStop: () => void;
 }) {
-  const presetOption = DISPLAY_PRESET_OPTIONS.find(o => o.id === displayPreset);
-  const directionLabel = getDirectionSummaryLabel(city, line.mode, line.direction, selectedRoute ?? line.routeId);
   const activePresetBehavior = getPresetBehavior(displayPreset);
 
   return (
@@ -4354,55 +4275,6 @@ function WizardReviewStep({
           </View>
         </View>
       </View>
-
-      {/* Schedule */}
-      <View style={styles.wizardSection}>
-        <Text style={styles.wizardSectionLabel}>Schedule</Text>
-        <View style={styles.wizardCard}>
-          <View style={styles.wizardScheduleHeader}>
-            <Text style={styles.wizardSettingLabel}>Schedule</Text>
-            <Pressable onPress={onScheduleEnabledChange}>
-              <ScheduleToggleControl enabled={customScheduleEnabled} />
-            </Pressable>
-          </View>
-          {customScheduleEnabled ? (
-            <>
-              <View style={styles.wizardCardDivider} />
-              <View style={styles.wizardDayRow}>
-                {DAY_OPTIONS.map(day => {
-                  const active = displayDays.includes(day.id);
-                  return (
-                    <Pressable
-                      key={day.id}
-                      style={[styles.wizardDayPill, active && styles.wizardDayPillActive]}
-                      onPress={() => onToggleDay(day.id)}>
-                      <Text style={[styles.wizardDayPillText, active && styles.wizardDayPillTextActive]}>{day.label}</Text>
-                    </Pressable>
-                  );
-                })}
-              </View>
-            </>
-          ) : null}
-          {customScheduleEnabled ? (
-            <>
-              <View style={styles.wizardCardDivider} />
-              <View style={styles.wizardTimeRow}>
-                <TimeStepper label="Start" value={displaySchedule.start} onPrev={() => onScheduleStartChange(cycleTimeOption(displaySchedule.start, -1))} onNext={() => onScheduleStartChange(cycleTimeOption(displaySchedule.start, 1))} />
-                <TimeStepper label="End" value={displaySchedule.end} onPrev={() => onScheduleEndChange(cycleTimeOption(displaySchedule.end, -1))} onNext={() => onScheduleEndChange(cycleTimeOption(displaySchedule.end, 1))} />
-              </View>
-            </>
-          ) : null}
-        </View>
-      </View>
-      {layoutSlots < 2 && presetConfirmed ? (
-        <View style={styles.stepFooterActionRow}>
-          <Pressable style={styles.reviewActionButton} onPress={onExpandToTwoStops}>
-            <Text style={styles.reviewActionButtonText}>add another line</Text>
-          </Pressable>
-        </View>
-      ) : null}
-
-
     </View>
   );
 }
