@@ -13,7 +13,6 @@ import {
   View,
 } from 'react-native';
 import {GestureHandlerRootView} from 'react-native-gesture-handler';
-import {useSafeAreaInsets} from 'react-native-safe-area-context';
 import {Ionicons} from '@expo/vector-icons';
 import Slider from '@react-native-community/slider';
 import {useRouter} from 'expo-router';
@@ -21,9 +20,8 @@ import {useLocalSearchParams} from 'expo-router';
 import {useMutation, useQueries, useQuery, useQueryClient} from '@tanstack/react-query';
 import {colors, layout, radii, spacing, typography} from '../../../theme';
 import {apiFetch} from '../../../lib/api';
-import {AppBrandHeader} from '../../../components/AppBrandHeader';
 import DraggableFlatList, {type RenderItemParams} from 'react-native-draggable-flatlist';
-import {TabScreen, useTabRouteIsActive} from '../../../components/TabScreen';
+import {useTabRouteIsActive} from '../../../components/TabScreen';
 import DashboardPreviewSection from '../components/DashboardPreviewSection';
 import {CITY_BRANDS, CITY_LABELS} from '../../../constants/cities';
 import {useAppState} from '../../../state/appState';
@@ -114,15 +112,20 @@ const sortDisplaysForCarousel = (items: DeviceDisplay[], activeDisplayId: string
     return a.name.localeCompare(b.name);
   });
 
-export default function PresetsScreen() {
-  const insets = useSafeAreaInsets();
+type DisplayManagementSectionProps = {
+  onSwipeEnabledChange?: (enabled: boolean) => void;
+};
+
+export default function DisplayManagementSection({
+  onSwipeEnabledChange,
+}: DisplayManagementSectionProps) {
   const queryClient = useQueryClient();
   const router = useRouter();
   const params = useLocalSearchParams<{focusDisplayId?: string}>();
   const {state: appState} = useAppState();
-  const {deviceId, status, user} = useAuth();
+  const {deviceId, status} = useAuth();
   const selectedCity = appState.selectedCity;
-  const isScreenFocused = useTabRouteIsActive('/presets');
+  const isScreenFocused = useTabRouteIsActive('/dashboard');
   const [carouselIndex, setCarouselIndex] = useState(0);
   const [brightnessOverrides, setBrightnessOverrides] = useState<Record<string, number>>({});
   const [expandedBrightnessControls, setExpandedBrightnessControls] = useState<Record<string, boolean>>({});
@@ -503,205 +506,192 @@ export default function PresetsScreen() {
     };
   }, []);
 
-  return (
-    <TabScreen
-      style={[styles.container, {paddingTop: insets.top}]}
-      swipeEnabled={!isDisplayGestureRegionActive}
-      tabRoute="/presets">
-      <AppBrandHeader email={user?.email} />
+  useEffect(() => {
+    onSwipeEnabledChange?.(!isDisplayGestureRegionActive);
+    return () => {
+      onSwipeEnabledChange?.(true);
+    };
+  }, [isDisplayGestureRegionActive, onSwipeEnabledChange]);
 
-      <View style={styles.content}>
-        <ScrollView
-          style={styles.scrollView}
-          contentContainerStyle={[styles.scroll, showSetActiveButton && styles.scrollWithFooter]}
-          bounces={false}>
-        {/* ── Page Header ───────────────────────────────────────────────── */}
-        <View style={styles.pageHeader}>
-          <View style={styles.pageHeaderRow}>
-            <View style={styles.pageHeaderLeft}>
-              <Text style={styles.pageTitle}>Displays</Text>
-              <Text style={styles.pageMeta}>{displayCountLabel}</Text>
-            </View>
-            <View style={styles.pageHeaderRight}>
-              <Pressable
-                style={styles.addBtn}
-                onPress={() => setReorderVisible(true)}
-                disabled={visibleDisplays.length < 2}>
-                <Ionicons
-                  name="reorder-three-outline"
-                  size={18}
-                  color={visibleDisplays.length < 2 ? colors.textMuted : colors.text}
-                />
-              </Pressable>
-              <Pressable
-                style={styles.addBtn}
-                onPress={() => router.push({pathname: '/preset-editor', params: {city: currentDisplayCity, from: 'presets', mode: 'new'}})}>
-                <Ionicons name="add" size={18} color={colors.accent} />
-              </Pressable>
-            </View>
+  return (
+    <>
+      <View style={styles.pageHeader}>
+        <View style={styles.pageHeaderRow}>
+          <View style={styles.pageHeaderLeft}>
+            <Text style={styles.pageTitle}>Displays</Text>
+            <Text style={styles.pageMeta}>{displayCountLabel}</Text>
+          </View>
+          <View style={styles.pageHeaderRight}>
+            <Pressable
+              style={styles.addBtn}
+              onPress={() => setReorderVisible(true)}
+              disabled={visibleDisplays.length < 2}>
+              <Ionicons
+                name="reorder-three-outline"
+                size={18}
+                color={visibleDisplays.length < 2 ? colors.textMuted : colors.text}
+              />
+            </Pressable>
+            <Pressable
+              style={styles.addBtn}
+              onPress={() =>
+                router.push({
+                  pathname: '/preset-editor',
+                  params: {city: currentDisplayCity, from: 'dashboard', mode: 'new'},
+                })
+              }>
+              <Ionicons name="add" size={18} color={colors.accent} />
+            </Pressable>
           </View>
         </View>
+      </View>
 
-        {/* ── Loading / Error ───────────────────────────────────────────── */}
-        {loading ? <Text style={styles.hintText}>Loading displays…</Text> : null}
-        {!loading && errorText ? <Text style={styles.errorText}>{errorText}</Text> : null}
+      {loading ? <Text style={styles.hintText}>Loading displays…</Text> : null}
+      {!loading && errorText ? <Text style={styles.errorText}>{errorText}</Text> : null}
 
-        {/* ── Display Card ──────────────────────────────────────────────── */}
-        {!loading && !errorText ? (
-          currentDisplay ? (
-            <>
-              <View style={styles.displayCard}>
-                <View
-                  onTouchStart={() => setIsDisplayGestureRegionActive(true)}
-                  onTouchEnd={() => setIsDisplayGestureRegionActive(false)}
-                  onTouchCancel={() => setIsDisplayGestureRegionActive(false)}
-                  {...displaySwipeResponder.panHandlers}>
-                  {/* LED preview — no header, name lives in nav row */}
-                  <View style={styles.cardPreviewContainer}>
-                    <DashboardPreviewSection
-                      slots={toPreviewSlots(
-                        currentDisplay,
-                        brand.accent,
-                        stopNames,
-                        currentDisplay.displayId === activeDisplayId ? liveArrivalLookup : null,
-                        {
+      {!loading && !errorText ? (
+        currentDisplay ? (
+          <>
+            <View style={styles.displayCard}>
+              <View
+                onTouchStart={() => setIsDisplayGestureRegionActive(true)}
+                onTouchEnd={() => setIsDisplayGestureRegionActive(false)}
+                onTouchCancel={() => setIsDisplayGestureRegionActive(false)}
+                {...displaySwipeResponder.panHandlers}>
+                <View style={styles.cardPreviewContainer}>
+                  <DashboardPreviewSection
+                    slots={toPreviewSlots(
+                      currentDisplay,
+                      brand.accent,
+                      stopNames,
+                      currentDisplay.displayId === activeDisplayId ? liveArrivalLookup : null,
+                      {
                         showDirectionFallback: false,
-                        },
-                      )}
-                      displayType={currentDisplay.config.displayType ?? Number(currentDisplay.config.lines?.[0]?.displayType) ?? 1}
-                      onSelectSlot={() =>
-                        router.push({
-                          pathname: '/preset-editor',
-                          params: {city: currentDisplayCity, from: 'presets', mode: 'edit', displayId: currentDisplay.displayId},
-                        })
-                      }
-                      onReorderSlot={() => {}}
-                      onDragStateChange={() => {}}
-                      showHint={false}
-                      brightness={currentBrightness}
-                    />
-                  </View>
-
-                  {/* [Edit] | ‹ Name / Active › | [Delete] */}
-                  <View style={styles.navActionsRow}>
-                    {/* Left: Edit */}
-                    <View style={styles.navLeft}>
-                      <Pressable
-                        style={styles.editBtn}
-                        onPress={() =>
-                          router.push({
-                            pathname: '/preset-editor',
-                            params: {city: currentDisplayCity, from: 'presets', mode: 'edit', displayId: currentDisplay.displayId},
-                          })
-                      }>
-                        <Ionicons name="pencil-outline" size={14} color={colors.text} />
-                      </Pressable>
-                    </View>
-
-                    {/* Center: ‹ Name › — truly centered */}
-                    <View style={styles.navCenter}>
-                      <Pressable
-                        style={[
-                          styles.arrowBtn,
-                          (visibleDisplays.length <= 1 || safeIndex === 0) && styles.arrowBtnDisabled,
-                          visibleDisplays.length <= 1 && styles.arrowBtnHidden,
-                        ]}
-                        onPress={() => goTo(safeIndex - 1)}
-                        disabled={visibleDisplays.length <= 1 || safeIndex === 0}>
-                        <Ionicons name="chevron-back" size={22} color={colors.textMuted} />
-                      </Pressable>
-                      <View style={styles.navTitleBlock}>
-                        <Text style={styles.navDisplayName} numberOfLines={1}>{currentDisplay.name}</Text>
-                        {currentDisplay.displayId === activeDisplayId ? (
-                          <View style={styles.navActiveLabelCompact}>
-                            <View style={styles.navActiveDotCompact} />
-                            <Text style={styles.navActiveLabelCompactText}>Active</Text>
-                          </View>
-                        ) : (
-                          <Text style={styles.navDisplayCity}>{CITY_LABELS[currentDisplayCity]}</Text>
-                        )}
-                      </View>
-                      <Pressable
-                        style={[
-                          styles.arrowBtn,
-                          (visibleDisplays.length <= 1 || safeIndex === visibleDisplays.length - 1) && styles.arrowBtnDisabled,
-                          visibleDisplays.length <= 1 && styles.arrowBtnHidden,
-                        ]}
-                        onPress={() => goTo(safeIndex + 1)}
-                        disabled={visibleDisplays.length <= 1 || safeIndex === visibleDisplays.length - 1}>
-                        <Ionicons name="chevron-forward" size={22} color={colors.textMuted} />
-                      </Pressable>
-                    </View>
-
-                    {/* Right: Delete */}
-                    <View style={styles.navRight}>
-                      <Pressable style={styles.deleteBtn} onPress={() => confirmDelete(currentDisplay)}>
-                        <Ionicons name="trash-outline" size={14} color={colors.dangerTextSoft} />
-                      </Pressable>
-                    </View>
-                  </View>
+                      },
+                    )}
+                    displayType={currentDisplay.config.displayType ?? Number(currentDisplay.config.lines?.[0]?.displayType) ?? 1}
+                    onSelectSlot={() =>
+                      router.push({
+                        pathname: '/preset-editor',
+                        params: {city: currentDisplayCity, from: 'dashboard', mode: 'edit', displayId: currentDisplay.displayId},
+                      })
+                    }
+                    onReorderSlot={() => {}}
+                    onDragStateChange={() => {}}
+                    showHint={false}
+                    brightness={currentBrightness}
+                  />
                 </View>
 
-                {/* Settings */}
-                <View style={styles.cardSettings}>
-
-                  <View style={styles.settingItem}>
-                    <View style={styles.settingItemRow}>
-                      <Text style={styles.settingItemLabel}>Brightness</Text>
-                      <Pressable
-                        style={({pressed}) => [
-                          styles.brightnessValueBadge,
-                          isBrightnessControlExpanded && styles.brightnessValueBadgeActive,
-                          pressed && styles.brightnessValueBadgePressed,
-                        ]}
-                        onPress={() => toggleBrightnessControl(currentDisplay.displayId)}
-                        accessibilityRole="button"
-                        accessibilityLabel={`Brightness ${currentBrightness}%`}
-                        accessibilityHint={
-                          isBrightnessControlExpanded ? 'Hide the brightness slider' : 'Show the brightness slider'
-                        }>
-                        <Text style={styles.brightnessValueText}>{currentBrightness}%</Text>
-                      </Pressable>
-                    </View>
-                    {isBrightnessControlExpanded ? (
-                      <BrightnessSlider
-                        value={currentBrightness}
-                        min={MIN_BRIGHTNESS}
-                        max={MAX_BRIGHTNESS}
-                        onChange={value => handleBrightnessChange(currentDisplay, value)}
-                        onCommit={() => {}}
-                      />
-                    ) : null}
+                <View style={styles.navActionsRow}>
+                  <View style={styles.navLeft}>
+                    <Pressable
+                      style={styles.editBtn}
+                      onPress={() =>
+                        router.push({
+                          pathname: '/preset-editor',
+                          params: {city: currentDisplayCity, from: 'dashboard', mode: 'edit', displayId: currentDisplay.displayId},
+                        })
+                    }>
+                      <Ionicons name="pencil-outline" size={14} color={colors.text} />
+                    </Pressable>
                   </View>
 
+                  <View style={styles.navCenter}>
+                    <Pressable
+                      style={[
+                        styles.arrowBtn,
+                        (visibleDisplays.length <= 1 || safeIndex === 0) && styles.arrowBtnDisabled,
+                        visibleDisplays.length <= 1 && styles.arrowBtnHidden,
+                      ]}
+                      onPress={() => goTo(safeIndex - 1)}
+                      disabled={visibleDisplays.length <= 1 || safeIndex === 0}>
+                      <Ionicons name="chevron-back" size={22} color={colors.textMuted} />
+                    </Pressable>
+                    <View style={styles.navTitleBlock}>
+                      <Text style={styles.navDisplayName} numberOfLines={1}>{currentDisplay.name}</Text>
+                      {currentDisplay.displayId === activeDisplayId ? (
+                        <View style={styles.navActiveLabelCompact}>
+                          <View style={styles.navActiveDotCompact} />
+                          <Text style={styles.navActiveLabelCompactText}>Active</Text>
+                        </View>
+                      ) : (
+                        <Text style={styles.navDisplayCity}>{CITY_LABELS[currentDisplayCity]}</Text>
+                      )}
+                    </View>
+                    <Pressable
+                      style={[
+                        styles.arrowBtn,
+                        (visibleDisplays.length <= 1 || safeIndex === visibleDisplays.length - 1) && styles.arrowBtnDisabled,
+                        visibleDisplays.length <= 1 && styles.arrowBtnHidden,
+                      ]}
+                      onPress={() => goTo(safeIndex + 1)}
+                      disabled={visibleDisplays.length <= 1 || safeIndex === visibleDisplays.length - 1}>
+                      <Ionicons name="chevron-forward" size={22} color={colors.textMuted} />
+                    </Pressable>
+                  </View>
+
+                  <View style={styles.navRight}>
+                    <Pressable style={styles.deleteBtn} onPress={() => confirmDelete(currentDisplay)}>
+                      <Ionicons name="trash-outline" size={14} color={colors.dangerTextSoft} />
+                    </Pressable>
+                  </View>
                 </View>
               </View>
 
-            </>
-          ) : (
-            <View style={styles.emptyState}>
-              <Text style={styles.emptyTitle}>No displays yet</Text>
-              <Text style={styles.emptyBody}>Tap + to create your first display.</Text>
+              <View style={styles.cardSettings}>
+                <View style={styles.settingItem}>
+                  <View style={styles.settingItemRow}>
+                    <Text style={styles.settingItemLabel}>Brightness</Text>
+                    <Pressable
+                      style={({pressed}) => [
+                        styles.brightnessValueBadge,
+                        isBrightnessControlExpanded && styles.brightnessValueBadgeActive,
+                        pressed && styles.brightnessValueBadgePressed,
+                      ]}
+                      onPress={() => toggleBrightnessControl(currentDisplay.displayId)}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Brightness ${currentBrightness}%`}
+                      accessibilityHint={
+                        isBrightnessControlExpanded ? 'Hide the brightness slider' : 'Show the brightness slider'
+                      }>
+                      <Text style={styles.brightnessValueText}>{currentBrightness}%</Text>
+                    </Pressable>
+                  </View>
+                  {isBrightnessControlExpanded ? (
+                    <BrightnessSlider
+                      value={currentBrightness}
+                      min={MIN_BRIGHTNESS}
+                      max={MAX_BRIGHTNESS}
+                      onChange={value => handleBrightnessChange(currentDisplay, value)}
+                      onCommit={() => {}}
+                    />
+                  ) : null}
+                </View>
+              </View>
             </View>
-          )
-        ) : null}
-
-        </ScrollView>
-
-        {showSetActiveButton && currentDisplay ? (
-          <View style={styles.footerActionBar}>
-            <Pressable
-              style={[styles.setActiveBtn, activateDisplayMutation.isPending && styles.setActiveBtnDisabled]}
-              disabled={activateDisplayMutation.isPending}
-              onPress={() => activateDisplayMutation.mutate(currentDisplay)}>
-              <Text style={styles.setActiveBtnText}>
-                {activateDisplayMutation.isPending ? 'Activating…' : 'Set as Active'}
-              </Text>
-            </Pressable>
-            <View style={styles.footerActionBarBottomSpacer} />
+          </>
+        ) : (
+          <View style={styles.emptyState}>
+            <Text style={styles.emptyTitle}>No displays yet</Text>
+            <Text style={styles.emptyBody}>Tap + to create your first display.</Text>
           </View>
-        ) : null}
-      </View>
+        )
+      ) : null}
+
+      {showSetActiveButton && currentDisplay ? (
+        <View style={styles.footerActionBar}>
+          <Pressable
+            style={[styles.setActiveBtn, activateDisplayMutation.isPending && styles.setActiveBtnDisabled]}
+            disabled={activateDisplayMutation.isPending}
+            onPress={() => activateDisplayMutation.mutate(currentDisplay)}>
+            <Text style={styles.setActiveBtnText}>
+              {activateDisplayMutation.isPending ? 'Activating…' : 'Set as Active'}
+            </Text>
+          </Pressable>
+          <View style={styles.footerActionBarBottomSpacer} />
+        </View>
+      ) : null}
 
       <ReorderDisplaysModal
         visible={reorderVisible}
@@ -714,7 +704,7 @@ export default function PresetsScreen() {
         }}
         onSave={handleSaveReorder}
       />
-    </TabScreen>
+    </>
   );
 }
 

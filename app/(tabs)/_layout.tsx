@@ -19,7 +19,6 @@ import {
   type TabRoute,
 } from '../../components/tabNavigation';
 import DashboardOverviewScreen from '../../features/dashboard/screens/DashboardOverviewScreen';
-import PresetsScreen from '../../features/dashboard/screens/PresetsScreen';
 import SettingsScreen from '../../features/settings/screens/SettingsScreen';
 import {colors} from '../../theme';
 
@@ -31,7 +30,6 @@ const SNAP_DURATION_MS = 180;
 
 const TAB_COMPONENTS: Record<TabRoute, React.ComponentType> = {
   '/dashboard': DashboardOverviewScreen,
-  '/presets': PresetsScreen,
   '/settings': SettingsScreen,
 };
 
@@ -55,7 +53,6 @@ export default function TabsLayout() {
   const activeRoute = TAB_ROUTES[activeIndex] ?? '/dashboard';
   const [swipeEnabledByRoute, setSwipeEnabledByRoute] = useState<Record<TabRoute, boolean>>({
     '/dashboard': true,
-    '/presets': true,
     '/settings': true,
   });
   const translateX = useRef(new Animated.Value(-activeIndex * width)).current;

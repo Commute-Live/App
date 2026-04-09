@@ -14,7 +14,6 @@ import {logger} from '../../../lib/datadog';
 const fallbackDevice = {id: 'commutelive-001', name: 'Commute Live Display'};
 const NAV_ITEMS: BottomNavItem[] = [
   {key: 'home', label: 'Home', icon: 'home-outline', route: '/dashboard'},
-  {key: 'presets', label: 'Displays', icon: 'albums-outline', route: '/presets'},
   {key: 'settings', label: 'Settings', icon: 'settings-outline', route: '/settings'},
 ];
 
