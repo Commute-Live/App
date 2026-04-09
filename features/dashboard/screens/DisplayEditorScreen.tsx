@@ -458,7 +458,7 @@ export default function DisplayEditorScreen() {
   const isCreateMode = params.mode === 'new';
   const [editorCity, setEditorCity] = useState<CityId>(initialCity);
   const city = editorCity;
-  const fallbackRoute = params.from === 'presets' ? '/presets' : '/dashboard';
+  const fallbackRoute = '/dashboard';
   const headerEnter = useRef(new Animated.Value(0)).current;
   const previewEnter = useRef(new Animated.Value(0)).current;
   const editorEnter = useRef(new Animated.Value(0)).current;
@@ -1240,12 +1240,12 @@ export default function DisplayEditorScreen() {
         setSaveDone(false);
         if (savedDisplayId) {
           router.replace({
-            pathname: '/presets',
+            pathname: '/dashboard',
             params: {focusDisplayId: savedDisplayId},
           });
           return;
         }
-        router.replace('/presets');
+        router.replace('/dashboard');
       }, 1200);
     } catch {
       setLiveStatusText('We could not save this display right now. Please try again.');
