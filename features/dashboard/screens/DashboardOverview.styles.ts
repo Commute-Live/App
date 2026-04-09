@@ -33,6 +33,11 @@ export const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   pageHeaderLeft: {gap: spacing.xxs},
+  pageHeaderRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
   pageStatusText: {
     color: colors.text,
     fontSize: typography.pageTitle,
@@ -44,6 +49,16 @@ export const styles = StyleSheet.create({
     color: colors.textMuted,
     fontSize: typography.body,
     lineHeight: 18,
+  },
+  headerActionButton: {
+    width: layout.iconButton,
+    height: layout.iconButton,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 
   // ─── Status Pill ─────────────────────────────────────────────────────────
@@ -66,6 +81,12 @@ export const styles = StyleSheet.create({
 
   // ─── Device Switcher (inside page header) ────────────────────────────────
   deviceSwitcherRow: {gap: spacing.xs, paddingTop: spacing.sm},
+  deviceSwitcherHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.sm,
+  },
   switcherLabel: {
     color: colors.textMuted,
     fontSize: 11,
@@ -73,6 +94,43 @@ export const styles = StyleSheet.create({
     textTransform: 'uppercase',
     letterSpacing: 0.8,
   },
+  switcherMeta: {
+    color: colors.textMuted,
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  deviceCycleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  deviceCycleButton: {
+    width: layout.chromeSize,
+    height: layout.chromeSize,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  deviceCycleCurrent: {
+    flex: 1,
+    minHeight: 40,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.card,
+    paddingHorizontal: spacing.sm,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  deviceCycleCurrentText: {
+    color: colors.text,
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  devicePillWrap: {flexDirection: 'row', gap: spacing.xs, flexWrap: 'wrap'},
   devicePill: {
     borderRadius: radii.md,
     borderWidth: 1,
