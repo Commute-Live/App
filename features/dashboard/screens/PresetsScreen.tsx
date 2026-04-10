@@ -1,6 +1,8 @@
-import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react';
+import React, {useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState} from 'react';
 import {
   Alert,
+  Animated,
+  Easing,
   LayoutAnimation,
   Modal,
   PanResponder,
@@ -10,6 +12,7 @@ import {
   StyleSheet,
   Text,
   UIManager,
+  useWindowDimensions,
   View,
 } from 'react-native';
 import {GestureHandlerRootView} from 'react-native-gesture-handler';
@@ -128,15 +131,26 @@ export default function DisplayManagementSection({
   const selectedDevice = useSelectedDevice();
   const selectedCity = appState.selectedCity;
   const isScreenFocused = useTabRouteIsActive('/dashboard');
+  const {width: windowWidth} = useWindowDimensions();
   const [carouselIndex, setCarouselIndex] = useState(0);
   const [brightnessOverrides, setBrightnessOverrides] = useState<Record<string, number>>({});
   const [expandedBrightnessControls, setExpandedBrightnessControls] = useState<Record<string, boolean>>({});
   const [reorderVisible, setReorderVisible] = useState(false);
   const [isDisplayGestureRegionActive, setIsDisplayGestureRegionActive] = useState(false);
+  const [carouselDirection, setCarouselDirection] = useState<1 | -1>(1);
   const [pendingFocusDisplayId, setPendingFocusDisplayId] = useState<string | null>(
     typeof params.focusDisplayId === 'string' ? params.focusDisplayId : null,
   );
+  const [previewStageWidth, setPreviewStageWidth] = useState(0);
+  const [previewTransition, setPreviewTransition] = useState<{
+    outgoing: DeviceDisplay;
+    incoming: DeviceDisplay;
+    direction: 1 | -1;
+  } | null>(null);
   const brightnessCommitTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const previewTrackAnim = useRef(new Animated.Value(1)).current;
+  const previousDisplayIdRef = useRef<string | null>(null);
+  const previousDisplayRef = useRef<DeviceDisplay | null>(null);
 
   useEffect(() => {
     if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -356,12 +370,93 @@ export default function DisplayManagementSection({
   const safeIndex = visibleDisplays.length > 0 ? Math.min(carouselIndex, visibleDisplays.length - 1) : 0;
   const currentDisplay = visibleDisplays[safeIndex] ?? null;
   const currentDisplayCity = providerToCity(currentDisplay?.config.lines?.[0]?.provider ?? null) ?? selectedCity;
-  const brand = CITY_BRANDS[currentDisplayCity];
   const currentBrightness = currentDisplay
     ? brightnessOverrides[currentDisplay.displayId] ?? currentDisplay.config.brightness ?? 60
     : 60;
   const isBrightnessControlExpanded = currentDisplay ? !!expandedBrightnessControls[currentDisplay.displayId] : false;
   const showSetActiveButton = !!currentDisplay && currentDisplay.displayId !== activeDisplayId;
+  const effectivePreviewWidth = previewStageWidth > 0 ? previewStageWidth : 320;
+  const previewTravelDistance = Math.max(windowWidth, effectivePreviewWidth) + 24;
+
+  const renderDisplayPreview = useCallback(
+    (display: DeviceDisplay, city: typeof currentDisplayCity) => (
+      <DashboardPreviewSection
+        slots={toPreviewSlots(
+          display,
+          CITY_BRANDS[city].accent,
+          stopNames,
+          display.displayId === activeDisplayId ? liveArrivalLookup : null,
+          {showDirectionFallback: false},
+        )}
+        displayType={display.config.displayType ?? Number(display.config.lines?.[0]?.displayType) ?? 1}
+        onSelectSlot={() =>
+          router.push({
+            pathname: '/preset-editor',
+            params: {city, from: 'dashboard', mode: 'edit', displayId: display.displayId},
+          })
+        }
+        onReorderSlot={() => {}}
+        onDragStateChange={() => {}}
+        showHint={false}
+        brightness={100}
+        showGlow={false}
+      />
+    ),
+    [activeDisplayId, liveArrivalLookup, router, stopNames],
+  );
+
+  useLayoutEffect(() => {
+    const nextDisplayId = currentDisplay?.displayId ?? null;
+    if (!nextDisplayId) {
+      previousDisplayIdRef.current = null;
+      previousDisplayRef.current = null;
+      setPreviewTransition(null);
+      previewTrackAnim.setValue(1);
+      return;
+    }
+
+    if (previousDisplayIdRef.current === null) {
+      previousDisplayIdRef.current = nextDisplayId;
+      previousDisplayRef.current = currentDisplay;
+      previewTrackAnim.setValue(1);
+      return;
+    }
+
+    if (previousDisplayIdRef.current === nextDisplayId) {
+      previousDisplayRef.current = currentDisplay;
+      return;
+    }
+
+    const outgoingDisplay = previousDisplayRef.current;
+    previousDisplayIdRef.current = nextDisplayId;
+    previousDisplayRef.current = currentDisplay;
+
+    if (!outgoingDisplay || !currentDisplay) {
+      setPreviewTransition(null);
+      previewTrackAnim.setValue(1);
+      return;
+    }
+
+    setPreviewTransition({
+      outgoing: outgoingDisplay,
+      incoming: currentDisplay,
+      direction: carouselDirection,
+    });
+    previewTrackAnim.stopAnimation();
+    previewTrackAnim.setValue(0);
+    Animated.timing(previewTrackAnim, {
+      toValue: 1,
+      duration: 260,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: true,
+    }).start(({finished}) => {
+      if (finished) {
+        setPreviewTransition(current =>
+          current?.incoming.displayId === nextDisplayId ? null : current,
+        );
+      }
+    });
+  }, [carouselDirection, currentDisplay, currentDisplay?.displayId, previewTrackAnim]);
 
   useEffect(() => {
     if (typeof params.focusDisplayId === 'string' && params.focusDisplayId.length > 0) {
@@ -373,9 +468,12 @@ export default function DisplayManagementSection({
     if (!pendingFocusDisplayId || visibleDisplays.length === 0) return;
     const targetIndex = visibleDisplays.findIndex(display => display.displayId === pendingFocusDisplayId);
     if (targetIndex === -1) return;
+    if (targetIndex !== safeIndex) {
+      setCarouselDirection(targetIndex > safeIndex ? 1 : -1);
+    }
     setCarouselIndex(targetIndex);
     setPendingFocusDisplayId(null);
-  }, [pendingFocusDisplayId, visibleDisplays]);
+  }, [pendingFocusDisplayId, safeIndex, visibleDisplays]);
 
 
   const confirmDelete = useCallback(
@@ -403,9 +501,17 @@ export default function DisplayManagementSection({
   const goTo = useCallback(
     (index: number) => {
       if (visibleDisplays.length === 0) return;
-      setCarouselIndex((index + visibleDisplays.length) % visibleDisplays.length);
+      const normalizedIndex = (index + visibleDisplays.length) % visibleDisplays.length;
+      if (normalizedIndex !== safeIndex) {
+        const wrappedForward = safeIndex === visibleDisplays.length - 1 && normalizedIndex === 0;
+        const wrappedBackward = safeIndex === 0 && normalizedIndex === visibleDisplays.length - 1;
+        setCarouselDirection(
+          wrappedForward ? 1 : wrappedBackward ? -1 : normalizedIndex > safeIndex ? 1 : -1,
+        );
+      }
+      setCarouselIndex(normalizedIndex);
     },
-    [visibleDisplays.length],
+    [safeIndex, visibleDisplays.length],
   );
 
   const moveCarousel = useCallback(
@@ -571,27 +677,70 @@ export default function DisplayManagementSection({
               onTouchEnd={() => setIsDisplayGestureRegionActive(false)}
               onTouchCancel={() => setIsDisplayGestureRegionActive(false)}
               {...displaySwipeResponder.panHandlers}>
-              <View style={styles.cardPreviewContainer}>
-                <DashboardPreviewSection
-                  slots={toPreviewSlots(
-                    currentDisplay,
-                    brand.accent,
-                    stopNames,
-                    currentDisplay.displayId === activeDisplayId ? liveArrivalLookup : null,
-                    {showDirectionFallback: false},
-                  )}
-                  displayType={currentDisplay.config.displayType ?? Number(currentDisplay.config.lines?.[0]?.displayType) ?? 1}
-                  onSelectSlot={() =>
-                    router.push({
-                      pathname: '/preset-editor',
-                      params: {city: currentDisplayCity, from: 'dashboard', mode: 'edit', displayId: currentDisplay.displayId},
-                    })
-                  }
-                  onReorderSlot={() => {}}
-                  onDragStateChange={() => {}}
-                  showHint={false}
-                  brightness={100}
-                />
+              <View
+                style={styles.cardPreviewContainer}>
+                <View
+                  onLayout={event => setPreviewStageWidth(event.nativeEvent.layout.width)}
+                  pointerEvents={previewTransition ? 'none' : 'auto'}
+                  style={styles.previewStage}>
+                  <View style={[styles.previewPane, previewTransition && styles.previewPaneHidden]}>
+                    {renderDisplayPreview(currentDisplay, currentDisplayCity)}
+                  </View>
+                  {previewTransition ? (
+                    <>
+                      <Animated.View
+                        style={[
+                          styles.previewPaneFloating,
+                          {width: effectivePreviewWidth},
+                          {
+                            transform: [
+                              {
+                                translateX: previewTrackAnim.interpolate({
+                                  inputRange: [0, 1],
+                                  outputRange: [
+                                    0,
+                                    previewTransition.direction > 0
+                                      ? -previewTravelDistance
+                                      : previewTravelDistance,
+                                  ],
+                                }),
+                              },
+                            ],
+                          },
+                        ]}>
+                        {renderDisplayPreview(
+                          previewTransition.outgoing,
+                          providerToCity(previewTransition.outgoing.config.lines?.[0]?.provider ?? null) ?? selectedCity,
+                        )}
+                      </Animated.View>
+                      <Animated.View
+                        style={[
+                          styles.previewPaneFloating,
+                          {width: effectivePreviewWidth},
+                          {
+                            transform: [
+                              {
+                                translateX: previewTrackAnim.interpolate({
+                                  inputRange: [0, 1],
+                                  outputRange: [
+                                    previewTransition.direction > 0
+                                      ? previewTravelDistance
+                                      : -previewTravelDistance,
+                                    0,
+                                  ],
+                                }),
+                              },
+                            ],
+                          },
+                        ]}>
+                        {renderDisplayPreview(
+                          previewTransition.incoming,
+                          providerToCity(previewTransition.incoming.config.lines?.[0]?.provider ?? null) ?? selectedCity,
+                        )}
+                      </Animated.View>
+                    </>
+                  ) : null}
+                </View>
               </View>
 
             </View>
@@ -1053,6 +1202,21 @@ const styles = StyleSheet.create({
     paddingTop: spacing.md,
     paddingBottom: spacing.xs,
     position: 'relative',
+  },
+  previewStage: {
+    position: 'relative',
+    overflow: 'visible',
+  },
+  previewPane: {
+    width: '100%',
+  },
+  previewPaneHidden: {
+    opacity: 0,
+  },
+  previewPaneFloating: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
   },
   activeOverlayBadge: {
     position: 'absolute',
