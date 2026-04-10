@@ -896,7 +896,7 @@ const styles = StyleSheet.create({
   primaryButtonDisabled: {
     opacity: 0.45,
   },
-  primaryText: {color: colors.background, fontWeight: '800', fontSize: 15},
+  primaryText: {color: colors.onAccent, fontWeight: '800', fontSize: 15},
   secondaryButton: {
     borderColor: colors.border,
     borderWidth: 1,

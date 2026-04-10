@@ -1,8 +1,8 @@
-import React, {useState} from 'react';
+import React, {useEffect, useState} from 'react';
 import {Alert, Pressable, ScrollView, StyleSheet, Text, View} from 'react-native';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
 import {Ionicons} from '@expo/vector-icons';
-import {useRouter} from 'expo-router';
+import {useLocalSearchParams, useRouter} from 'expo-router';
 import {colors, layout, radii, settingsSectionColors, spacing, typography} from '../../../theme';
 import {useAuth} from '../../../state/authProvider';
 import {AppBrandHeader} from '../../../components/AppBrandHeader';
@@ -24,6 +24,7 @@ const SECTIONS: {key: SectionKey; label: string; icon: keyof typeof Ionicons.gly
 export default function SettingsScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const params = useLocalSearchParams<{debug?: string}>();
   const {deviceId, disconnectDevice, signOut, deleteAccount, user, currentProvider, displayCount} = useAuth();
   const {state: appState} = useAppState();
   const [openSection, setOpenSection] = useState<SectionKey | null>(null);
@@ -35,8 +36,15 @@ export default function SettingsScreen() {
   const [scrollViewportHeight, setScrollViewportHeight] = useState(0);
   const [scrollContentHeight, setScrollContentHeight] = useState(0);
   const currentDeviceId = deviceId ?? appState.deviceId;
+  const showDeviceDebug = params.debug === 'device';
   const scrollEnabled = scrollContentHeight > scrollViewportHeight + 1;
   const displayCountLabel = `${displayCount} ${displayCount === 1 ? 'display' : 'displays'}`;
+
+  useEffect(() => {
+    if (showDeviceDebug) {
+      setOpenSection('Device');
+    }
+  }, [showDeviceDebug]);
 
   const toggle = (key: SectionKey) =>
     setOpenSection(prev => (prev === key ? null : key));
@@ -204,13 +212,18 @@ export default function SettingsScreen() {
                           <Text style={styles.detailValue}>{displayCountLabel}</Text>
                         </View>
                         <View style={styles.detailRow}>
-                          <Text style={styles.detailLabel}>Device ID</Text>
-                          <Text style={styles.detailValue}>{currentDeviceId ?? '-'}</Text>
-                        </View>
-                        <View style={styles.detailRow}>
                           <Text style={styles.detailLabel}>Status</Text>
                           <Text style={styles.detailValue}>{currentDeviceId ? 'Paired' : 'No device paired'}</Text>
                         </View>
+                        {showDeviceDebug ? (
+                          <View style={styles.debugSection}>
+                            <Text style={styles.debugLabel}>Debug</Text>
+                            <View style={styles.detailRow}>
+                              <Text style={styles.detailLabel}>Hardware ID</Text>
+                              <Text style={styles.detailValue}>{currentDeviceId ?? '-'}</Text>
+                            </View>
+                          </View>
+                        ) : null}
                         {deviceNotice ? (
                           <Text style={[styles.notice, deviceNotice.kind === 'error' ? styles.noticeError : styles.noticeSuccess]}>
                             {deviceNotice.text}
@@ -373,6 +386,14 @@ const styles = StyleSheet.create({
   },
   detailLabel: {color: colors.textMuted, fontSize: 13},
   detailValue: {color: colors.text, fontSize: 13, fontWeight: '600', flexShrink: 1, textAlign: 'right'},
+  debugSection: {
+    gap: spacing.xs,
+  },
+  debugLabel: {
+    color: colors.textTertiary,
+    fontSize: 12,
+    fontWeight: '600',
+  },
 
   // ─── Pills ────────────────────────────────────────────────────────────────
   pillRow: {flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs},
@@ -432,5 +453,5 @@ const styles = StyleSheet.create({
   // ─── Notices ─────────────────────────────────────────────────────────────
   notice: {fontSize: 12, lineHeight: 18},
   noticeError: {color: colors.dangerText},
-  noticeSuccess: {color: colors.textMuted},
+  noticeSuccess: {color: colors.successText},
 });

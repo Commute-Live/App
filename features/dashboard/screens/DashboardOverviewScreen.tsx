@@ -1,5 +1,5 @@
-import React, {useEffect, useMemo, useState} from 'react';
-import {ActivityIndicator, Pressable, ScrollView, Text, View} from 'react-native';
+import React, {useEffect, useMemo, useRef, useState} from 'react';
+import {ActivityIndicator, Pressable, ScrollView, Switch, Text, View} from 'react-native';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
 import {Ionicons} from '@expo/vector-icons';
 import {useRouter} from 'expo-router';
@@ -70,6 +70,8 @@ export default function DashboardOverviewScreen() {
   const [quietHours, setQuietHours] = useState<QuietHoursDraft>(DEFAULT_QUIET_HOURS);
   const [quietHoursError, setQuietHoursError] = useState('');
   const [dashboardSwipeEnabled, setDashboardSwipeEnabled] = useState(true);
+  const deviceNameTapTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [deviceNameTapCount, setDeviceNameTapCount] = useState(0);
 
   const currentDeviceIndex = useMemo(() => {
     if (!deviceId) return 0;
@@ -111,19 +113,6 @@ export default function DashboardOverviewScreen() {
     refetchOnWindowFocus: false,
   });
 
-  const espDeviceInfoQuery = useQuery({
-    queryKey: queryKeys.espDeviceInfo,
-    queryFn: async () => {
-      const response = await fetch('http://192.168.4.1/device-info', {method: 'GET'});
-      if (!response.ok) return null;
-      const data = await response.json().catch(() => null);
-      return data?.deviceId ? String(data.deviceId) : null;
-    },
-    enabled: isScreenFocused && !hasLinkedDevice && espHeartbeatQuery.data === true,
-    retry: false,
-    refetchOnWindowFocus: false,
-  });
-
   const espStatus: 'idle' | 'checking' | 'connected' | 'disconnected' = hasLinkedDevice
     ? 'idle'
     : (espHeartbeatQuery.isPending || espHeartbeatQuery.isFetching)
@@ -131,8 +120,6 @@ export default function DashboardOverviewScreen() {
       : espHeartbeatQuery.data
         ? 'connected'
         : 'disconnected';
-  const espDeviceId = espDeviceInfoQuery.data ?? null;
-
   useQuery({
     queryKey: queryKeys.deviceOnline(selectedDevice.id || 'none'),
     queryFn: async () => {
@@ -161,6 +148,14 @@ export default function DashboardOverviewScreen() {
   }, [deviceId, deviceIds, setDeviceId]);
 
   useEffect(() => {
+    return () => {
+      if (deviceNameTapTimeoutRef.current) {
+        clearTimeout(deviceNameTapTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
     if (!isScreenFocused) return;
     if (hasLinkedDevice && selectedDevice.id && status === 'authenticated') {
       void queryClient.invalidateQueries({queryKey: queryKeys.deviceSettings(selectedDevice.id)});
@@ -168,7 +163,6 @@ export default function DashboardOverviewScreen() {
     }
     if (!hasLinkedDevice) {
       void queryClient.invalidateQueries({queryKey: queryKeys.espHeartbeat});
-      void queryClient.invalidateQueries({queryKey: queryKeys.espDeviceInfo});
     }
   }, [hasLinkedDevice, isScreenFocused, queryClient, selectedDevice.id, status]);
 
@@ -267,6 +261,33 @@ export default function DashboardOverviewScreen() {
     }
   };
 
+  const handleDeviceNamePress = () => {
+    const nextTapCount = deviceNameTapCount + 1;
+    if (deviceNameTapTimeoutRef.current) {
+      clearTimeout(deviceNameTapTimeoutRef.current);
+    }
+
+    if (nextTapCount >= 5) {
+      setDeviceNameTapCount(0);
+      router.push({pathname: '/settings', params: {debug: 'device'}});
+      return;
+    }
+
+    setDeviceNameTapCount(nextTapCount);
+    deviceNameTapTimeoutRef.current = setTimeout(() => {
+      setDeviceNameTapCount(0);
+      deviceNameTapTimeoutRef.current = null;
+    }, 1500);
+  };
+
+  const deviceLabels = useMemo(
+    () =>
+      Object.fromEntries(
+        deviceIds.map((id, index) => [id, id === deviceId ? selectedDevice.name : `Device ${index + 1}`]),
+      ) as Record<string, string>,
+    [deviceId, deviceIds, selectedDevice.name],
+  );
+
   if (status === 'loading') {
     return (
       <View style={[styles.container, {paddingTop: insets.top}]}>
@@ -290,10 +311,10 @@ export default function DashboardOverviewScreen() {
           <View style={styles.pageHeader}>
             <View style={styles.pageHeaderRow}>
               <View style={styles.pageHeaderLeft}>
-                <Text style={styles.pageStatusText}>My Device</Text>
-                <Text style={styles.pageHeaderMeta}>
-                  {selectedDevice.id} · {CITY_LABELS[selectedCity]}
-                </Text>
+                <Pressable style={styles.deviceNameButton} onPress={handleDeviceNamePress}>
+                  <Text style={styles.pageStatusText}>{selectedDevice.name}</Text>
+                </Pressable>
+                <Text style={styles.pageHeaderMeta}>{CITY_LABELS[selectedCity]}</Text>
               </View>
               <View style={styles.pageHeaderRight}>
                 <Pressable
@@ -323,7 +344,7 @@ export default function DashboardOverviewScreen() {
             {deviceIds.length > 1 ? (
               <View style={styles.deviceSwitcherRow}>
                 <View style={styles.deviceSwitcherHeader}>
-                  <Text style={styles.switcherLabel}>Linked Devices</Text>
+                  <Text style={styles.switcherLabel}>Linked devices</Text>
                   <Text style={styles.switcherMeta}>
                     {currentDeviceIndex + 1} of {deviceIds.length}
                   </Text>
@@ -335,7 +356,7 @@ export default function DashboardOverviewScreen() {
                   </Pressable>
                   <View style={styles.deviceCycleCurrent}>
                     <Text style={styles.deviceCycleCurrentText} numberOfLines={1}>
-                      {selectedDevice.id}
+                      {deviceLabels[selectedDevice.id] ?? selectedDevice.name}
                     </Text>
                   </View>
                   <Pressable style={styles.deviceCycleButton} onPress={() => cycleDevice(1)}>
@@ -350,7 +371,7 @@ export default function DashboardOverviewScreen() {
                       style={[styles.devicePill, deviceId === id && styles.devicePillActive]}
                       onPress={() => setDeviceId(id)}>
                       <Text style={[styles.devicePillText, deviceId === id && styles.devicePillTextActive]}>
-                        {id}
+                        {deviceLabels[id] ?? 'My Device'}
                       </Text>
                     </Pressable>
                   ))}
@@ -365,7 +386,7 @@ export default function DashboardOverviewScreen() {
                 <Text style={styles.sectionLabel}>No Device Linked</Text>
                 <Text style={styles.deviceSubMeta}>
                   {espStatus === 'connected'
-                    ? `CommuteLive device detected${espDeviceId ? ` — ID: ${espDeviceId}` : ''}`
+                    ? 'CommuteLive device detected nearby'
                     : espStatus === 'checking'
                       ? 'Searching for nearby device…'
                       : 'Tap to connect a device'}
@@ -402,25 +423,20 @@ export default function DashboardOverviewScreen() {
                 <Text style={[styles.quietMetaText, quietHoursLoading && styles.quietDescriptionDisabled]}>
                   {quietHoursLoading
                     ? 'Loading device settings…'
-                    : `Blank the entire panel on selected days. Timezone: ${quietHoursTimezoneLabel}`}
+                      : `Blank the entire panel on selected days. Timezone: ${quietHoursTimezoneLabel}`}
                 </Text>
               </View>
-              <Pressable
-                style={[
-                  styles.toggleChip,
-                  quietHoursEnabled ? styles.toggleChipOn : styles.toggleChipOff,
-                ]}
+              <Switch
+                value={quietHoursEnabled}
                 disabled={quietHoursLoading || quietHoursSaving}
-                onPress={() => {
-                  const nextEnabled = !quietHoursEnabled;
+                onValueChange={nextEnabled => {
                   setQuietHoursEnabled(nextEnabled);
                   void persistQuietHours(nextEnabled, quietHours);
-                }}>
-                <View style={[styles.toggleDot, quietHoursEnabled ? styles.toggleDotOn : styles.toggleDotOff]} />
-                <Text style={styles.toggleChipText}>
-                  {quietHoursSaving ? 'Saving…' : quietHoursEnabled ? 'On' : 'Off'}
-                </Text>
-              </Pressable>
+                }}
+                trackColor={{false: colors.border, true: colors.accent}}
+                ios_backgroundColor={colors.border}
+                style={styles.quietHeaderSwitch}
+              />
             </View>
 
             {quietHoursEnabled ? (

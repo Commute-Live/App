@@ -26,7 +26,7 @@ export default function MainEntryScreen() {
     return (
       <SafeAreaView style={styles.logoScreen} edges={['top', 'left', 'right']}>
         <Image
-          source={require('../../../assets/images/splash-icon.png')}
+          source={require('../../../assets/images/logo.png')}
           style={styles.logo}
           resizeMode="contain"
         />

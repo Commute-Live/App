@@ -126,7 +126,7 @@ export const configSharedStyles = {
     paddingVertical: spacing.sm,
   },
   saveButtonText: {
-    color: colors.background,
+    color: colors.onAccent,
     fontSize: typography.label,
     fontWeight: '800' as const,
   },

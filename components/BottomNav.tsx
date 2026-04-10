@@ -3,7 +3,7 @@ import {Pressable, StyleSheet, Text, View} from 'react-native';
 import {Ionicons} from '@expo/vector-icons';
 import {usePathname, useRouter, type Href} from 'expo-router';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
-import {colors, layout, spacing, typography} from '../theme';
+import {colors, spacing} from '../theme';
 
 export interface BottomNavItem {
   key: string;
@@ -20,15 +20,17 @@ export const BottomNav: React.FC<Props> = ({items}) => {
   const router = useRouter();
   const pathname = usePathname();
   const insets = useSafeAreaInsets();
+  const bottomPadding = insets.bottom > 0 ? insets.bottom : spacing.sm;
+  const navHeight = 83;
 
   return (
-    <View style={[styles.container, {paddingBottom: insets.bottom > 0 ? insets.bottom : spacing.sm}]}>
+    <View style={[styles.container, {paddingBottom: bottomPadding, minHeight: navHeight}]}>
       {items.map((item) => {
         const isActive = pathname === item.route || pathname.startsWith(`${item.route}/`);
         return (
           <Pressable
             key={item.key}
-            style={styles.item}
+            style={[styles.item, {minHeight: navHeight - bottomPadding}]}
             onPress={() => {
               if (isActive) return;
               router.navigate(item.route);
@@ -38,7 +40,7 @@ export const BottomNav: React.FC<Props> = ({items}) => {
             <Ionicons
               name={item.icon}
               size={22}
-              color={isActive ? colors.accent : colors.textMuted}
+              color={isActive ? colors.accent : colors.textSecondary}
             />
             <Text style={[styles.label, isActive && styles.labelActive]}>{item.label}</Text>
           </Pressable>
@@ -55,20 +57,20 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: colors.border,
     paddingTop: spacing.xs,
-    paddingHorizontal: spacing.xs,
+    paddingHorizontal: spacing.sm,
   },
   item: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: spacing.xs,
-    minHeight: layout.tabHeight,
-    paddingVertical: spacing.xs,
+    gap: spacing.xxs,
+    paddingTop: spacing.xs,
+    paddingBottom: spacing.xs,
   },
   indicator: {
     position: 'absolute',
     bottom: 0,
-    width: 24,
+    width: 28,
     height: 2,
     borderRadius: 1,
     backgroundColor: 'transparent',
@@ -77,10 +79,9 @@ const styles = StyleSheet.create({
     backgroundColor: colors.accent,
   },
   label: {
-    color: colors.textMuted,
-    fontSize: typography.caption,
+    color: colors.textSecondary,
+    fontSize: 12,
     fontWeight: '700',
-    letterSpacing: 0.2,
   },
   labelActive: {
     color: colors.accent,

@@ -47,7 +47,7 @@ export default function AuthScreen() {
         <View style={styles.mainSection}>
           <View style={styles.brandSection}>
             <View style={styles.logoFrame}>
-              <Image source={require('../../../assets/images/app-logo.png')} style={styles.logo} resizeMode="contain" />
+              <Image source={require('../../../assets/images/logo.png')} style={styles.logo} resizeMode="contain" />
             </View>
             <Text style={styles.title}>CommuteLive</Text>
             <Text style={styles.subtitle}>Your live transit board, ready when you are.</Text>
@@ -58,7 +58,7 @@ export default function AuthScreen() {
               {Platform.OS === 'ios' && appleAvailable && (
                 <AppleAuthentication.AppleAuthenticationButton
                   buttonType={AppleAuthentication.AppleAuthenticationButtonType.CONTINUE}
-                  buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.WHITE_OUTLINE}
+                  buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.BLACK}
                   cornerRadius={radii.md}
                   style={[styles.appleButton, isLoading && styles.buttonDisabled]}
                   onPress={handleApple}
@@ -171,7 +171,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     flexDirection: 'row',
     justifyContent: 'center',
-    backgroundColor: colors.card,
+    backgroundColor: colors.surface,
     minHeight: layout.buttonHeight,
     paddingHorizontal: spacing.md,
   },

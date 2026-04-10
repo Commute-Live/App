@@ -3,7 +3,6 @@ import {Stack, useRouter} from 'expo-router';
 import {DatadogProvider} from '@datadog/mobile-react-native';
 import {createDatadogConfig} from '../lib/datadog';
 import {StatusBar} from 'expo-status-bar';
-import {useFonts} from 'expo-font';
 import {FlatList, ScrollView, SectionList} from 'react-native';
 import {SafeAreaProvider} from 'react-native-safe-area-context';
 import {QueryClientProvider} from '@tanstack/react-query';
@@ -91,34 +90,13 @@ function AppNavigator() {
 }
 
 export default function RootLayout() {
-  const [fontsLoaded] = useFonts({
-    Rubik_300Light: require('../assets/fonts/Rubik/static/Rubik-Light.ttf'),
-    Rubik_300LightItalic: require('../assets/fonts/Rubik/static/Rubik-LightItalic.ttf'),
-    Rubik_400Regular: require('../assets/fonts/Rubik/static/Rubik-Regular.ttf'),
-    Rubik_400Italic: require('../assets/fonts/Rubik/static/Rubik-Italic.ttf'),
-    Rubik_500Medium: require('../assets/fonts/Rubik/static/Rubik-Medium.ttf'),
-    Rubik_500MediumItalic: require('../assets/fonts/Rubik/static/Rubik-MediumItalic.ttf'),
-    Rubik_600SemiBold: require('../assets/fonts/Rubik/static/Rubik-SemiBold.ttf'),
-    Rubik_600SemiBoldItalic: require('../assets/fonts/Rubik/static/Rubik-SemiBoldItalic.ttf'),
-    Rubik_700Bold: require('../assets/fonts/Rubik/static/Rubik-Bold.ttf'),
-    Rubik_700BoldItalic: require('../assets/fonts/Rubik/static/Rubik-BoldItalic.ttf'),
-    Rubik_800ExtraBold: require('../assets/fonts/Rubik/static/Rubik-ExtraBold.ttf'),
-    Rubik_800ExtraBoldItalic: require('../assets/fonts/Rubik/static/Rubik-ExtraBoldItalic.ttf'),
-    Rubik_900Black: require('../assets/fonts/Rubik/static/Rubik-Black.ttf'),
-    Rubik_900BlackItalic: require('../assets/fonts/Rubik/static/Rubik-BlackItalic.ttf'),
-  });
-
-  if (!fontsLoaded) {
-    return null;
-  }
-
   return (
     <DatadogProvider configuration={datadogConfig}>
       <QueryClientProvider client={queryClient}>
         <SafeAreaProvider>
           <AppStateProvider>
             <AuthProvider>
-              <StatusBar style="light" />
+              <StatusBar style="dark" />
               <AppNavigator />
             </AuthProvider>
           </AppStateProvider>

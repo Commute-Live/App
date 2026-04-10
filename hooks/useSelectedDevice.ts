@@ -14,7 +14,7 @@ export const useSelectedDevice = (): DeviceInfo => {
     const status = deviceStatus === 'pairedOnline' ? 'Online' : 'Offline';
     return {
       id: resolvedDeviceId ?? 'commutelive-001',
-      name: resolvedDeviceId ? `Device ${resolvedDeviceId}` : 'Device 1',
+      name: 'My Device',
       status,
     };
   }, [deviceId, fallbackDeviceId, deviceStatus]);

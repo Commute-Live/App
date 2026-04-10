@@ -17,7 +17,7 @@ export const styles = StyleSheet.create({
   pageHeader: {
     paddingTop: 0,
     paddingBottom: spacing.sm,
-    gap: spacing.md,
+    gap: spacing.sm,
   },
   pageOverline: {
     color: colors.textMuted,
@@ -38,6 +38,9 @@ export const styles = StyleSheet.create({
     alignItems: 'center',
     gap: spacing.sm,
   },
+  deviceNameButton: {
+    alignSelf: 'flex-start',
+  },
   pageStatusText: {
     color: colors.text,
     fontSize: typography.pageTitle,
@@ -46,9 +49,9 @@ export const styles = StyleSheet.create({
     lineHeight: 33,
   },
   pageHeaderMeta: {
-    color: colors.textMuted,
-    fontSize: typography.body,
-    lineHeight: 18,
+    color: colors.textSecondary,
+    fontSize: 14,
+    lineHeight: 20,
   },
   headerActionButton: {
     width: layout.iconButton,
@@ -88,14 +91,12 @@ export const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   switcherLabel: {
-    color: colors.textMuted,
-    fontSize: 11,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-    letterSpacing: 0.8,
+    color: colors.textSecondary,
+    fontSize: 13,
+    fontWeight: '600',
   },
   switcherMeta: {
-    color: colors.textMuted,
+    color: colors.textTertiary,
     fontSize: 12,
     fontWeight: '600',
   },
@@ -127,8 +128,8 @@ export const styles = StyleSheet.create({
   },
   deviceCycleCurrentText: {
     color: colors.text,
-    fontSize: 13,
-    fontWeight: '700',
+    fontSize: 14,
+    fontWeight: '600',
   },
   devicePillWrap: {flexDirection: 'row', gap: spacing.xs, flexWrap: 'wrap'},
   devicePill: {
@@ -145,7 +146,7 @@ export const styles = StyleSheet.create({
     borderColor: colors.accent,
     backgroundColor: colors.accentMuted,
   },
-  devicePillText: {color: colors.text, fontSize: 12, fontWeight: '700'},
+  devicePillText: {color: colors.text, fontSize: 13, fontWeight: '600'},
   devicePillTextActive: {color: colors.accent},
 
   // ─── Generic Card ─────────────────────────────────────────────────────────
@@ -173,11 +174,9 @@ export const styles = StyleSheet.create({
   // ─── Borderless Section ───────────────────────────────────────────────────
   sectionBlock: {gap: spacing.md},
   sectionBlockLabel: {
-    color: colors.text,
+    color: colors.textSecondary,
     fontSize: 13,
-    fontWeight: '900',
-    textTransform: 'uppercase',
-    letterSpacing: 1,
+    fontWeight: '600',
   },
   heroBrandRow: {
     flexDirection: 'row',
@@ -275,7 +274,7 @@ export const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: spacing.md,
   },
-  setupButtonText: {color: colors.background, fontWeight: '800', fontSize: 13},
+  setupButtonText: {color: colors.onAccent, fontWeight: '800', fontSize: 13},
 
   // ─── Card Section Header ──────────────────────────────────────────────────
   cardHeaderRow: {
@@ -295,6 +294,9 @@ export const styles = StyleSheet.create({
     gap: spacing.md,
   },
   quietHeaderCopy: {flex: 1, gap: spacing.xxs},
+  quietHeaderSwitch: {
+    flexShrink: 0,
+  },
   quietDescription: {
     flex: 1,
     color: colors.textMuted,
@@ -303,27 +305,8 @@ export const styles = StyleSheet.create({
   },
   quietDescriptionDisabled: {opacity: 0.6},
 
-  // ─── Toggle Chip ──────────────────────────────────────────────────────────
-  toggleChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs,
-    borderRadius: radii.md,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
-    borderWidth: 1,
-    flexShrink: 0,
-    minHeight: 36,
-  },
-  toggleChipOn: {backgroundColor: colors.successSurface, borderColor: colors.successBorder},
-  toggleChipOff: {backgroundColor: colors.surface, borderColor: colors.border},
-  toggleDot: {width: 7, height: 7, borderRadius: 4},
-  toggleDotOn: {backgroundColor: colors.successText},
-  toggleDotOff: {backgroundColor: colors.textMuted},
-  toggleChipText: {color: colors.text, fontSize: 13, fontWeight: '700'},
-
   // ─── Quiet Hours / Time Fields ────────────────────────────────────────────
-  quietMetaText: {color: colors.textMuted, fontSize: 12, lineHeight: 17},
+  quietMetaText: {color: colors.textTertiary, fontSize: 12, lineHeight: 17},
   quietDaysWrap: {gap: spacing.xs},
   quietDaysRow: {flexDirection: 'row', justifyContent: 'center', gap: 10},
   quietDaysRowDisabled: {opacity: 0.45},

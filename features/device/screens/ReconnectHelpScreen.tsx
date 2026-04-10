@@ -84,7 +84,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  primaryText: {color: colors.background, fontWeight: '800', fontSize: typography.bodyLg},
+  primaryText: {color: colors.onAccent, fontWeight: '800', fontSize: typography.bodyLg},
   secondaryButton: {
     borderColor: colors.border,
     borderWidth: 1,

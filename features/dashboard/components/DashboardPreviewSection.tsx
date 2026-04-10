@@ -12,6 +12,7 @@ type Props = {
   showHint?: boolean;
   brightness?: number;
   mini?: boolean;
+  emptyMessage?: string;
 };
 
 export default function DashboardPreviewSection({
@@ -23,6 +24,7 @@ export default function DashboardPreviewSection({
   showHint,
   brightness,
   mini,
+  emptyMessage,
 }: Props) {
   return (
     <View style={styles.previewSection}>
@@ -35,6 +37,7 @@ export default function DashboardPreviewSection({
         showHint={showHint}
         brightness={brightness}
         mini={mini}
+        emptyMessage={emptyMessage}
       />
     </View>
   );

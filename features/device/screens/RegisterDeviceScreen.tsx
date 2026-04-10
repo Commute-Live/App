@@ -90,7 +90,7 @@ export default function RegisterDeviceScreen() {
       <ScreenHeader title="Connect your device" />
       <View style={styles.content}>
         <View style={styles.heroSection}>
-          <Image source={require('../../../app-logo.png')} style={styles.logo} resizeMode="contain" />
+          <Image source={require('../../../assets/images/logo.png')} style={styles.logo} resizeMode="contain" />
           <View style={styles.heroCopy}>
             <Text style={styles.title}>Connect your device</Text>
             <Text style={styles.subtitle}>
@@ -247,7 +247,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     width: '100%',
   },
-  primaryText: {color: colors.background, fontWeight: '800', fontSize: typography.bodyLg},
+  primaryText: {color: colors.onAccent, fontWeight: '800', fontSize: typography.bodyLg},
   primaryButtonDisabled: {backgroundColor: colors.border},
   primaryTextDisabled: {color: colors.textMuted},
   secondaryButton: {

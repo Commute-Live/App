@@ -25,6 +25,7 @@ type Props = {
   showHint?: boolean;
   brightness?: number;
   mini?: boolean;
+  emptyMessage?: string;
 };
 
 export default function Display3DPreview({
@@ -36,6 +37,7 @@ export default function Display3DPreview({
   showHint = true,
   brightness = 100,
   mini = false,
+  emptyMessage,
 }: Props) {
   const compact = slots.length > 1 || displayType >= 3;
   const safeBrightness = Math.max(0, Math.min(100, brightness));
@@ -89,90 +91,96 @@ export default function Display3DPreview({
       <View style={[styles.glowInner, mini && styles.glowInnerMini]} />
       <View style={styles.device}>
         <View style={[styles.screen, compact && styles.screenCompact, mini && styles.screenMini]}>
-          {slots.map(slot => (
-            <Pressable
-              key={slot.id}
-              style={[
-                styles.slot,
-                slot.selected && styles.slotActive,
-                compact && styles.slotCompact,
-                draggingId === slot.id && styles.slotDragging,
-                draggingId === slot.id && {transform: [{translateY: dragOffsetY}]},
-              ]}
-              onPress={() => onSelectSlot(slot.id)}
-              onPressIn={event => handlePressIn(slot.id, event.nativeEvent.pageY)}
-              onLongPress={() => handleLongPress(slot.id)}
-              onTouchMove={(event: GestureResponderEvent) => handleTouchMove(slot.id, event.nativeEvent.pageY)}
-              onPressOut={endDrag}
-              delayLongPress={260}>
-              {slot.badgeShape === 'bar' ? (
-                <View style={[styles.routeBadgeBarWrap, compact && styles.routeBadgeBarWrapCompact]}>
-                  <View style={[styles.routeBadgeBar, compact && styles.routeBadgeBarCompact, {backgroundColor: slot.color}]} />
-                </View>
-              ) : (
-                <View
-                  style={[
-                    styles.routeBadge,
-                    compact && styles.routeBadgeCompact,
-                    slot.badgeShape === 'pill' && styles.routeBadgePill,
-                    compact && slot.badgeShape === 'pill' && styles.routeBadgePillCompact,
-                    slot.badgeShape === 'rail' && styles.routeBadgeRail,
-                    compact && slot.badgeShape === 'rail' && styles.routeBadgeRailCompact,
-                    {backgroundColor: slot.color},
-                  ]}>
-                  <Text
-                    adjustsFontSizeToFit
-                    minimumFontScale={0.72}
-                    numberOfLines={1}
-                    style={[
-                      styles.routeBadgeText,
-                      slot.badgeShape === 'pill' && styles.routeBadgeTextPill,
-                      compact && styles.routeBadgeTextCompact,
-                      compact && slot.badgeShape === 'pill' && styles.routeBadgeTextPillCompact,
-                      slot.badgeShape === 'rail' && styles.routeBadgeTextRail,
-                      compact && slot.badgeShape === 'rail' && styles.routeBadgeTextRailCompact,
-                      {color: slot.textColor},
-                    ]}>
-                    {slot.routeLabel}
-                  </Text>
-                </View>
-              )}
-              <View style={styles.slotBody}>
-                {slot.stopName ? (
-                  <Text
-                    style={[
-                      styles.slotTitle,
-                      compact && styles.slotTitleCompact,
-                    ]}
-                    numberOfLines={1}>
-                    {slot.stopName}
-                  </Text>
-                ) : (
-                  <View style={[styles.slotTitlePlaceholder, compact && styles.slotTitlePlaceholderCompact]} />
-                )}
-                {slot.subLine ? (
-                  <Text
-                    style={[
-                      styles.slotSubLine,
-                      compact && styles.slotSubLineCompact,
-                      slot.subLineColor ? {color: slot.subLineColor} : null,
-                    ]}
-                    numberOfLines={1}>
-                    {slot.subLine}
-                  </Text>
-                ) : null}
-              </View>
-              <Text
+          {emptyMessage ? (
+            <View style={styles.emptyState}>
+              <Text style={styles.emptyStateText}>{emptyMessage}</Text>
+            </View>
+          ) : (
+            slots.map(slot => (
+              <Pressable
+                key={slot.id}
                 style={[
-                  styles.slotTimes,
-                  compact && styles.slotTimesCompact,
-                  slot.timesColor ? {color: slot.timesColor} : null,
+                  styles.slot,
+                  slot.selected && styles.slotActive,
+                  compact && styles.slotCompact,
+                  draggingId === slot.id && styles.slotDragging,
+                  draggingId === slot.id && {transform: [{translateY: dragOffsetY}]},
                 ]}
-                numberOfLines={1}>
-                {slot.times}
-              </Text>
-            </Pressable>
-          ))}
+                onPress={() => onSelectSlot(slot.id)}
+                onPressIn={event => handlePressIn(slot.id, event.nativeEvent.pageY)}
+                onLongPress={() => handleLongPress(slot.id)}
+                onTouchMove={(event: GestureResponderEvent) => handleTouchMove(slot.id, event.nativeEvent.pageY)}
+                onPressOut={endDrag}
+                delayLongPress={260}>
+                {slot.badgeShape === 'bar' ? (
+                  <View style={[styles.routeBadgeBarWrap, compact && styles.routeBadgeBarWrapCompact]}>
+                    <View style={[styles.routeBadgeBar, compact && styles.routeBadgeBarCompact, {backgroundColor: slot.color}]} />
+                  </View>
+                ) : (
+                  <View
+                    style={[
+                      styles.routeBadge,
+                      compact && styles.routeBadgeCompact,
+                      slot.badgeShape === 'pill' && styles.routeBadgePill,
+                      compact && slot.badgeShape === 'pill' && styles.routeBadgePillCompact,
+                      slot.badgeShape === 'rail' && styles.routeBadgeRail,
+                      compact && slot.badgeShape === 'rail' && styles.routeBadgeRailCompact,
+                      {backgroundColor: slot.color},
+                    ]}>
+                    <Text
+                      adjustsFontSizeToFit
+                      minimumFontScale={0.72}
+                      numberOfLines={1}
+                      style={[
+                        styles.routeBadgeText,
+                        slot.badgeShape === 'pill' && styles.routeBadgeTextPill,
+                        compact && styles.routeBadgeTextCompact,
+                        compact && slot.badgeShape === 'pill' && styles.routeBadgeTextPillCompact,
+                        slot.badgeShape === 'rail' && styles.routeBadgeTextRail,
+                        compact && slot.badgeShape === 'rail' && styles.routeBadgeTextRailCompact,
+                        {color: slot.badgeShape === 'circle' ? '#FFFFFF' : slot.textColor},
+                      ]}>
+                      {slot.routeLabel}
+                    </Text>
+                  </View>
+                )}
+                <View style={styles.slotBody}>
+                  {slot.stopName ? (
+                    <Text
+                      style={[
+                        styles.slotTitle,
+                        compact && styles.slotTitleCompact,
+                      ]}
+                      numberOfLines={1}>
+                      {slot.stopName}
+                    </Text>
+                  ) : (
+                    <View style={[styles.slotTitlePlaceholder, compact && styles.slotTitlePlaceholderCompact]} />
+                  )}
+                  {slot.subLine ? (
+                    <Text
+                      style={[
+                        styles.slotSubLine,
+                        compact && styles.slotSubLineCompact,
+                        slot.subLineColor ? {color: slot.subLineColor} : null,
+                      ]}
+                      numberOfLines={1}>
+                      {slot.subLine}
+                    </Text>
+                  ) : null}
+                </View>
+                <Text
+                  style={[
+                    styles.slotTimes,
+                    compact && styles.slotTimesCompact,
+                    slot.timesColor ? {color: slot.timesColor} : null,
+                  ]}
+                  numberOfLines={1}>
+                  {slot.times}
+                </Text>
+              </Pressable>
+            ))
+          )}
           {brightnessOverlayOpacity > 0 ? (
             <View pointerEvents="none" style={[styles.brightnessOverlay, {opacity: brightnessOverlayOpacity}]} />
           ) : null}
@@ -193,12 +201,12 @@ const styles = StyleSheet.create({
     bottom: 20,
     borderRadius: 30,
     backgroundColor: colors.accent,
-    opacity: 0.25,
+    opacity: 0.08,
     shadowColor: colors.accent,
-    shadowOpacity: 1,
-    shadowRadius: 70,
-    shadowOffset: {width: 0, height: 0},
-    elevation: 24,
+    shadowOpacity: 0.4,
+    shadowRadius: 28,
+    shadowOffset: {width: 0, height: 12},
+    elevation: 10,
   },
   glowInner: {
     position: 'absolute',
@@ -208,11 +216,11 @@ const styles = StyleSheet.create({
     bottom: 32,
     borderRadius: 24,
     backgroundColor: colors.accent,
-    opacity: 0.2,
+    opacity: 0.06,
     shadowColor: colors.accent,
-    shadowOpacity: 1,
-    shadowRadius: 45,
-    shadowOffset: {width: 0, height: 0},
+    shadowOpacity: 0.28,
+    shadowRadius: 18,
+    shadowOffset: {width: 0, height: 10},
   },
   device: {
     borderRadius: radii.lg,
@@ -236,18 +244,30 @@ const styles = StyleSheet.create({
   glowOuterMini: {
     top: 8,
     bottom: 14,
-    shadowRadius: 56,
-    opacity: 0.24,
+    shadowRadius: 24,
+    opacity: 0.08,
   },
   glowInnerMini: {
     top: 18,
     bottom: 24,
-    shadowRadius: 34,
-    opacity: 0.18,
+    shadowRadius: 14,
+    opacity: 0.05,
   },
   screenCompact: {
     paddingVertical: 4,
     gap: 4,
+  },
+  emptyState: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: spacing.lg,
+  },
+  emptyStateText: {
+    color: colors.displayPlaceholder,
+    fontSize: 15,
+    fontWeight: '600',
+    textAlign: 'center',
   },
   slot: {
     flex: 1,

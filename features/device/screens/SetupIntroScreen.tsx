@@ -243,10 +243,10 @@ export default function SetupIntroScreen() {
           <Text style={styles.subheading}>Complete registration below.</Text>
           <View style={styles.section}>
             <View style={styles.deviceIdCard}>
-              <Text style={styles.deviceIdLabel}>Device ID</Text>
-              <Text style={styles.deviceIdValue}>{state.deviceId || 'Not available yet'}</Text>
-              <Text style={styles.deviceIdLabel}>User ID</Text>
-              <Text style={styles.deviceIdValue}>{state.userId || 'Not available yet'}</Text>
+              <Text style={styles.deviceIdLabel}>Display</Text>
+              <Text style={styles.deviceIdValue}>My Device</Text>
+              <Text style={styles.deviceIdLabel}>Account</Text>
+              <Text style={styles.deviceIdValue}>{state.userId ? 'Signed in' : 'Sign in required'}</Text>
             </View>
             <Text style={styles.sectionTitle}>Wi‑Fi credentials</Text>
             <TextInput
@@ -481,7 +481,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   primaryButtonDisabled: {backgroundColor: colors.border},
-  primaryText: {color: colors.background, fontWeight: '800', fontSize: typography.bodyLg},
+  primaryText: {color: colors.onAccent, fontWeight: '800', fontSize: typography.bodyLg},
   primaryTextDisabled: {color: colors.textMuted},
   secondaryButton: {
     borderColor: colors.border,

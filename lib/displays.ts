@@ -579,7 +579,7 @@ export const toPreviewSlots = (
     return {
       id: `${display.displayId}-${index}`,
       color,
-      textColor: line.textColor || lineTextColor,
+      textColor: badgeShape === 'circle' ? '#FFFFFF' : line.textColor || lineTextColor,
       routeLabel: resolvePreviewRouteLabel(line),
       badgeShape,
       selected: false,

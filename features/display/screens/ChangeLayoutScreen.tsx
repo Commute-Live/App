@@ -6,9 +6,9 @@ import {colors, layout, radii, spacing, typography} from '../../../theme';
 import {useAppState} from '../../../state/appState';
 
 const themes: {key: 'mono' | 'metro' | 'bold'; label: string; desc: string}[] = [
-  {key: 'mono', label: 'Mono', desc: 'Muted OLED friendly'},
-  {key: 'metro', label: 'Metro', desc: 'Blue accent, transit vibe'},
-  {key: 'bold', label: 'Bold', desc: 'High contrast headlines'},
+  {key: 'mono', label: 'Mono', desc: 'Warm low-glare display'},
+  {key: 'metro', label: 'Metro', desc: 'Burnt orange transit accent'},
+  {key: 'bold', label: 'Bold', desc: 'High contrast golden hour'},
 ];
 
 const behaviors = [

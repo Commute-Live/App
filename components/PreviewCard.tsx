@@ -4,9 +4,9 @@ import {colors, layout, spacing, radii, typography} from '../theme';
 import {useAppState} from '../state/appState';
 
 const themeBackground: Record<string, string> = {
-  mono: '#0F1115',
-  metro: '#0B1F2C',
-  bold: '#1A0F21',
+  mono: '#3B2C21',
+  metro: '#4B3829',
+  bold: '#5B4331',
 };
 
 export const PreviewCard = () => {
@@ -47,18 +47,18 @@ const styles = StyleSheet.create({
     borderRadius: radii.lg,
     padding: layout.cardPaddingLg,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: colors.previewBorder,
     gap: spacing.sm,
   },
   headerRow: {flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center'},
   statusRow: {flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center'},
-  label: {color: colors.textMuted, fontSize: typography.body, letterSpacing: 0.4},
-  meta: {color: colors.text, fontSize: typography.body, fontWeight: '600'},
+  label: {color: colors.previewTextMuted, fontSize: typography.body, letterSpacing: 0.4},
+  meta: {color: colors.previewText, fontSize: typography.body, fontWeight: '600'},
   arrivalRow: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingVertical: spacing.sm,
-    borderBottomColor: colors.border,
+    borderBottomColor: colors.previewBorderMuted,
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
   linePill: {
@@ -68,7 +68,7 @@ const styles = StyleSheet.create({
     borderRadius: radii.md,
     marginRight: spacing.md,
   },
-  lineText: {color: colors.text, fontWeight: '700', fontSize: typography.body},
-  destination: {flex: 1, color: colors.text, fontSize: typography.bodyLg, fontWeight: '600'},
-  minutes: {color: colors.success, fontWeight: '700'},
+  lineText: {color: colors.onAccent, fontWeight: '700', fontSize: typography.body},
+  destination: {flex: 1, color: colors.previewText, fontSize: typography.bodyLg, fontWeight: '600'},
+  minutes: {color: colors.successTextSoft, fontWeight: '700'},
 });

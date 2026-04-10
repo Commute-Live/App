@@ -10,11 +10,10 @@ export default function ModalScreen() {
   return (
     <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
       <Text style={styles.title}>Modal</Text>
-      <View style={styles.separator} lightColor="#eee" darkColor="rgba(255,255,255,0.1)" />
+      <View style={styles.separator} />
       <EditScreenInfo path="features/misc/screens/ModalScreen.tsx" />
 
-      {/* Use a light status bar on iOS to account for the black space above the modal */}
-      <StatusBar style={Platform.OS === 'ios' ? 'light' : 'auto'} />
+      <StatusBar style={Platform.OS === 'ios' ? 'dark' : 'auto'} />
     </SafeAreaView>
   );
 }
@@ -36,5 +35,6 @@ const styles = StyleSheet.create({
     marginVertical: spacing.xl,
     height: 1,
     width: '80%',
+    backgroundColor: colors.border,
   },
 });

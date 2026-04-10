@@ -11,7 +11,7 @@ import {useAuth} from '../../../state/authProvider';
 import {BottomNav, type BottomNavItem} from '../../../components/BottomNav';
 import {logger} from '../../../lib/datadog';
 
-const fallbackDevice = {id: 'commutelive-001', name: 'Commute Live Display'};
+const fallbackDevice = {id: 'commutelive-001', name: 'My Device'};
 const NAV_ITEMS: BottomNavItem[] = [
   {key: 'home', label: 'Home', icon: 'home-outline', route: '/dashboard'},
   {key: 'settings', label: 'Settings', icon: 'settings-outline', route: '/settings'},
@@ -27,7 +27,7 @@ export default function PairedOnlineScreen() {
   const devices = [
     {
       id: deviceId ?? fallbackDevice.id,
-      name: deviceId ? `Device ${deviceId}` : fallbackDevice.name,
+      name: fallbackDevice.name,
     },
   ];
   const [selected, setSelected] = useState(devices[0]);
@@ -107,7 +107,7 @@ export default function PairedOnlineScreen() {
             <View>
               <Text style={styles.dropdownLabel}>Device</Text>
               <Text style={styles.dropdownValue}>{selected.name}</Text>
-              <Text style={styles.dropdownMeta}>Connected • ID {selected.id}</Text>
+              <Text style={styles.dropdownMeta}>Connected</Text>
             </View>
             <Ionicons
               name={open ? 'chevron-up' : 'chevron-down'}
@@ -122,10 +122,10 @@ export default function PairedOnlineScreen() {
         </View>
 
         <View style={styles.infoCard}>
-          <Text style={styles.infoLabel}>Device ID</Text>
-          <Text style={styles.infoValue}>{deviceId || 'Not available yet'}</Text>
-          <Text style={styles.infoLabel}>User ID</Text>
-          <Text style={styles.infoValue}>{userId || 'Not available yet'}</Text>
+          <Text style={styles.infoLabel}>Display</Text>
+          <Text style={styles.infoValue}>{selected.name}</Text>
+          <Text style={styles.infoLabel}>Account</Text>
+          <Text style={styles.infoValue}>{userId ? 'Signed in' : 'Not signed in'}</Text>
           <Text style={styles.linkStatus}>
             {linkStatus === 'linking'
               ? 'Linking device...'
@@ -150,7 +150,7 @@ export default function PairedOnlineScreen() {
                 }}>
                 <View>
                   <Text style={styles.dropdownValue}>{device.name}</Text>
-                  <Text style={styles.dropdownMeta}>Connected • ID {device.id}</Text>
+                  <Text style={styles.dropdownMeta}>Connected</Text>
                 </View>
                 {selected.id === device.id ? (
                   <Ionicons name="checkmark" size={16} color={colors.accent} />

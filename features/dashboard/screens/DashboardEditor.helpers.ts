@@ -45,7 +45,7 @@ type RoutePickerItem = TransitRoutePickerItem;
 type RouteGroup = TransitRouteGroup;
 type StationRouteResult = {stopId: string; routes: Route[]};
 
-const DEFAULT_TEXT_COLOR = colors.text;
+const DEFAULT_TEXT_COLOR = '#FFFFFF';
 const DEFAULT_NEXT_STOPS = 3;
 const MIN_NEXT_STOPS = 1;
 const MAX_NEXT_STOPS = 5;

@@ -593,7 +593,7 @@ export default function DisplayManagementSection({
                           params: {city: currentDisplayCity, from: 'dashboard', mode: 'edit', displayId: currentDisplay.displayId},
                         })
                     }>
-                      <Ionicons name="pencil-outline" size={14} color={colors.text} />
+                      <Ionicons name="pencil-outline" size={16} color={colors.text} />
                     </Pressable>
                   </View>
 
@@ -633,7 +633,7 @@ export default function DisplayManagementSection({
 
                   <View style={styles.navRight}>
                     <Pressable style={styles.deleteBtn} onPress={() => confirmDelete(currentDisplay)}>
-                      <Ionicons name="trash-outline" size={14} color={colors.dangerTextSoft} />
+                      <Ionicons name="trash-outline" size={16} color={colors.dangerText} />
                     </Pressable>
                   </View>
                 </View>
@@ -940,7 +940,7 @@ const styles = StyleSheet.create({
   // ─── Page Header ──────────────────────────────────────────────────────────
   pageHeader: {
     paddingTop: 0,
-    paddingBottom: spacing.sm,
+    paddingBottom: spacing.md,
   },
   pageHeaderRow: {
     flexDirection: 'row',
@@ -948,7 +948,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: spacing.sm,
   },
-  pageHeaderLeft: {flex: 1},
+  pageHeaderLeft: {flex: 1, gap: 4},
   pageHeaderRight: {flexDirection: 'row', alignItems: 'center', gap: spacing.sm},
   addBtn: {
     width: layout.iconButton,
@@ -968,10 +968,9 @@ const styles = StyleSheet.create({
     lineHeight: 33,
   },
   pageMeta: {
-    color: colors.textMuted,
+    color: colors.textSecondary,
     fontSize: 13,
     fontWeight: '600',
-    marginTop: spacing.xs,
   },
 
   // ─── Loading / Error / Empty ───────────────────────────────────────────────
@@ -1032,7 +1031,7 @@ const styles = StyleSheet.create({
 
   // LED preview area — extra padding lets the glow breathe
   cardPreviewContainer: {
-    paddingBottom: spacing.md,
+    paddingBottom: spacing.sm,
     position: 'relative',
   },
   activeOverlayBadge: {
@@ -1060,7 +1059,8 @@ const styles = StyleSheet.create({
   navActionsRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: spacing.sm,
+    minHeight: layout.iconButton,
+    paddingVertical: 0,
     paddingHorizontal: spacing.md,
   },
   navLeft: {
@@ -1068,7 +1068,6 @@ const styles = StyleSheet.create({
     flexShrink: 0,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.xs,
   },
   navRight: {
     width: layout.iconButton,
@@ -1104,27 +1103,27 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    gap: spacing.xs,
+    gap: spacing.sm,
   },
   navTitleBlock: {
     flex: 1,
     minWidth: 0,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 2,
+    gap: spacing.xxs,
     paddingHorizontal: spacing.xs,
   },
   navDisplayName: {
     color: colors.text,
-    fontSize: 13,
+    fontSize: 16,
     fontWeight: '700',
     textAlign: 'center',
     width: '100%',
   },
   navDisplayCity: {
-    color: colors.textMuted,
-    fontSize: 11,
-    fontWeight: '700',
+    color: colors.textSecondary,
+    fontSize: 12,
+    fontWeight: '600',
     textAlign: 'center',
   },
   navActiveLabelCompact: {
@@ -1133,26 +1132,27 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
     gap: 4,
     borderWidth: 1,
-    borderColor: '#34D399',
+    borderColor: colors.successBorder,
     borderRadius: radii.md,
-    paddingHorizontal: 7,
+    backgroundColor: colors.successSurface,
+    paddingHorizontal: spacing.xs,
     paddingVertical: 2,
   },
   navActiveDotCompact: {
     width: 6,
     height: 6,
     borderRadius: 3,
-    backgroundColor: '#34D399',
+    backgroundColor: colors.successText,
   },
   navActiveLabelCompactText: {
-    color: '#34D399',
-    fontSize: 10,
+    color: colors.successText,
+    fontSize: 11,
     fontWeight: '600',
     lineHeight: 12,
   },
   arrowBtn: {
-    width: 44,
-    height: 44,
+    width: layout.iconButton,
+    height: layout.iconButton,
     flexShrink: 0,
     alignItems: 'center',
     justifyContent: 'center',
@@ -1164,12 +1164,12 @@ const styles = StyleSheet.create({
   dotActive: {width: 14, height: 5, borderRadius: 3, backgroundColor: colors.accent},
 
   cardSettings: {
-    paddingTop: spacing.md,
+    paddingTop: spacing.xl,
     gap: spacing.sm,
   },
   settingItem: {
-    paddingVertical: spacing.md,
-    gap: spacing.sm,
+    paddingVertical: 0,
+    gap: spacing.xs,
   },
   settingItemBorder: {},
   settingItemRow: {
@@ -1180,11 +1180,9 @@ const styles = StyleSheet.create({
   },
   settingItemLabelGroup: {gap: spacing.xxs},
   settingItemLabel: {
-    color: colors.textMuted,
-    fontSize: 11,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-    letterSpacing: 0.7,
+    color: colors.textSecondary,
+    fontSize: 13,
+    fontWeight: '600',
   },
   settingItemValue: {
     color: colors.text,
@@ -1193,7 +1191,7 @@ const styles = StyleSheet.create({
   },
   brightnessValueBadge: {
     minWidth: 52,
-    minHeight: 28,
+    minHeight: 32,
     paddingHorizontal: spacing.sm,
     borderRadius: radii.md,
     borderWidth: 1,
@@ -1265,18 +1263,18 @@ const styles = StyleSheet.create({
     paddingRight: layout.iconButton + spacing.sm,
   },
   brightnessScaleText: {
-    color: colors.textMuted,
-    fontSize: 11,
+    color: colors.textTertiary,
+    fontSize: 12,
     fontWeight: '600',
   },
 
   editBtn: {
     width: layout.iconButton,
     height: layout.iconButton,
-    borderRadius: radii.sm,
+    borderRadius: 10,
     borderWidth: 1,
     borderColor: colors.border,
-    backgroundColor: colors.card,
+    backgroundColor: colors.surface,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1284,10 +1282,10 @@ const styles = StyleSheet.create({
   deleteBtn: {
     width: layout.iconButton,
     height: layout.iconButton,
-    borderRadius: radii.sm,
+    borderRadius: 10,
     borderWidth: 1,
-    borderColor: colors.dangerBorderMuted,
-    backgroundColor: colors.dangerSurfaceMuted,
+    borderColor: colors.dangerBorder,
+    backgroundColor: colors.dangerSurface,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1487,7 +1485,7 @@ const styles = StyleSheet.create({
     opacity: 0.45,
   },
   reorderPrimaryBtnText: {
-    color: colors.background,
+    color: colors.onAccent,
     fontSize: 13,
     fontWeight: '800',
   },
@@ -1503,7 +1501,7 @@ const styles = StyleSheet.create({
   },
   setActiveBtnDisabled: {opacity: 0.5},
   setActiveBtnText: {
-    color: colors.background,
+    color: colors.onAccent,
     fontSize: 13,
     fontWeight: '800',
   },
