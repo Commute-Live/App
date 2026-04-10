@@ -1205,7 +1205,15 @@ export const styles = StyleSheet.create({
   transitionDots: {flexDirection: 'row', gap: 6},
   transitionDot: {width: 6, height: 6, borderRadius: 3, backgroundColor: colors.textMuted},
   lineGroupList: {gap: spacing.sm, paddingBottom: spacing.sm},
+  lineGroupListSubway: {
+    gap: spacing.sm,
+    alignItems: 'flex-start',
+  },
   lineGroup: {
+    alignItems: 'flex-start',
+  },
+  lineGroupSubway: {
+    width: '100%',
     alignItems: 'flex-start',
   },
   lineGroupTitle: {color: colors.textMuted, fontSize: 12, fontWeight: '700', marginBottom: spacing.xs, textAlign: 'left'},
@@ -1214,6 +1222,10 @@ export const styles = StyleSheet.create({
     flexWrap: 'wrap',
     columnGap: spacing.xs,
     rowGap: spacing.sm,
+    justifyContent: 'flex-start',
+  },
+  lineGridSubway: {
+    width: '100%',
     justifyContent: 'flex-start',
   },
   lineGridChicagoTrain: {
