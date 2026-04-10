@@ -283,7 +283,7 @@ export const styles = StyleSheet.create({
     alignItems: 'flex-start',
     gap: spacing.sm,
   },
-  cardTitle: {color: colors.text, fontSize: 15, fontWeight: '800'},
+  cardTitle: {color: colors.text, fontSize: 15, fontWeight: '600'},
   cardSubtitle: {color: colors.textMuted, fontSize: 13, marginTop: spacing.xxs},
 
   // ─── Quiet Hours Header ───────────────────────────────────────────────────

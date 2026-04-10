@@ -8,14 +8,9 @@ import {PreviewCard} from '../../../components/PreviewCard';
 import {colors, layout, radii, spacing, typography} from '../../../theme';
 import {apiFetch} from '../../../lib/api';
 import {useAuth} from '../../../state/authProvider';
-import {BottomNav, type BottomNavItem} from '../../../components/BottomNav';
 import {logger} from '../../../lib/datadog';
 
 const fallbackDevice = {id: 'commutelive-001', name: 'My Device'};
-const NAV_ITEMS: BottomNavItem[] = [
-  {key: 'home', label: 'Home', icon: 'home-outline', route: '/dashboard'},
-  {key: 'settings', label: 'Settings', icon: 'settings-outline', route: '/settings'},
-];
 
 export default function PairedOnlineScreen() {
   const router = useRouter();
@@ -160,8 +155,6 @@ export default function PairedOnlineScreen() {
           </View>
         ) : null}
       </ScrollView>
-
-      <BottomNav items={NAV_ITEMS} />
     </SafeAreaView>
   );
 }

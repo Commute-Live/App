@@ -598,19 +598,6 @@ export default function DisplayManagementSection({
 
             <View style={styles.displayCard}>
               <View style={styles.navActionsRow}>
-                <View style={styles.navLeft}>
-                  <Pressable
-                    style={styles.editBtn}
-                    onPress={() =>
-                      router.push({
-                        pathname: '/preset-editor',
-                        params: {city: currentDisplayCity, from: 'dashboard', mode: 'edit', displayId: currentDisplay.displayId},
-                      })
-                    }>
-                    <Ionicons name="pencil-outline" size={16} color={colors.text} />
-                  </Pressable>
-                </View>
-
                 <View style={styles.navCenter}>
                   <Pressable
                     style={[styles.arrowBtn, visibleDisplays.length <= 1 && styles.arrowBtnHidden]}
@@ -641,12 +628,6 @@ export default function DisplayManagementSection({
                     onPress={() => goTo(safeIndex + 1)}
                     disabled={visibleDisplays.length <= 1}>
                     <Ionicons name="chevron-forward" size={22} color={colors.textMuted} />
-                  </Pressable>
-                </View>
-
-                <View style={styles.navRight}>
-                  <Pressable style={styles.deleteBtn} onPress={() => confirmDelete(currentDisplay)}>
-                    <Ionicons name="trash-outline" size={16} color={colors.dangerText} />
                   </Pressable>
                 </View>
               </View>
@@ -700,6 +681,7 @@ export default function DisplayManagementSection({
         visible={reorderVisible}
         displays={visibleDisplays}
         saving={reorderDisplaysMutation.isPending}
+        onDelete={confirmDelete}
         onClose={() => {
           if (reorderDisplaysMutation.isPending) return;
           setCarouselIndex(0);
@@ -767,12 +749,14 @@ function ReorderDisplaysModal({
   visible,
   displays,
   saving,
+  onDelete,
   onClose,
   onSave,
 }: {
   visible: boolean;
   displays: DeviceDisplay[];
   saving: boolean;
+  onDelete: (display: DeviceDisplay) => void;
   onClose: () => void;
   onSave: (orderedIds: string[]) => void;
 }) {
@@ -839,6 +823,7 @@ function ReorderDisplaysModal({
                   index={getIndex() ?? 0}
                   isDragging={isActive || activeId === item.displayId}
                   saving={saving}
+                  onDelete={onDelete}
                   onDragStart={drag}
                 />
               )}
@@ -856,12 +841,14 @@ function ReorderListRow({
   isDragging,
   index,
   saving,
+  onDelete,
   onDragStart,
 }: {
   display: DeviceDisplay;
   isDragging: boolean;
   index: number;
   saving: boolean;
+  onDelete: (display: DeviceDisplay) => void;
   onDragStart: () => void;
 }) {
   const lineLabels = getDisplayLineLabels(display);
@@ -911,15 +898,20 @@ function ReorderListRow({
           </Text>
         </View>
 
-        {isActive ? (
-          <View style={styles.reorderActivePill}>
-            <Text style={styles.reorderActivePillText}>Active</Text>
-          </View>
-        ) : (
-          <View style={styles.reorderHandle}>
-            <Ionicons name="reorder-three-outline" size={18} color={colors.textMuted} />
-          </View>
-        )}
+        <View style={styles.reorderRowActions}>
+          {isActive ? (
+            <View style={styles.reorderActivePill}>
+              <Text style={styles.reorderActivePillText}>Active</Text>
+            </View>
+          ) : (
+            <View style={styles.reorderHandle}>
+              <Ionicons name="reorder-three-outline" size={18} color={colors.textMuted} />
+            </View>
+          )}
+          <Pressable style={styles.reorderDeleteBtn} onPress={() => onDelete(display)} disabled={saving}>
+            <Ionicons name="trash-outline" size={16} color={colors.dangerText} />
+          </Pressable>
+        </View>
       </View>
     </Pressable>
   );
@@ -1083,26 +1075,13 @@ const styles = StyleSheet.create({
     letterSpacing: 0.4,
   },
 
-  // Nav + actions row (edit | ‹ name › | delete)
+  // Nav row
   navActionsRow: {
     flexDirection: 'row',
     alignItems: 'center',
     minHeight: layout.iconButton,
     paddingVertical: spacing.xs,
     paddingHorizontal: spacing.sm,
-  },
-  navLeft: {
-    width: layout.iconButton,
-    flexShrink: 0,
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  navRight: {
-    width: layout.iconButton,
-    flexShrink: 0,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'flex-end',
   },
   navActiveLabel: {
     flexDirection: 'row',
@@ -1251,7 +1230,7 @@ const styles = StyleSheet.create({
   brightnessLabel: {
     color: colors.text,
     fontSize: 15,
-    fontWeight: '800',
+    fontWeight: '600',
   },
   brightnessInlineControls: {
     flexDirection: 'row',
@@ -1289,7 +1268,7 @@ const styles = StyleSheet.create({
   brightnessValueText: {
     color: colors.text,
     fontSize: 15,
-    fontWeight: '800',
+    fontWeight: '600',
   },
   settingItemSub: {
     color: colors.text,
@@ -1345,28 +1324,6 @@ const styles = StyleSheet.create({
     color: colors.textTertiary,
     fontSize: 12,
     fontWeight: '600',
-  },
-
-  editBtn: {
-    width: layout.iconButton,
-    height: layout.iconButton,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  editBtnText: {color: colors.text, fontSize: 12, fontWeight: '700'},
-  deleteBtn: {
-    width: layout.iconButton,
-    height: layout.iconButton,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: colors.dangerBorder,
-    backgroundColor: colors.dangerSurface,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
 
   // ─── Reorder Modal ───────────────────────────────────────────────────────
@@ -1515,6 +1472,21 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  reorderRowActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+  },
+  reorderDeleteBtn: {
+    width: layout.iconButton,
+    height: layout.iconButton,
+    borderRadius: radii.sm,
+    borderWidth: 1,
+    borderColor: colors.dangerBorder,
+    backgroundColor: colors.dangerSurface,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   reorderActivePill: {
     minHeight: 28,
     borderRadius: radii.md,
@@ -1593,17 +1565,6 @@ const styles = StyleSheet.create({
   },
   footerActionBarBottomSpacer: {
     height: spacing.md,
-  },
-  activeStatusRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs,
-  },
-  activeDot: {
-    width: 7,
-    height: 7,
-    borderRadius: 4,
-    backgroundColor: colors.successText,
   },
   activeStatusText: {
     color: colors.textMuted,

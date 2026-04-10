@@ -6,6 +6,7 @@ import type {TransitLineDirection} from '../types/transit';
 import {deserializeUiDirection, getLocalDirectionLabel, getLocalDirectionTerminal, getLocalLineLabel, getLocalRouteBadgeLabel, inferUiModeFromProvider, isRailLinePreviewMode} from './transitUi';
 import {getTransitCityModule} from './transit/registry';
 import {validateScheduleWindow, type DisplayWeekday} from './schedules';
+import {colors} from '../theme';
 
 export {DISPLAY_WEEKDAYS} from './schedules';
 export type {DisplayWeekday} from './schedules';
@@ -42,9 +43,14 @@ export type DeviceConfig = {
   lines?: LineConfig[];
 };
 
+type LiveArrivalEntry = {
+  label: string;
+  status?: string;
+};
+
 export type LiveArrivalLookup = {
-  byLineKey: Record<string, string>;
-  byIndex: string[];
+  byLineKey: Record<string, LiveArrivalEntry>;
+  byIndex: LiveArrivalEntry[];
 };
 
 export type PreviewSlotOptions = {
@@ -211,6 +217,7 @@ const toDisplayTimeLabel = (value: unknown): string | null => {
 
 const PREVIEW_TIME_COLOR_ONTIME = '#34D399';
 const PREVIEW_TIME_COLOR_DUE = '#EF4444';
+const PREVIEW_TIME_COLOR_DELAYED = colors.warning;
 const DEFAULT_NEXT_STOPS = 3;
 
 const isDueTimeLabel = (value: string) => {
@@ -405,6 +412,13 @@ const TIME_LIST_PATHS = [
   ['etas'],
 ] as const;
 
+const STATUS_PATHS = [
+  ['status'],
+  ['arrivalStatus'],
+  ['line', 'status'],
+  ['route', 'status'],
+] as const;
+
 const CANDIDATE_ARRAY_PATHS = [
   ['lines'],
   ['arrivals'],
@@ -471,9 +485,28 @@ const extractEntryLineKey = (entry: unknown): string | null => {
   ].join('|');
 };
 
+const extractStatusFromEntry = (entry: unknown) => {
+  const record = asRecord(entry);
+  if (!record) return null;
+
+  for (const path of STATUS_PATHS) {
+    const value = readPath(record, [...path]);
+    if (typeof value !== 'string') continue;
+    const normalized = value.trim().toLowerCase();
+    if (normalized) return normalized;
+  }
+
+  return null;
+};
+
+const isDelayedStatus = (status: string | undefined) => {
+  if (!status) return false;
+  return status === 'delayed' || status === 'delay' || status.includes('delay');
+};
+
 export const getLiveArrivalLookup = (payload: unknown): LiveArrivalLookup => {
-  const byLineKey: Record<string, string> = {};
-  const byIndex: string[] = [];
+  const byLineKey: Record<string, LiveArrivalEntry> = {};
+  const byIndex: LiveArrivalEntry[] = [];
 
   let source: unknown = payload;
   if (typeof source === 'string') {
@@ -503,14 +536,16 @@ export const getLiveArrivalLookup = (payload: unknown): LiveArrivalLookup => {
     entries.forEach((entry, index) => {
       const label = extractTimeFromEntry(entry);
       if (!label) return;
+      const status = extractStatusFromEntry(entry) ?? undefined;
+      const liveEntry: LiveArrivalEntry = {label, status};
 
-      if (!byIndex[index]) byIndex[index] = label;
+      if (!byIndex[index]) byIndex[index] = liveEntry;
 
       const lineKey = extractEntryLineKey(entry);
       if (lineKey) {
-        if (!byLineKey[lineKey]) byLineKey[lineKey] = label;
+        if (!byLineKey[lineKey]) byLineKey[lineKey] = liveEntry;
         const baseLineKey = toBaseLineKey(lineKey);
-        if (!byLineKey[baseLineKey]) byLineKey[baseLineKey] = label;
+        if (!byLineKey[baseLineKey]) byLineKey[baseLineKey] = liveEntry;
       }
     });
   }
@@ -552,13 +587,16 @@ export const toPreviewSlots = (
         ? Math.max(1, Math.min(5, Math.trunc(Number(display.config.displayType))))
         : 1;
     const lineKey = buildPreviewLineKey(line);
-    const liveTime =
+    const liveArrival =
       liveArrivals?.byLineKey[lineKey] ??
       liveArrivals?.byLineKey[toBaseLineKey(lineKey)] ??
       liveArrivals?.byIndex[index];
+    const liveTime = liveArrival?.label;
     const liveTimeColor =
       typeof liveTime === 'string' && liveTime.length > 0
-        ? isDueTimeLabel(liveTime)
+        ? isDelayedStatus(liveArrival?.status)
+          ? PREVIEW_TIME_COLOR_DELAYED
+          : isDueTimeLabel(liveTime)
           ? PREVIEW_TIME_COLOR_DUE
           : PREVIEW_TIME_COLOR_ONTIME
         : undefined;

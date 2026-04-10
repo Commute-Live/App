@@ -1,8 +1,7 @@
 import React, {createContext, useContext, useEffect} from 'react';
 import {StyleSheet, type StyleProp, type ViewStyle, View} from 'react-native';
 import {usePathname} from 'expo-router';
-import {BottomNav} from './BottomNav';
-import {TAB_NAV_ITEMS, type TabRoute} from './tabNavigation';
+import {type TabRoute} from './tabNavigation';
 
 type TabScreenHostContextValue = {
   activeRoute: TabRoute;
@@ -44,12 +43,7 @@ export function TabScreen({children, style, swipeEnabled = true, tabRoute}: Prop
     return <View style={[styles.content, style]}>{children}</View>;
   }
 
-  return (
-    <View style={[styles.container, style]}>
-      <View style={styles.content}>{children}</View>
-      <BottomNav items={TAB_NAV_ITEMS} />
-    </View>
-  );
+  return <View style={[styles.container, styles.content, style]}>{children}</View>;
 }
 
 const styles = StyleSheet.create({
