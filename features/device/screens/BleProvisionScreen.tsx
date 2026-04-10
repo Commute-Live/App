@@ -30,6 +30,25 @@ type ProgressDetail = {
   value: string;
 };
 
+const LINK_COMPLETION_TIMEOUT_MS = 15_000;
+
+const withTimeout = async <T,>(promise: Promise<T>, timeoutMs: number, timeoutMessage: string): Promise<T> => {
+  let timeout: ReturnType<typeof setTimeout> | null = null;
+
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((_, reject) => {
+        timeout = setTimeout(() => reject(new Error(timeoutMessage)), timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timeout) {
+      clearTimeout(timeout);
+    }
+  }
+};
+
 const PHASE_LABELS: Record<string, string> = {
   scanning: 'Scanning for network',
   wifi_connecting: 'Joining Wi-Fi',
@@ -428,7 +447,7 @@ export default function BleProvisionScreen() {
       state.phase === 'provisioning' ||
       state.phase === 'waiting_wifi' ||
       provisionStep !== 'idle' ||
-      (state.statusUpdate?.status === 'connected' && !state.errorMsg)
+      (state.statusUpdate?.status === 'connected' && !state.errorMsg && linkError.length === 0)
     );
   const provisionProgress = getProvisionProgressCopy({
     statusUpdate: state.statusUpdate,
@@ -495,17 +514,28 @@ export default function BleProvisionScreen() {
     setProvisionStep('linking');
 
     try {
-      const result = await registerAndLinkDevice(espDeviceId);
+      const result = await withTimeout(
+        registerAndLinkDevice(espDeviceId),
+        LINK_COMPLETION_TIMEOUT_MS,
+        'The display finished provisioning, but the app took too long to finish linking it to your account.',
+      );
       if (!result.ok) {
         setLinkError(result.error);
         return;
       }
 
       setModalVisible(false);
-      await hydrate();
+      await withTimeout(
+        hydrate(),
+        LINK_COMPLETION_TIMEOUT_MS,
+        'The display finished provisioning, but the app could not refresh your account in time.',
+      );
       router.replace(postPairingRoute);
-    } catch {
-      setLinkError('Wi-Fi connected, but pairing could not reach the server. Check your internet connection and try again.');
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : '';
+      setLinkError(
+        message || 'The display finished provisioning, but the app could not finish setup. Check your internet connection and try again.',
+      );
     } finally {
       setProvisionStep('idle');
     }

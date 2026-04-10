@@ -193,6 +193,7 @@ export function useBleProvision() {
   const wifiScanSubscriptionRef = useRef<{remove: () => void} | null>(null);
   const bleStateSubscriptionRef = useRef<{remove: () => void} | null>(null);
   const pendingWifiResultRef = useRef<PendingWifiResult | null>(null);
+  const terminalProvisionStatusRef = useRef(false);
   const scanChunksRef = useRef<Array<{s: string; r: number; e: number}>>([]);
 
   const setPhase = useCallback((phase: BleProvisionPhase, extra?: Partial<BleProvisionState>) => {
@@ -217,6 +218,7 @@ export function useBleProvision() {
       pendingWifiResultRef.current.resolve(null);
       pendingWifiResultRef.current = null;
     }
+    terminalProvisionStatusRef.current = false;
     statusSubscriptionRef.current?.remove();
     statusSubscriptionRef.current = null;
     wifiScanSubscriptionRef.current?.remove();
@@ -452,6 +454,11 @@ export function useBleProvision() {
             return;
           }
 
+          if (terminalProvisionStatusRef.current) {
+            console.log('[BLE] ignoring late status update after terminal result:', rawValue);
+            return;
+          }
+
           if (payload.status === 'connecting') {
             setPhase('waiting_wifi', {
               deviceId: nextDeviceId,
@@ -462,6 +469,7 @@ export function useBleProvision() {
           }
 
           if (payload.status === 'connected') {
+            terminalProvisionStatusRef.current = true;
             setPhase('connected', {
               deviceId: nextDeviceId,
               errorMsg: null,
@@ -476,6 +484,7 @@ export function useBleProvision() {
           }
 
           if (payload.status === 'failed') {
+            terminalProvisionStatusRef.current = true;
             logger.error('BLE device WiFi connection failed', {deviceId: nextDeviceId});
             setPhase('connected', {
               deviceId: nextDeviceId,
@@ -509,6 +518,7 @@ export function useBleProvision() {
         return null;
       }
       setPhase('provisioning', {errorMsg: null, statusUpdate: null});
+      terminalProvisionStatusRef.current = false;
 
       const payload = JSON.stringify({ssid, password, username, token, server_url: serverUrl});
       const encoded = Buffer.from(payload, 'utf8').toString('base64');
