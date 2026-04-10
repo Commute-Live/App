@@ -1,5 +1,6 @@
-import React, {useRef, useState} from 'react';
-import {Pressable, StyleSheet, Text, View, type GestureResponderEvent} from 'react-native';
+import React, {useEffect, useRef, useState} from 'react';
+import {Animated, Pressable, StyleSheet, Text, View, type GestureResponderEvent} from 'react-native';
+import type {StyleProp, TextStyle} from 'react-native';
 import {colors, radii, spacing} from '../../../theme';
 
 export type Display3DSlot = {
@@ -10,6 +11,7 @@ export type Display3DSlot = {
   badgeShape?: 'circle' | 'pill' | 'rail' | 'bar';
   selected: boolean;
   stopName: string;
+  scrollLabel?: boolean;
   subLine?: string;
   subLineColor?: string;
   times: string;
@@ -26,7 +28,85 @@ type Props = {
   brightness?: number;
   mini?: boolean;
   emptyMessage?: string;
+  showGlow?: boolean;
 };
+
+function MarqueeText({
+  text,
+  textStyle,
+  enabled,
+  scrollClock,
+}: {
+  text: string;
+  textStyle: StyleProp<TextStyle>;
+  enabled: boolean;
+  scrollClock?: Animated.Value;
+}) {
+  const [containerWidth, setContainerWidth] = useState(0);
+  const [textWidth, setTextWidth] = useState(0);
+  const ownTranslateX = useRef(new Animated.Value(0)).current;
+  const overflow = textWidth > containerWidth + 6 ? textWidth - containerWidth : 0;
+  const shouldAnimate = enabled && containerWidth > 0 && overflow > 0;
+
+  // Standalone animation (used when no shared clock)
+  useEffect(() => {
+    if (scrollClock) return;
+    ownTranslateX.stopAnimation();
+    ownTranslateX.setValue(0);
+    if (!shouldAnimate) return;
+
+    let cancelled = false;
+    const runLoop = () => {
+      if (cancelled) return;
+      ownTranslateX.setValue(0);
+      Animated.sequence([
+        Animated.delay(900),
+        Animated.timing(ownTranslateX, {
+          toValue: -overflow,
+          duration: Math.max(4000, overflow * 60),
+          useNativeDriver: true,
+        }),
+        Animated.delay(3000),
+      ]).start(({finished}) => {
+        if (finished && !cancelled) runLoop();
+      });
+    };
+    runLoop();
+    return () => {
+      cancelled = true;
+      ownTranslateX.stopAnimation();
+    };
+  }, [shouldAnimate, overflow, ownTranslateX, scrollClock]);
+
+  const translateX = scrollClock
+    ? scrollClock.interpolate({inputRange: [0, 1], outputRange: [0, shouldAnimate ? -overflow : 0]})
+    : ownTranslateX;
+
+  return (
+    <View style={styles.marqueeWrap} onLayout={event => setContainerWidth(event.nativeEvent.layout.width)}>
+      <Text
+        style={[textStyle, styles.marqueeMeasure]}
+        numberOfLines={1}
+        onTextLayout={event => {
+          const lineWidth = event.nativeEvent.lines[0]?.width ?? 0;
+          setTextWidth(lineWidth);
+        }}>
+        {text}
+      </Text>
+      {shouldAnimate ? (
+        <Animated.View style={[styles.marqueeContent, {width: textWidth, transform: [{translateX}]}]}>
+          <Text style={textStyle} numberOfLines={1}>
+            {text}
+          </Text>
+        </Animated.View>
+      ) : (
+        <Text style={textStyle} numberOfLines={1} ellipsizeMode="tail">
+          {text}
+        </Text>
+      )}
+    </View>
+  );
+}
 
 export default function Display3DPreview({
   slots,
@@ -38,11 +118,41 @@ export default function Display3DPreview({
   brightness = 100,
   mini = false,
   emptyMessage,
+  showGlow = true,
 }: Props) {
   const compact = slots.length > 1 || displayType >= 3;
   const safeBrightness = Math.max(0, Math.min(100, brightness));
   const brightnessOverlayOpacity = ((100 - safeBrightness) / 100) * 0.65;
   const [draggingId, setDraggingId] = useState<string | null>(null);
+
+  const scrollingSlots = slots.filter(s => s.scrollLabel);
+  const hasMultipleScrolling = scrollingSlots.length > 1;
+  const scrollClock = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    if (!hasMultipleScrolling) return;
+    let cancelled = false;
+    const runLoop = () => {
+      if (cancelled) return;
+      scrollClock.setValue(0);
+      Animated.sequence([
+        Animated.delay(900),
+        Animated.timing(scrollClock, {
+          toValue: 1,
+          duration: 6000,
+          useNativeDriver: true,
+        }),
+        Animated.delay(3000),
+      ]).start(({finished}) => {
+        if (finished && !cancelled) runLoop();
+      });
+    };
+    runLoop();
+    return () => {
+      cancelled = true;
+      scrollClock.stopAnimation();
+    };
+  }, [hasMultipleScrolling, scrollClock]);
   const [dragOffsetY, setDragOffsetY] = useState(0);
   const dragStartYRef = useRef<Record<string, number>>({});
   const dragOriginYRef = useRef(0);
@@ -86,9 +196,9 @@ export default function Display3DPreview({
   };
 
   return (
-    <View style={styles.wrap}>
-      <View style={[styles.glowOuter, mini && styles.glowOuterMini]} />
-      <View style={[styles.glowInner, mini && styles.glowInnerMini]} />
+    <View style={[styles.wrap, !showGlow && styles.wrapNoGlow]}>
+      {showGlow ? <View style={[styles.glowOuter, mini && styles.glowOuterMini]} /> : null}
+      {showGlow ? <View style={[styles.glowInner, mini && styles.glowInnerMini]} /> : null}
       <View style={styles.device}>
         <View style={[styles.screen, compact && styles.screenCompact, mini && styles.screenMini]}>
           {emptyMessage ? (
@@ -112,48 +222,51 @@ export default function Display3DPreview({
                 onTouchMove={(event: GestureResponderEvent) => handleTouchMove(slot.id, event.nativeEvent.pageY)}
                 onPressOut={endDrag}
                 delayLongPress={260}>
-                {slot.badgeShape === 'bar' ? (
-                  <View style={[styles.routeBadgeBarWrap, compact && styles.routeBadgeBarWrapCompact]}>
-                    <View style={[styles.routeBadgeBar, compact && styles.routeBadgeBarCompact, {backgroundColor: slot.color}]} />
-                  </View>
-                ) : (
-                  <View
-                    style={[
-                      styles.routeBadge,
-                      compact && styles.routeBadgeCompact,
-                      slot.badgeShape === 'pill' && styles.routeBadgePill,
-                      compact && slot.badgeShape === 'pill' && styles.routeBadgePillCompact,
-                      slot.badgeShape === 'rail' && styles.routeBadgeRail,
-                      compact && slot.badgeShape === 'rail' && styles.routeBadgeRailCompact,
-                      {backgroundColor: slot.color},
-                    ]}>
-                    <Text
-                      adjustsFontSizeToFit
-                      minimumFontScale={0.72}
-                      numberOfLines={1}
+                <View style={[styles.slotLead, compact && styles.slotLeadCompact]}>
+                  {slot.badgeShape === 'bar' ? (
+                    <View style={[styles.routeBadgeBarWrap, compact && styles.routeBadgeBarWrapCompact]}>
+                      <View style={[styles.routeBadgeBar, compact && styles.routeBadgeBarCompact, {backgroundColor: slot.color}]} />
+                    </View>
+                  ) : (
+                    <View
                       style={[
-                        styles.routeBadgeText,
-                        slot.badgeShape === 'pill' && styles.routeBadgeTextPill,
-                        compact && styles.routeBadgeTextCompact,
-                        compact && slot.badgeShape === 'pill' && styles.routeBadgeTextPillCompact,
-                        slot.badgeShape === 'rail' && styles.routeBadgeTextRail,
-                        compact && slot.badgeShape === 'rail' && styles.routeBadgeTextRailCompact,
-                        {color: slot.badgeShape === 'circle' ? '#FFFFFF' : slot.textColor},
+                        styles.routeBadge,
+                        compact && styles.routeBadgeCompact,
+                        slot.badgeShape === 'pill' && styles.routeBadgePill,
+                        compact && slot.badgeShape === 'pill' && styles.routeBadgePillCompact,
+                        slot.badgeShape === 'rail' && styles.routeBadgeRail,
+                        compact && slot.badgeShape === 'rail' && styles.routeBadgeRailCompact,
+                        {backgroundColor: slot.color},
                       ]}>
-                      {slot.routeLabel}
-                    </Text>
-                  </View>
-                )}
+                      <Text
+                        adjustsFontSizeToFit
+                        minimumFontScale={0.72}
+                        numberOfLines={1}
+                        style={[
+                          styles.routeBadgeText,
+                          slot.badgeShape === 'pill' && styles.routeBadgeTextPill,
+                          compact && styles.routeBadgeTextCompact,
+                          compact && slot.badgeShape === 'pill' && styles.routeBadgeTextPillCompact,
+                          slot.badgeShape === 'rail' && styles.routeBadgeTextRail,
+                          compact && slot.badgeShape === 'rail' && styles.routeBadgeTextRailCompact,
+                          {color: slot.badgeShape === 'circle' ? '#FFFFFF' : slot.textColor},
+                        ]}>
+                        {slot.routeLabel}
+                      </Text>
+                    </View>
+                  )}
+                </View>
                 <View style={styles.slotBody}>
                   {slot.stopName ? (
-                    <Text
-                      style={[
+                    <MarqueeText
+                      text={slot.stopName}
+                      textStyle={[
                         styles.slotTitle,
                         compact && styles.slotTitleCompact,
                       ]}
-                      numberOfLines={1}>
-                      {slot.stopName}
-                    </Text>
+                      enabled={slot.scrollLabel === true}
+                      scrollClock={hasMultipleScrolling && slot.scrollLabel ? scrollClock : undefined}
+                    />
                   ) : (
                     <View style={[styles.slotTitlePlaceholder, compact && styles.slotTitlePlaceholderCompact]} />
                   )}
@@ -169,15 +282,17 @@ export default function Display3DPreview({
                     </Text>
                   ) : null}
                 </View>
-                <Text
-                  style={[
-                    styles.slotTimes,
-                    compact && styles.slotTimesCompact,
-                    slot.timesColor ? {color: slot.timesColor} : null,
-                  ]}
-                  numberOfLines={1}>
-                  {slot.times}
-                </Text>
+                <View style={[styles.slotTrailing, compact && styles.slotTrailingCompact]}>
+                  <Text
+                    style={[
+                      styles.slotTimes,
+                      compact && styles.slotTimesCompact,
+                      slot.timesColor ? {color: slot.timesColor} : null,
+                    ]}
+                    numberOfLines={1}>
+                    {slot.times}
+                  </Text>
+                </View>
               </Pressable>
             ))
           )}
@@ -192,35 +307,35 @@ export default function Display3DPreview({
 }
 
 const styles = StyleSheet.create({
-  wrap: {gap: spacing.xs, position: 'relative'},
+  wrap: {gap: spacing.xs, position: 'relative', marginHorizontal: -20, paddingHorizontal: 20, paddingBottom: 8},
+  wrapNoGlow: {marginHorizontal: 0, paddingHorizontal: 0, paddingBottom: 0},
   glowOuter: {
     position: 'absolute',
-    left: 6,
-    right: 6,
-    top: 12,
-    bottom: 20,
-    borderRadius: 30,
-    backgroundColor: colors.accent,
-    opacity: 0.08,
-    shadowColor: colors.accent,
-    shadowOpacity: 0.4,
-    shadowRadius: 28,
-    shadowOffset: {width: 0, height: 12},
-    elevation: 10,
+    left: 20,
+    right: 20,
+    top: 6,
+    bottom: 14,
+    borderRadius: radii.lg,
+    backgroundColor: '#FF7A2F',
+    shadowColor: '#FF6000',
+    shadowOpacity: 0.65,
+    shadowRadius: 36,
+    shadowOffset: {width: 0, height: 0},
+    elevation: 12,
   },
   glowInner: {
     position: 'absolute',
-    left: 18,
-    right: 18,
-    top: 24,
-    bottom: 32,
-    borderRadius: 24,
-    backgroundColor: colors.accent,
-    opacity: 0.06,
-    shadowColor: colors.accent,
-    shadowOpacity: 0.28,
-    shadowRadius: 18,
-    shadowOffset: {width: 0, height: 10},
+    left: 20,
+    right: 20,
+    top: 6,
+    bottom: 14,
+    borderRadius: radii.lg,
+    backgroundColor: '#FFB347',
+    shadowColor: '#FFAA00',
+    shadowOpacity: 0.4,
+    shadowRadius: 20,
+    shadowOffset: {width: 0, height: 0},
+    elevation: 12,
   },
   device: {
     borderRadius: radii.lg,
@@ -234,7 +349,7 @@ const styles = StyleSheet.create({
     borderRadius: radii.md,
     borderWidth: 0,
     backgroundColor: colors.editorMockSurface,
-    padding: spacing.xs,
+    padding: spacing.sm,
     gap: spacing.xs,
     overflow: 'hidden',
   },
@@ -242,19 +357,18 @@ const styles = StyleSheet.create({
     height: 90,
   },
   glowOuterMini: {
-    top: 8,
-    bottom: 14,
-    shadowRadius: 24,
-    opacity: 0.08,
+    top: 4,
+    bottom: 8,
+    shadowRadius: 32,
   },
   glowInnerMini: {
-    top: 18,
-    bottom: 24,
+    top: 4,
+    bottom: 8,
     shadowRadius: 14,
-    opacity: 0.05,
   },
   screenCompact: {
-    paddingVertical: 4,
+    paddingVertical: 6,
+    paddingHorizontal: 6,
     gap: 4,
   },
   emptyState: {
@@ -274,25 +388,27 @@ const styles = StyleSheet.create({
     borderRadius: radii.sm,
     borderWidth: 1,
     borderColor: 'transparent',
-    backgroundColor: colors.displaySlotSurface,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
+    backgroundColor: 'transparent',
+    paddingHorizontal: 5,
+    paddingVertical: 12,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.sm,
+    gap: 6,
   },
   slotCompact: {
     minHeight: 0,
-    paddingVertical: 4,
+    paddingHorizontal: 5,
+    paddingVertical: 10,
   },
   slotActive: {
     backgroundColor: colors.displaySlotActiveSurface,
     borderColor: colors.accent,
+    borderWidth: 1.5,
     shadowColor: colors.accent,
-    shadowOpacity: 0.28,
+    shadowOpacity: 0.3,
     shadowRadius: 10,
     shadowOffset: {width: 0, height: 0},
-    elevation: 5,
+    elevation: 8,
     zIndex: 2,
   },
   slotDragging: {
@@ -303,30 +419,51 @@ const styles = StyleSheet.create({
     elevation: 8,
     zIndex: 5,
   },
+  slotLead: {
+    width: 46,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  slotLeadCompact: {
+    width: 46,
+  },
   routeBadge: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
+    width: 30,
+    height: 30,
+    borderRadius: 15,
     alignItems: 'center',
     justifyContent: 'center',
   },
   routeBadgeCompact: {width: 30, height: 30, borderRadius: 15},
-  routeBadgePill: {minWidth: 58, height: 36, borderRadius: 10, paddingHorizontal: 8},
+  routeBadgePill: {minWidth: 44, height: 26, borderRadius: 8, paddingHorizontal: 6},
   routeBadgePillCompact: {minWidth: 44, height: 26, borderRadius: 8, paddingHorizontal: 6},
-  routeBadgeRail: {width: 58, height: 48, borderRadius: 12, paddingHorizontal: 5},
+  routeBadgeRail: {width: 40, height: 30, borderRadius: 8, paddingHorizontal: 3},
   routeBadgeRailCompact: {width: 40, height: 30, borderRadius: 8, paddingHorizontal: 3},
-  routeBadgeBarWrap: {width: 48, height: 48, alignItems: 'center', justifyContent: 'center'},
+  routeBadgeBarWrap: {width: 30, height: 30, alignItems: 'center', justifyContent: 'center'},
   routeBadgeBarWrapCompact: {width: 30, height: 30},
-  routeBadgeBar: {width: 14, height: 44, borderRadius: 4},
+  routeBadgeBar: {width: 10, height: 28, borderRadius: 3},
   routeBadgeBarCompact: {width: 10, height: 28, borderRadius: 3},
-  routeBadgeText: {fontSize: 20, fontWeight: '900'},
-  routeBadgeTextPill: {fontSize: 15, lineHeight: 18, textAlign: 'center', includeFontPadding: false},
+  routeBadgeText: {fontSize: 13, fontWeight: '900'},
+  routeBadgeTextPill: {fontSize: 11, lineHeight: 13, textAlign: 'center', includeFontPadding: false},
   routeBadgeTextCompact: {fontSize: 13},
   routeBadgeTextPillCompact: {fontSize: 11, lineHeight: 13},
   routeBadgeTextPillCompactShort: {fontSize: 12, lineHeight: 14, textAlign: 'center', includeFontPadding: false},
   routeBadgeTextRail: {fontSize: 12, lineHeight: 14, textAlign: 'center', includeFontPadding: false},
   routeBadgeTextRailCompact: {fontSize: 9, lineHeight: 10},
-  slotBody: {flex: 1, paddingLeft: 2},
+  slotBody: {flex: 1, minWidth: 0},
+  marqueeWrap: {overflow: 'hidden', width: '100%'},
+  marqueeContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  marqueeMeasure: {
+    position: 'absolute',
+    opacity: 0,
+    left: 0,
+    top: 0,
+    width: 2000,
+  },
   slotTitle: {color: colors.displayTitle, fontSize: 20, fontWeight: '800'},
   slotTitleCompact: {fontSize: 15},
   slotTitlePlaceholder: {
@@ -344,8 +481,17 @@ const styles = StyleSheet.create({
   },
   slotSubLine: {color: colors.displaySubtleText, fontSize: 12, marginTop: 1},
   slotSubLineCompact: {fontSize: 11},
-  slotTimes: {color: colors.displayTimeText, fontSize: 18, fontWeight: '700', minWidth: 60, textAlign: 'right'},
-  slotTimesCompact: {fontSize: 14, minWidth: 48},
+  slotTrailing: {
+    width: 36,
+    alignItems: 'flex-end',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  slotTrailingCompact: {
+    width: 36,
+  },
+  slotTimes: {color: colors.displayTimeText, fontSize: 14, fontWeight: '700', minWidth: 0, textAlign: 'right'},
+  slotTimesCompact: {fontSize: 14, minWidth: 0},
   brightnessOverlay: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: colors.shadow,

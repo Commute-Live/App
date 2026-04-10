@@ -6,7 +6,7 @@ export const styles = StyleSheet.create({
   container: {flex: 1, backgroundColor: colors.background},
   scroll: {
     paddingHorizontal: layout.screenPadding,
-    paddingTop: layout.screenPadding,
+    paddingTop: layout.screenPadding * 2,
     paddingBottom: layout.bottomInset,
     gap: layout.screenGap,
   },
@@ -16,7 +16,7 @@ export const styles = StyleSheet.create({
   // ─── Page Header (device linked — not a card) ────────────────────────────
   pageHeader: {
     paddingTop: 0,
-    paddingBottom: spacing.sm,
+    paddingBottom: 0,
     gap: spacing.sm,
   },
   pageOverline: {
@@ -29,7 +29,7 @@ export const styles = StyleSheet.create({
   pageHeaderRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    justifyContent: 'flex-end',
     gap: spacing.sm,
   },
   pageHeaderLeft: {gap: spacing.xxs},
@@ -294,8 +294,24 @@ export const styles = StyleSheet.create({
     gap: spacing.md,
   },
   quietHeaderCopy: {flex: 1, gap: spacing.xxs},
+  quietHeaderControls: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    flexShrink: 0,
+  },
   quietHeaderSwitch: {
     flexShrink: 0,
+  },
+  quietExpandBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   quietDescription: {
     flex: 1,

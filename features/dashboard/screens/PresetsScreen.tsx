@@ -22,6 +22,7 @@ import {colors, layout, radii, spacing, typography} from '../../../theme';
 import {apiFetch} from '../../../lib/api';
 import DraggableFlatList, {type RenderItemParams} from 'react-native-draggable-flatlist';
 import {useTabRouteIsActive} from '../../../components/TabScreen';
+import {useSelectedDevice} from '../../../hooks/useSelectedDevice';
 import DashboardPreviewSection from '../components/DashboardPreviewSection';
 import {CITY_BRANDS, CITY_LABELS} from '../../../constants/cities';
 import {useAppState} from '../../../state/appState';
@@ -124,6 +125,7 @@ export default function DisplayManagementSection({
   const params = useLocalSearchParams<{focusDisplayId?: string}>();
   const {state: appState} = useAppState();
   const {deviceId, status} = useAuth();
+  const selectedDevice = useSelectedDevice();
   const selectedCity = appState.selectedCity;
   const isScreenFocused = useTabRouteIsActive('/dashboard');
   const [carouselIndex, setCarouselIndex] = useState(0);
@@ -341,6 +343,7 @@ export default function DisplayManagementSection({
 
   useEffect(() => {
     if (!isScreenFocused || !deviceId || status !== 'authenticated') return;
+    setCarouselIndex(0);
     void queryClient.invalidateQueries({queryKey: queryKeys.displays(deviceId)});
     void queryClient.invalidateQueries({queryKey: queryKeys.lastCommand(deviceId)});
   }, [deviceId, isScreenFocused, queryClient, status]);
@@ -349,7 +352,7 @@ export default function DisplayManagementSection({
     () => sortDisplaysForCarousel(displays, activeDisplayId),
     [activeDisplayId, displays],
   );
-  const displayCountLabel = `${visibleDisplays.length} ${visibleDisplays.length === 1 ? 'display' : 'displays'}`;
+  const displayCountLabel = selectedDevice.name;
   const safeIndex = visibleDisplays.length > 0 ? Math.min(carouselIndex, visibleDisplays.length - 1) : 0;
   const currentDisplay = visibleDisplays[safeIndex] ?? null;
   const currentDisplayCity = providerToCity(currentDisplay?.config.lines?.[0]?.provider ?? null) ?? selectedCity;
@@ -399,8 +402,8 @@ export default function DisplayManagementSection({
 
   const goTo = useCallback(
     (index: number) => {
-      if (index < 0 || index >= visibleDisplays.length) return;
-      setCarouselIndex(index);
+      if (visibleDisplays.length === 0) return;
+      setCarouselIndex((index + visibleDisplays.length) % visibleDisplays.length);
     },
     [visibleDisplays.length],
   );
@@ -523,6 +526,17 @@ export default function DisplayManagementSection({
           </View>
           <View style={styles.pageHeaderRight}>
             <Pressable
+              style={[
+                styles.statusPill,
+                selectedDevice.status === 'Online' ? styles.statusPillOn : styles.statusPillOff,
+              ]}
+              onPress={() => {
+                if (selectedDevice.status !== 'Online') router.push('/reconnect-help');
+              }}>
+              <View style={[styles.statusDot, selectedDevice.status === 'Online' ? styles.statusDotOn : styles.statusDotOff]} />
+              <Text style={styles.statusPillText}>{selectedDevice.status}</Text>
+            </Pressable>
+            <Pressable
               style={styles.addBtn}
               onPress={() => setReorderVisible(true)}
               disabled={visibleDisplays.length < 2}>
@@ -552,122 +566,124 @@ export default function DisplayManagementSection({
       {!loading && !errorText ? (
         currentDisplay ? (
           <>
+            <View
+              onTouchStart={() => setIsDisplayGestureRegionActive(true)}
+              onTouchEnd={() => setIsDisplayGestureRegionActive(false)}
+              onTouchCancel={() => setIsDisplayGestureRegionActive(false)}
+              {...displaySwipeResponder.panHandlers}>
+              <View style={styles.cardPreviewContainer}>
+                <DashboardPreviewSection
+                  slots={toPreviewSlots(
+                    currentDisplay,
+                    brand.accent,
+                    stopNames,
+                    currentDisplay.displayId === activeDisplayId ? liveArrivalLookup : null,
+                    {showDirectionFallback: false},
+                  )}
+                  displayType={currentDisplay.config.displayType ?? Number(currentDisplay.config.lines?.[0]?.displayType) ?? 1}
+                  onSelectSlot={() =>
+                    router.push({
+                      pathname: '/preset-editor',
+                      params: {city: currentDisplayCity, from: 'dashboard', mode: 'edit', displayId: currentDisplay.displayId},
+                    })
+                  }
+                  onReorderSlot={() => {}}
+                  onDragStateChange={() => {}}
+                  showHint={false}
+                  brightness={100}
+                />
+              </View>
+
+            </View>
+
             <View style={styles.displayCard}>
-              <View
-                onTouchStart={() => setIsDisplayGestureRegionActive(true)}
-                onTouchEnd={() => setIsDisplayGestureRegionActive(false)}
-                onTouchCancel={() => setIsDisplayGestureRegionActive(false)}
-                {...displaySwipeResponder.panHandlers}>
-                <View style={styles.cardPreviewContainer}>
-                  <DashboardPreviewSection
-                    slots={toPreviewSlots(
-                      currentDisplay,
-                      brand.accent,
-                      stopNames,
-                      currentDisplay.displayId === activeDisplayId ? liveArrivalLookup : null,
-                      {
-                        showDirectionFallback: false,
-                      },
-                    )}
-                    displayType={currentDisplay.config.displayType ?? Number(currentDisplay.config.lines?.[0]?.displayType) ?? 1}
-                    onSelectSlot={() =>
+              <View style={styles.navActionsRow}>
+                <View style={styles.navLeft}>
+                  <Pressable
+                    style={styles.editBtn}
+                    onPress={() =>
                       router.push({
                         pathname: '/preset-editor',
                         params: {city: currentDisplayCity, from: 'dashboard', mode: 'edit', displayId: currentDisplay.displayId},
                       })
-                    }
-                    onReorderSlot={() => {}}
-                    onDragStateChange={() => {}}
-                    showHint={false}
-                    brightness={currentBrightness}
-                  />
+                    }>
+                    <Ionicons name="pencil-outline" size={16} color={colors.text} />
+                  </Pressable>
                 </View>
 
-                <View style={styles.navActionsRow}>
-                  <View style={styles.navLeft}>
-                    <Pressable
-                      style={styles.editBtn}
-                      onPress={() =>
-                        router.push({
-                          pathname: '/preset-editor',
-                          params: {city: currentDisplayCity, from: 'dashboard', mode: 'edit', displayId: currentDisplay.displayId},
-                        })
-                    }>
-                      <Ionicons name="pencil-outline" size={16} color={colors.text} />
-                    </Pressable>
+                <View style={styles.navCenter}>
+                  <Pressable
+                    style={[styles.arrowBtn, visibleDisplays.length <= 1 && styles.arrowBtnHidden]}
+                    onPress={() => goTo(safeIndex - 1)}
+                    disabled={visibleDisplays.length <= 1}>
+                    <Ionicons name="chevron-back" size={22} color={colors.textMuted} />
+                  </Pressable>
+                  <View style={styles.navTitleBlock}>
+                    <Text style={styles.navDisplayName} numberOfLines={1}>{currentDisplay.name}</Text>
+                    {currentDisplay.displayId === activeDisplayId ? (
+                      <View style={styles.navActiveLabelCompact}>
+                        <View style={styles.navActiveDotCompact} />
+                        <Text style={styles.navActiveLabelCompactText}>Active</Text>
+                      </View>
+                    ) : (
+                      <Pressable
+                        style={[styles.setActivePill, activateDisplayMutation.isPending && styles.setActivePillDisabled]}
+                        disabled={activateDisplayMutation.isPending}
+                        onPress={() => activateDisplayMutation.mutate(currentDisplay)}>
+                        <Text style={styles.setActivePillText}>
+                          {activateDisplayMutation.isPending ? 'Activating…' : 'Set as Active'}
+                        </Text>
+                      </Pressable>
+                    )}
                   </View>
+                  <Pressable
+                    style={[styles.arrowBtn, visibleDisplays.length <= 1 && styles.arrowBtnHidden]}
+                    onPress={() => goTo(safeIndex + 1)}
+                    disabled={visibleDisplays.length <= 1}>
+                    <Ionicons name="chevron-forward" size={22} color={colors.textMuted} />
+                  </Pressable>
+                </View>
 
-                  <View style={styles.navCenter}>
-                    <Pressable
-                      style={[
-                        styles.arrowBtn,
-                        (visibleDisplays.length <= 1 || safeIndex === 0) && styles.arrowBtnDisabled,
-                        visibleDisplays.length <= 1 && styles.arrowBtnHidden,
-                      ]}
-                      onPress={() => goTo(safeIndex - 1)}
-                      disabled={visibleDisplays.length <= 1 || safeIndex === 0}>
-                      <Ionicons name="chevron-back" size={22} color={colors.textMuted} />
-                    </Pressable>
-                    <View style={styles.navTitleBlock}>
-                      <Text style={styles.navDisplayName} numberOfLines={1}>{currentDisplay.name}</Text>
-                      {currentDisplay.displayId === activeDisplayId ? (
-                        <View style={styles.navActiveLabelCompact}>
-                          <View style={styles.navActiveDotCompact} />
-                          <Text style={styles.navActiveLabelCompactText}>Active</Text>
-                        </View>
-                      ) : (
-                        <Text style={styles.navDisplayCity}>{CITY_LABELS[currentDisplayCity]}</Text>
-                      )}
-                    </View>
-                    <Pressable
-                      style={[
-                        styles.arrowBtn,
-                        (visibleDisplays.length <= 1 || safeIndex === visibleDisplays.length - 1) && styles.arrowBtnDisabled,
-                        visibleDisplays.length <= 1 && styles.arrowBtnHidden,
-                      ]}
-                      onPress={() => goTo(safeIndex + 1)}
-                      disabled={visibleDisplays.length <= 1 || safeIndex === visibleDisplays.length - 1}>
-                      <Ionicons name="chevron-forward" size={22} color={colors.textMuted} />
-                    </Pressable>
-                  </View>
-
-                  <View style={styles.navRight}>
-                    <Pressable style={styles.deleteBtn} onPress={() => confirmDelete(currentDisplay)}>
-                      <Ionicons name="trash-outline" size={16} color={colors.dangerText} />
-                    </Pressable>
-                  </View>
+                <View style={styles.navRight}>
+                  <Pressable style={styles.deleteBtn} onPress={() => confirmDelete(currentDisplay)}>
+                    <Ionicons name="trash-outline" size={16} color={colors.dangerText} />
+                  </Pressable>
                 </View>
               </View>
-
+              <View style={styles.cardSettingsDivider} />
               <View style={styles.cardSettings}>
-                <View style={styles.settingItem}>
-                  <View style={styles.settingItemRow}>
-                    <Text style={styles.settingItemLabel}>Brightness</Text>
+                <Pressable
+                  style={styles.settingItemRow}
+                  onPress={() => toggleBrightnessControl(currentDisplay.displayId)}>
+                  <Text style={styles.brightnessLabel}>Brightness</Text>
+                  <View style={styles.brightnessInlineControls}>
                     <Pressable
                       style={({pressed}) => [
                         styles.brightnessValueBadge,
                         isBrightnessControlExpanded && styles.brightnessValueBadgeActive,
                         pressed && styles.brightnessValueBadgePressed,
                       ]}
-                      onPress={() => toggleBrightnessControl(currentDisplay.displayId)}
-                      accessibilityRole="button"
-                      accessibilityLabel={`Brightness ${currentBrightness}%`}
-                      accessibilityHint={
-                        isBrightnessControlExpanded ? 'Hide the brightness slider' : 'Show the brightness slider'
-                      }>
+                      onPress={() => toggleBrightnessControl(currentDisplay.displayId)}>
                       <Text style={styles.brightnessValueText}>{currentBrightness}%</Text>
                     </Pressable>
+                    <View style={styles.brightnessInlineBtn}>
+                      <Ionicons
+                        name={isBrightnessControlExpanded ? 'chevron-up' : 'chevron-down'}
+                        size={14}
+                        color={colors.textMuted}
+                      />
+                    </View>
                   </View>
-                  {isBrightnessControlExpanded ? (
-                    <BrightnessSlider
-                      value={currentBrightness}
-                      min={MIN_BRIGHTNESS}
-                      max={MAX_BRIGHTNESS}
-                      onChange={value => handleBrightnessChange(currentDisplay, value)}
-                      onCommit={() => {}}
-                    />
-                  ) : null}
-                </View>
+                </Pressable>
+                {isBrightnessControlExpanded ? (
+                  <BrightnessSlider
+                    value={currentBrightness}
+                    min={MIN_BRIGHTNESS}
+                    max={MAX_BRIGHTNESS}
+                    onChange={value => handleBrightnessChange(currentDisplay, value)}
+                    onCommit={() => {}}
+                  />
+                ) : null}
               </View>
             </View>
           </>
@@ -679,19 +695,6 @@ export default function DisplayManagementSection({
         )
       ) : null}
 
-      {showSetActiveButton && currentDisplay ? (
-        <View style={styles.footerActionBar}>
-          <Pressable
-            style={[styles.setActiveBtn, activateDisplayMutation.isPending && styles.setActiveBtnDisabled]}
-            disabled={activateDisplayMutation.isPending}
-            onPress={() => activateDisplayMutation.mutate(currentDisplay)}>
-            <Text style={styles.setActiveBtnText}>
-              {activateDisplayMutation.isPending ? 'Activating…' : 'Set as Active'}
-            </Text>
-          </Pressable>
-          <View style={styles.footerActionBarBottomSpacer} />
-        </View>
-      ) : null}
 
       <ReorderDisplaysModal
         visible={reorderVisible}
@@ -940,7 +943,8 @@ const styles = StyleSheet.create({
   // ─── Page Header ──────────────────────────────────────────────────────────
   pageHeader: {
     paddingTop: 0,
-    paddingBottom: spacing.md,
+    paddingBottom: 0,
+    marginBottom: 0,
   },
   pageHeaderRow: {
     flexDirection: 'row',
@@ -976,6 +980,24 @@ const styles = StyleSheet.create({
   // ─── Loading / Error / Empty ───────────────────────────────────────────────
   hintText: {color: colors.textMuted, fontSize: 13},
   errorText: {color: colors.warning, fontSize: 13},
+
+  // ─── Status Pill ──────────────────────────────────────────────────────────
+  statusPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    minHeight: 32,
+  },
+  statusPillOn: {backgroundColor: colors.successSurface, borderColor: colors.successBorder},
+  statusPillOff: {backgroundColor: colors.surface, borderColor: colors.border},
+  statusDot: {width: 7, height: 7, borderRadius: 4},
+  statusDotOn: {backgroundColor: colors.successText},
+  statusDotOff: {backgroundColor: colors.textMuted},
+  statusPillText: {color: colors.text, fontSize: 12, fontWeight: '700'},
   emptyState: {
     paddingVertical: spacing.xl,
     alignItems: 'center',
@@ -985,11 +1007,15 @@ const styles = StyleSheet.create({
   emptyBody: {color: colors.textMuted, fontSize: 13, lineHeight: 18, textAlign: 'center'},
 
   // ─── Display Card ─────────────────────────────────────────────────────────
-  displayCard: {},
-  displayCardActive: {
-    borderWidth: 1,
-    borderColor: colors.successText,
+  displayCard: {
+    backgroundColor: colors.surface,
     borderRadius: radii.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    overflow: 'hidden',
+  },
+  displayCardActive: {
+    borderColor: colors.successBorder,
   },
 
   // Card header: name + badges
@@ -1031,7 +1057,9 @@ const styles = StyleSheet.create({
 
   // LED preview area — extra padding lets the glow breathe
   cardPreviewContainer: {
-    paddingBottom: spacing.sm,
+    paddingHorizontal: spacing.sm,
+    paddingTop: spacing.md,
+    paddingBottom: spacing.xs,
     position: 'relative',
   },
   activeOverlayBadge: {
@@ -1060,8 +1088,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     minHeight: layout.iconButton,
-    paddingVertical: 0,
-    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
+    paddingHorizontal: spacing.sm,
   },
   navLeft: {
     width: layout.iconButton,
@@ -1129,26 +1157,38 @@ const styles = StyleSheet.create({
   navActiveLabelCompact: {
     flexDirection: 'row',
     alignItems: 'center',
-    alignSelf: 'center',
-    gap: 4,
+    gap: 6,
     borderWidth: 1,
     borderColor: colors.successBorder,
     borderRadius: radii.md,
     backgroundColor: colors.successSurface,
-    paddingHorizontal: spacing.xs,
-    paddingVertical: 2,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 6,
   },
   navActiveDotCompact: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
     backgroundColor: colors.successText,
+  },
+  setActivePill: {
+    borderWidth: 1,
+    borderColor: colors.accent,
+    borderRadius: radii.md,
+    backgroundColor: colors.accentMuted,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 6,
+  },
+  setActivePillDisabled: {opacity: 0.5},
+  setActivePillText: {
+    color: colors.accent,
+    fontSize: 15,
+    fontWeight: '700',
   },
   navActiveLabelCompactText: {
     color: colors.successText,
-    fontSize: 11,
-    fontWeight: '600',
-    lineHeight: 12,
+    fontSize: 15,
+    fontWeight: '700',
   },
   arrowBtn: {
     width: layout.iconButton,
@@ -1163,8 +1203,27 @@ const styles = StyleSheet.create({
   dot: {width: 5, height: 5, borderRadius: 3, backgroundColor: colors.border},
   dotActive: {width: 14, height: 5, borderRadius: 3, backgroundColor: colors.accent},
 
+  activeStatusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+  },
+  activeStatusRowPressable: {
+    borderTopWidth: 1,
+    borderTopColor: colors.successBorder,
+    backgroundColor: colors.successSurface,
+  },
+  cardSettingsDivider: {
+    height: 1,
+    backgroundColor: colors.border,
+    marginHorizontal: spacing.md,
+  },
   cardSettings: {
-    paddingTop: spacing.xl,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.md,
     gap: spacing.sm,
   },
   settingItem: {
@@ -1189,27 +1248,47 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '800',
   },
+  brightnessLabel: {
+    color: colors.text,
+    fontSize: 15,
+    fontWeight: '800',
+  },
+  brightnessInlineControls: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+  },
+  brightnessInlineBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   brightnessValueBadge: {
     minWidth: 52,
-    minHeight: 32,
+    height: 31,
     paddingHorizontal: spacing.sm,
     borderRadius: radii.md,
     borderWidth: 1,
     borderColor: colors.border,
-    backgroundColor: colors.card,
+    backgroundColor: colors.surface,
     alignItems: 'center',
     justifyContent: 'center',
   },
   brightnessValueBadgeActive: {
     borderColor: colors.accent,
-    backgroundColor: colors.surface,
+    backgroundColor: colors.accentMuted,
   },
   brightnessValueBadgePressed: {
     opacity: 0.82,
   },
   brightnessValueText: {
     color: colors.text,
-    fontSize: 13,
+    fontSize: 15,
     fontWeight: '800',
   },
   settingItemSub: {

@@ -469,6 +469,9 @@ export function buildRouteGroups(city: CityId, mode: ModeId, routes: RoutePicker
   const cityModule = getTransitCityModule(city);
   const cityGroups = cityModule?.buildRouteGroups(mode, routes);
   if (cityGroups) return cityGroups;
+  if (city === 'new-york' && (mode === 'lirr' || mode === 'mnr')) {
+    return [{key: `${city}-${mode}`, routes}];
+  }
 
   const fallbackGroups: Array<{key: string; routes: RoutePickerItem[]}> = [];
 

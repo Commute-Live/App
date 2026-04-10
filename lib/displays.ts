@@ -584,6 +584,7 @@ export const toPreviewSlots = (
       badgeShape,
       selected: false,
       stopName: previewTitle,
+      scrollLabel: line.scrolling === true || (line.scrolling === undefined && display.config.scrolling === true),
       subLine: previewSubLine,
       subLineColor: displayType === 4 || displayType === 5 ? '#E5C15A' : undefined,
       times: liveTime || (showDirectionFallback ? directionLabel : '--'),

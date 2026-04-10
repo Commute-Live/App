@@ -1,4 +1,4 @@
-import React, {useEffect, useMemo, useRef, useState} from 'react';
+import React, {useEffect, useMemo, useState} from 'react';
 import {ActivityIndicator, Pressable, ScrollView, Switch, Text, View} from 'react-native';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
 import {Ionicons} from '@expo/vector-icons';
@@ -14,7 +14,6 @@ import {
 } from '../../../lib/deviceSettings';
 import {getCurrentIanaTimeZone, isScheduleEnabled, validateScheduleWindow} from '../../../lib/schedules';
 import {useAppState} from '../../../state/appState';
-import {CITY_LABELS} from '../../../constants/cities';
 import {useAuth} from '../../../state/authProvider';
 import {useSelectedDevice} from '../../../hooks/useSelectedDevice';
 import {apiFetch} from '../../../lib/api';
@@ -67,11 +66,10 @@ export default function DashboardOverviewScreen() {
   const hasLinkedDevice = deviceIds.length > 0;
   const isScreenFocused = useTabRouteIsActive('/dashboard');
   const [quietHoursEnabled, setQuietHoursEnabled] = useState(false);
+  const [quietHoursExpanded, setQuietHoursExpanded] = useState(false);
   const [quietHours, setQuietHours] = useState<QuietHoursDraft>(DEFAULT_QUIET_HOURS);
   const [quietHoursError, setQuietHoursError] = useState('');
   const [dashboardSwipeEnabled, setDashboardSwipeEnabled] = useState(true);
-  const deviceNameTapTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [deviceNameTapCount, setDeviceNameTapCount] = useState(0);
 
   const currentDeviceIndex = useMemo(() => {
     if (!deviceId) return 0;
@@ -146,14 +144,6 @@ export default function DashboardOverviewScreen() {
       setDeviceId(deviceIds[0]);
     }
   }, [deviceId, deviceIds, setDeviceId]);
-
-  useEffect(() => {
-    return () => {
-      if (deviceNameTapTimeoutRef.current) {
-        clearTimeout(deviceNameTapTimeoutRef.current);
-      }
-    };
-  }, []);
 
   useEffect(() => {
     if (!isScreenFocused) return;
@@ -261,25 +251,6 @@ export default function DashboardOverviewScreen() {
     }
   };
 
-  const handleDeviceNamePress = () => {
-    const nextTapCount = deviceNameTapCount + 1;
-    if (deviceNameTapTimeoutRef.current) {
-      clearTimeout(deviceNameTapTimeoutRef.current);
-    }
-
-    if (nextTapCount >= 5) {
-      setDeviceNameTapCount(0);
-      router.push({pathname: '/settings', params: {debug: 'device'}});
-      return;
-    }
-
-    setDeviceNameTapCount(nextTapCount);
-    deviceNameTapTimeoutRef.current = setTimeout(() => {
-      setDeviceNameTapCount(0);
-      deviceNameTapTimeoutRef.current = null;
-    }, 1500);
-  };
-
   const deviceLabels = useMemo(
     () =>
       Object.fromEntries(
@@ -307,79 +278,47 @@ export default function DashboardOverviewScreen() {
       <AppBrandHeader email={user?.email} />
 
       <ScrollView contentContainerStyle={styles.scroll} bounces={false}>
-        {hasLinkedDevice ? (
+        {hasLinkedDevice && deviceIds.length > 1 ? (
           <View style={styles.pageHeader}>
-            <View style={styles.pageHeaderRow}>
-              <View style={styles.pageHeaderLeft}>
-                <Pressable style={styles.deviceNameButton} onPress={handleDeviceNamePress}>
-                  <Text style={styles.pageStatusText}>{selectedDevice.name}</Text>
-                </Pressable>
-                <Text style={styles.pageHeaderMeta}>{CITY_LABELS[selectedCity]}</Text>
+            <View style={styles.deviceSwitcherRow}>
+              <View style={styles.deviceSwitcherHeader}>
+                <Text style={styles.switcherLabel}>Linked devices</Text>
+                <Text style={styles.switcherMeta}>
+                  {currentDeviceIndex + 1} of {deviceIds.length}
+                </Text>
               </View>
-              <View style={styles.pageHeaderRight}>
-                <Pressable
-                  style={[
-                    styles.statusPill,
-                    selectedDevice.status === 'Online' ? styles.statusPillOn : styles.statusPillOff,
-                  ]}
-                  onPress={() => {
-                    if (selectedDevice.status !== 'Online') {
-                      router.push('/reconnect-help');
-                    }
-                  }}>
-                  <View
-                    style={[
-                      styles.statusDot,
-                      selectedDevice.status === 'Online' ? styles.statusDotOn : styles.statusDotOff,
-                    ]}
-                  />
-                  <Text style={styles.statusPillText}>{selectedDevice.status}</Text>
-                </Pressable>
-                <Pressable style={styles.headerActionButton} onPress={() => router.push('/register-device')}>
-                  <Ionicons name="add" size={18} color={colors.accent} />
-                </Pressable>
-              </View>
-            </View>
 
-            {deviceIds.length > 1 ? (
-              <View style={styles.deviceSwitcherRow}>
-                <View style={styles.deviceSwitcherHeader}>
-                  <Text style={styles.switcherLabel}>Linked devices</Text>
-                  <Text style={styles.switcherMeta}>
-                    {currentDeviceIndex + 1} of {deviceIds.length}
+              <View style={styles.deviceCycleRow}>
+                <Pressable style={styles.deviceCycleButton} onPress={() => cycleDevice(-1)}>
+                  <Ionicons name="chevron-back" size={18} color={colors.text} />
+                </Pressable>
+                <View style={styles.deviceCycleCurrent}>
+                  <Text style={styles.deviceCycleCurrentText} numberOfLines={1}>
+                    {deviceLabels[selectedDevice.id] ?? selectedDevice.name}
                   </Text>
                 </View>
-
-                <View style={styles.deviceCycleRow}>
-                  <Pressable style={styles.deviceCycleButton} onPress={() => cycleDevice(-1)}>
-                    <Ionicons name="chevron-back" size={18} color={colors.text} />
-                  </Pressable>
-                  <View style={styles.deviceCycleCurrent}>
-                    <Text style={styles.deviceCycleCurrentText} numberOfLines={1}>
-                      {deviceLabels[selectedDevice.id] ?? selectedDevice.name}
-                    </Text>
-                  </View>
-                  <Pressable style={styles.deviceCycleButton} onPress={() => cycleDevice(1)}>
-                    <Ionicons name="chevron-forward" size={18} color={colors.text} />
-                  </Pressable>
-                </View>
-
-                <View style={styles.devicePillWrap}>
-                  {deviceIds.map(id => (
-                    <Pressable
-                      key={id}
-                      style={[styles.devicePill, deviceId === id && styles.devicePillActive]}
-                      onPress={() => setDeviceId(id)}>
-                      <Text style={[styles.devicePillText, deviceId === id && styles.devicePillTextActive]}>
-                        {deviceLabels[id] ?? 'My Device'}
-                      </Text>
-                    </Pressable>
-                  ))}
-                </View>
+                <Pressable style={styles.deviceCycleButton} onPress={() => cycleDevice(1)}>
+                  <Ionicons name="chevron-forward" size={18} color={colors.text} />
+                </Pressable>
               </View>
-            ) : null}
+
+              <View style={styles.devicePillWrap}>
+                {deviceIds.map(id => (
+                  <Pressable
+                    key={id}
+                    style={[styles.devicePill, deviceId === id && styles.devicePillActive]}
+                    onPress={() => setDeviceId(id)}>
+                    <Text style={[styles.devicePillText, deviceId === id && styles.devicePillTextActive]}>
+                      {deviceLabels[id] ?? 'My Device'}
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
+            </View>
           </View>
-        ) : (
+        ) : null}
+
+        {!hasLinkedDevice ? (
           <Pressable style={[styles.card, styles.noDeviceCard]} onPress={() => router.push('/register-device')}>
             <View style={styles.deviceHeaderRow}>
               <View style={styles.deviceHeaderText}>
@@ -409,37 +348,49 @@ export default function DashboardOverviewScreen() {
               </View>
             </View>
           </Pressable>
-        )}
+        ) : null}
 
         {hasLinkedDevice ? (
           <DisplayManagementSection onSwipeEnabledChange={setDashboardSwipeEnabled} />
         ) : null}
 
         {hasLinkedDevice ? (
-          <View style={styles.sectionBlock}>
+          <View style={[styles.card, {backgroundColor: colors.surface}]}>
             <View style={styles.quietHeaderRow}>
               <View style={styles.quietHeaderCopy}>
-                <Text style={styles.sectionBlockLabel}>Quiet Hours</Text>
-                <Text style={[styles.quietMetaText, quietHoursLoading && styles.quietDescriptionDisabled]}>
-                  {quietHoursLoading
-                    ? 'Loading device settings…'
-                      : `Blank the entire panel on selected days. Timezone: ${quietHoursTimezoneLabel}`}
-                </Text>
+                <Text style={styles.cardTitle}>Quiet Hours</Text>
+                {quietHoursLoading ? (
+                  <Text style={[styles.quietMetaText, styles.quietDescriptionDisabled]}>Loading device settings…</Text>
+                ) : null}
               </View>
-              <Switch
-                value={quietHoursEnabled}
-                disabled={quietHoursLoading || quietHoursSaving}
-                onValueChange={nextEnabled => {
-                  setQuietHoursEnabled(nextEnabled);
-                  void persistQuietHours(nextEnabled, quietHours);
-                }}
-                trackColor={{false: colors.border, true: colors.accent}}
-                ios_backgroundColor={colors.border}
-                style={styles.quietHeaderSwitch}
-              />
+              <View style={styles.quietHeaderControls}>
+                <Switch
+                  value={quietHoursEnabled}
+                  disabled={quietHoursLoading || quietHoursSaving}
+                  onValueChange={nextEnabled => {
+                    setQuietHoursEnabled(nextEnabled);
+                    if (nextEnabled) setQuietHoursExpanded(true);
+                    void persistQuietHours(nextEnabled, quietHours);
+                  }}
+                  trackColor={{false: colors.border, true: colors.accent}}
+                  ios_backgroundColor={colors.border}
+                  style={styles.quietHeaderSwitch}
+                />
+                {quietHoursEnabled ? (
+                  <Pressable
+                    style={styles.quietExpandBtn}
+                    onPress={() => setQuietHoursExpanded(prev => !prev)}>
+                    <Ionicons
+                      name={quietHoursExpanded ? 'chevron-up' : 'chevron-down'}
+                      size={16}
+                      color={colors.textMuted}
+                    />
+                  </Pressable>
+                ) : null}
+              </View>
             </View>
 
-            {quietHoursEnabled ? (
+            {quietHoursEnabled && quietHoursExpanded ? (
               <>
                 <View style={styles.quietDaysWrap}>
                   <View style={[styles.quietDaysRow, quietHoursInputsDisabled && styles.quietDaysRowDisabled]}>
@@ -492,6 +443,7 @@ export default function DashboardOverviewScreen() {
             ) : null}
           </View>
         ) : null}
+
       </ScrollView>
     </TabScreen>
   );
