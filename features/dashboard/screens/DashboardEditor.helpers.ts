@@ -99,6 +99,10 @@ export function resolveBackendProviderMode(c: CityId, mode: ModeId): string {
     if (mode === 'bus') return 'cta/bus';
     return 'cta/subway';
   }
+  if (c === 'new-jersey') {
+    if (mode === 'bus') return 'njt/bus';
+    return 'njt/rail';
+  }
   if (mode === 'bus') return 'mbta/bus';
   if (mode === 'commuter-rail') return 'mbta/rail';
   return 'mbta/subway';
@@ -114,13 +118,13 @@ export function cityModeFromSavedLine(saved: {
   stop?: string | null;
   line?: string | null;
 }): {city: CityId; mode: ModeId} | null {
+  const provider = typeof saved.provider === 'string' ? saved.provider : '';
   const normalizedProviderMode = normalizeProviderMode(saved.providerMode);
   if (normalizedProviderMode) {
     const mapped = PROVIDER_MODE_TO_CITY_MODE[normalizedProviderMode];
-    if (mapped) return mapped;
+    // Only trust providerMode if it starts with the same provider prefix to avoid stale cross-provider data
+    if (mapped && (!provider || normalizedProviderMode.startsWith(provider.split('-')[0]))) return mapped;
   }
-
-  const provider = typeof saved.provider === 'string' ? saved.provider : '';
   const fallback = cityModeFromProvider(provider);
   if (fallback?.city === 'boston' && fallback.mode === 'train') {
     return {city: 'boston', mode: resolveBostonModeFromSavedStop(saved.stop, saved.line)};

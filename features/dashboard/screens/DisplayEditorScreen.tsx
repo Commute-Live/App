@@ -1507,10 +1507,11 @@ export default function DisplayEditorScreen() {
             ? 'circle'
             : 'pill';
 
+
         return {
           id: line.id,
           color: route?.color ?? colors.border,
-          textColor: badgeShape === 'circle' ? '#FFFFFF' : line.textColor || route?.textColor || DEFAULT_TEXT_COLOR,
+          textColor: route?.textColor || DEFAULT_TEXT_COLOR,
           routeLabel: isNycRailMode(safeMode)
             ? (route ? '' : '?')
             : getLocalRouteBadgeLabel(
