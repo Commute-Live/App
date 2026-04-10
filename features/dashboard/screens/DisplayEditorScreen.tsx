@@ -841,7 +841,7 @@ export default function DisplayEditorScreen() {
               id: `line-${i + 1}`,
               mode,
               stationId: normalizeSavedStationId(saved.provider, normalizedSavedStop),
-              routeId: saved.line,
+              routeId: saved.shortName?.trim() || saved.line,
               direction: dir,
               scrolling: saved.scrolling === true || (saved.scrolling === undefined && sourceDisplay.config?.scrolling === true),
               label: typeof saved.label === 'string' ? saved.label : typeof saved.topText === 'string' ? saved.topText : '',
