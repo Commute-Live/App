@@ -1,5 +1,14 @@
-import React, {useEffect, useMemo, useState} from 'react';
-import {ActivityIndicator, Pressable, ScrollView, Switch, Text, View} from 'react-native';
+import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react';
+import {
+  ActivityIndicator,
+  Animated,
+  Pressable,
+  Switch,
+  Text,
+  View,
+  type NativeScrollEvent,
+  type NativeSyntheticEvent,
+} from 'react-native';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
 import {Ionicons} from '@expo/vector-icons';
 import {useRouter} from 'expo-router';
@@ -38,6 +47,7 @@ const DEFAULT_QUIET_HOURS = {
   end: '05:00',
   days: [...DISPLAY_WEEKDAYS] as DisplayWeekday[],
 };
+const DASHBOARD_REFRESH_PULL_DISTANCE = 96;
 
 const formatShortTimezoneLabel = (timezone: string) => {
   const trimmed = timezone.trim();
@@ -70,6 +80,8 @@ export default function DashboardOverviewScreen() {
   const [quietHours, setQuietHours] = useState<QuietHoursDraft>(DEFAULT_QUIET_HOURS);
   const [quietHoursError, setQuietHoursError] = useState('');
   const [dashboardSwipeEnabled, setDashboardSwipeEnabled] = useState(true);
+  const [dashboardRefreshing, setDashboardRefreshing] = useState(false);
+  const dashboardScrollY = useRef(new Animated.Value(0)).current;
 
   const currentDeviceIndex = useMemo(() => {
     if (!deviceId) return 0;
@@ -214,6 +226,82 @@ export default function DashboardOverviewScreen() {
   });
   const quietHoursSaving = quietHoursMutation.isPending;
   const quietHoursInputsDisabled = !quietHoursEnabled || quietHoursLoading || quietHoursSaving;
+  const dashboardPullDistance = useMemo(
+    () => Animated.diffClamp(Animated.multiply(dashboardScrollY, -1), 0, DASHBOARD_REFRESH_PULL_DISTANCE),
+    [dashboardScrollY],
+  );
+  const dashboardSpinnerOpacity = useMemo(
+    () =>
+      dashboardPullDistance.interpolate({
+        inputRange: [0, DASHBOARD_REFRESH_PULL_DISTANCE * 0.2, DASHBOARD_REFRESH_PULL_DISTANCE],
+        outputRange: [0, 0.18, 1],
+        extrapolate: 'clamp',
+      }),
+    [dashboardPullDistance],
+  );
+  const dashboardSpinnerScale = useMemo(
+    () =>
+      dashboardPullDistance.interpolate({
+        inputRange: [0, DASHBOARD_REFRESH_PULL_DISTANCE],
+        outputRange: [0.72, 1],
+        extrapolate: 'clamp',
+      }),
+    [dashboardPullDistance],
+  );
+  const dashboardSpinnerTranslateY = useMemo(
+    () =>
+      dashboardPullDistance.interpolate({
+        inputRange: [0, DASHBOARD_REFRESH_PULL_DISTANCE],
+        outputRange: [-10, 8],
+        extrapolate: 'clamp',
+      }),
+    [dashboardPullDistance],
+  );
+  const handleDashboardScroll = useMemo(
+    () =>
+      Animated.event([{nativeEvent: {contentOffset: {y: dashboardScrollY}}}], {
+        useNativeDriver: true,
+      }),
+    [dashboardScrollY],
+  );
+
+  const refreshDashboard = useCallback(async () => {
+    if (dashboardRefreshing) return;
+    setDashboardRefreshing(true);
+    dashboardScrollY.setValue(0);
+
+    try {
+      if (hasLinkedDevice && selectedDevice.id && status === 'authenticated') {
+        await Promise.all([
+          queryClient.invalidateQueries({queryKey: queryKeys.deviceSettings(selectedDevice.id)}),
+          queryClient.invalidateQueries({queryKey: queryKeys.deviceOnline(selectedDevice.id)}),
+          queryClient.invalidateQueries({queryKey: queryKeys.displays(selectedDevice.id)}),
+          queryClient.invalidateQueries({queryKey: queryKeys.lastCommand(selectedDevice.id)}),
+        ]);
+        return;
+      }
+
+      if (!hasLinkedDevice) {
+        await queryClient.invalidateQueries({queryKey: queryKeys.espHeartbeat});
+      }
+    } finally {
+      setDashboardRefreshing(false);
+    }
+  }, [dashboardRefreshing, hasLinkedDevice, queryClient, selectedDevice.id, status]);
+
+  const handleDashboardScrollEndDrag = useCallback(
+    (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+      if (dashboardRefreshing) return;
+      const offsetY = event.nativeEvent.contentOffset.y;
+      const releasedPullDistance = offsetY < 0 ? Math.abs(offsetY) : 0;
+
+      if (releasedPullDistance >= DASHBOARD_REFRESH_PULL_DISTANCE) {
+        void refreshDashboard();
+        return;
+      }
+    },
+    [dashboardRefreshing, refreshDashboard],
+  );
 
   const persistQuietHours = async (enabled: boolean, draft: QuietHoursDraft) => {
     if (!selectedDevice.id || quietHoursSaving) return;
@@ -277,9 +365,41 @@ export default function DashboardOverviewScreen() {
       swipeEnabled={dashboardSwipeEnabled}>
       <AppBrandHeader email={user?.email} />
 
-      <ScrollView contentContainerStyle={styles.scroll} bounces={false}>
-        {hasLinkedDevice && deviceIds.length > 1 ? (
-          <View style={styles.pageHeader}>
+      <View style={styles.scrollViewport}>
+        <Animated.View
+          pointerEvents="none"
+          style={[
+            styles.refreshSpinnerWrap,
+            dashboardRefreshing
+              ? styles.refreshSpinnerWrapActive
+              : {
+                  opacity: dashboardSpinnerOpacity,
+                  transform: [{translateY: dashboardSpinnerTranslateY}],
+                },
+          ]}>
+          <Animated.View
+            style={[
+              styles.refreshSpinner,
+              dashboardRefreshing
+                ? styles.refreshSpinnerActive
+                : {
+                    transform: [{scale: dashboardSpinnerScale}],
+                  },
+            ]}>
+            <ActivityIndicator size="small" color={colors.accent} />
+          </Animated.View>
+        </Animated.View>
+
+        <Animated.ScrollView
+          contentContainerStyle={styles.scroll}
+          alwaysBounceVertical
+          bounces
+          overScrollMode="always"
+          scrollEventThrottle={16}
+          onScroll={handleDashboardScroll}
+          onScrollEndDrag={handleDashboardScrollEndDrag}>
+          {hasLinkedDevice && deviceIds.length > 1 ? (
+            <View style={styles.pageHeader}>
             <View style={styles.deviceSwitcherRow}>
               <View style={styles.deviceSwitcherHeader}>
                 <Text style={styles.switcherLabel}>Linked devices</Text>
@@ -316,10 +436,10 @@ export default function DashboardOverviewScreen() {
               </View>
             </View>
           </View>
-        ) : null}
+          ) : null}
 
-        {!hasLinkedDevice ? (
-          <Pressable style={[styles.card, styles.noDeviceCard]} onPress={() => router.push('/register-device')}>
+          {!hasLinkedDevice ? (
+            <Pressable style={[styles.card, styles.noDeviceCard]} onPress={() => router.push('/register-device')}>
             <View style={styles.deviceHeaderRow}>
               <View style={styles.deviceHeaderText}>
                 <Text style={styles.sectionLabel}>No Device Linked</Text>
@@ -347,15 +467,15 @@ export default function DashboardOverviewScreen() {
                 </Text>
               </View>
             </View>
-          </Pressable>
-        ) : null}
+            </Pressable>
+          ) : null}
 
-        {hasLinkedDevice ? (
-          <DisplayManagementSection onSwipeEnabledChange={setDashboardSwipeEnabled} />
-        ) : null}
+          {hasLinkedDevice ? (
+            <DisplayManagementSection onSwipeEnabledChange={setDashboardSwipeEnabled} />
+          ) : null}
 
-        {hasLinkedDevice ? (
-          <View style={[styles.card, {backgroundColor: colors.surface}]}>
+          {hasLinkedDevice ? (
+            <View style={[styles.card, {backgroundColor: colors.surface}]}>
             <View style={styles.quietHeaderRow}>
               <View style={styles.quietHeaderCopy}>
                 <Text style={styles.cardTitle}>Quiet Hours</Text>
@@ -441,10 +561,11 @@ export default function DashboardOverviewScreen() {
             {quietHoursError || deviceSettingsError ? (
               <Text style={styles.commandError}>{quietHoursError || deviceSettingsError}</Text>
             ) : null}
-          </View>
-        ) : null}
+            </View>
+          ) : null}
 
-      </ScrollView>
+        </Animated.ScrollView>
+      </View>
     </TabScreen>
   );
 }

@@ -4,6 +4,7 @@ import {colors, layout, radii, spacing, typography} from '../../../theme';
 export const styles = StyleSheet.create({
   // ─── Layout ──────────────────────────────────────────────────────────────
   container: {flex: 1, backgroundColor: colors.background},
+  scrollViewport: {flex: 1},
   scroll: {
     paddingHorizontal: layout.screenPadding,
     paddingTop: layout.screenPadding * 2,
@@ -12,6 +13,29 @@ export const styles = StyleSheet.create({
   },
   loadingContainer: {flex: 1, alignItems: 'center', justifyContent: 'center', gap: spacing.sm},
   loadingText: {color: colors.textMuted, fontSize: typography.body},
+  refreshSpinnerWrap: {
+    position: 'absolute',
+    top: 8,
+    left: 0,
+    right: 0,
+    zIndex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  refreshSpinnerWrapActive: {
+    opacity: 1,
+    transform: [{translateY: 8}],
+  },
+  refreshSpinner: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  refreshSpinnerActive: {
+    transform: [{scale: 1}],
+  },
 
   // ─── Page Header (device linked — not a card) ────────────────────────────
   pageHeader: {
