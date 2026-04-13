@@ -56,24 +56,29 @@ function MarqueeText({
     if (!shouldAnimate) return;
 
     let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+
     const runLoop = () => {
       if (cancelled) return;
       ownTranslateX.setValue(0);
-      Animated.sequence([
-        Animated.delay(900),
+      timer = setTimeout(() => {
+        if (cancelled) return;
         Animated.timing(ownTranslateX, {
           toValue: -overflow,
           duration: Math.max(4000, overflow * 60),
           useNativeDriver: true,
-        }),
-        Animated.delay(3000),
-      ]).start(({finished}) => {
-        if (finished && !cancelled) runLoop();
-      });
+        }).start(({finished}) => {
+          if (!finished || cancelled) return;
+          timer = setTimeout(() => {
+            if (!cancelled) runLoop();
+          }, 3000);
+        });
+      }, 900);
     };
     runLoop();
     return () => {
       cancelled = true;
+      if (timer !== null) clearTimeout(timer);
       ownTranslateX.stopAnimation();
     };
   }, [shouldAnimate, overflow, ownTranslateX, scrollClock]);
@@ -132,24 +137,29 @@ export default function Display3DPreview({
   useEffect(() => {
     if (!hasMultipleScrolling) return;
     let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+
     const runLoop = () => {
       if (cancelled) return;
       scrollClock.setValue(0);
-      Animated.sequence([
-        Animated.delay(900),
+      timer = setTimeout(() => {
+        if (cancelled) return;
         Animated.timing(scrollClock, {
           toValue: 1,
           duration: 6000,
           useNativeDriver: true,
-        }),
-        Animated.delay(3000),
-      ]).start(({finished}) => {
-        if (finished && !cancelled) runLoop();
-      });
+        }).start(({finished}) => {
+          if (!finished || cancelled) return;
+          timer = setTimeout(() => {
+            if (!cancelled) runLoop();
+          }, 3000);
+        });
+      }, 900);
     };
     runLoop();
     return () => {
       cancelled = true;
+      if (timer !== null) clearTimeout(timer);
       scrollClock.stopAnimation();
     };
   }, [hasMultipleScrolling, scrollClock]);

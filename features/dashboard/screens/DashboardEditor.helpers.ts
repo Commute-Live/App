@@ -402,7 +402,7 @@ export async function loadGlobalLinesForCityMode(city: CityId, mode: ModeId): Pr
   return response.lines.map(line => ({
     id: line.id,
     shortName: line.shortName,
-    label: line.label || line.id,
+    label: line.shortName || line.id,
     sortOrder: line.sortOrder,
     color: resolveRouteColor(city, mode, line.id, line.label, line.color),
     textColor: resolveRouteTextColor(city, mode, line.id, line.label, line.textColor),

@@ -7,7 +7,7 @@ export const styles = StyleSheet.create({
   scrollViewport: {flex: 1},
   scroll: {
     paddingHorizontal: layout.screenPadding,
-    paddingTop: layout.screenPadding * 2,
+    paddingTop: layout.screenPadding,
     paddingBottom: layout.bottomInset,
     gap: layout.screenGap,
   },

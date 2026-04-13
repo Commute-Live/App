@@ -9,9 +9,9 @@
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "splash": {
-      "image": "./assets/images/splash.png",
+      "image": "./assets/images/logo.png",
       "resizeMode": "contain",
-      "backgroundColor": "#F7F2EB"
+      "backgroundColor": "#F2F2F7"
     },
     "ios": {
       "infoPlist": {
@@ -29,7 +29,7 @@
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/logo.png",
-        "backgroundColor": "#F7F2EB"
+        "backgroundColor": "#F2F2F7"
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,

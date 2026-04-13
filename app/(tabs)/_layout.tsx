@@ -4,8 +4,10 @@ import {usePathname} from 'expo-router';
 import {TabScreenHostContext} from '../../components/TabScreen';
 import {
   getTabIndex,
+  TAB_NAV_ITEMS,
   type TabRoute,
 } from '../../components/tabNavigation';
+import {BottomNav} from '../../components/BottomNav';
 import DashboardOverviewScreen from '../../features/dashboard/screens/DashboardOverviewScreen';
 import SettingsScreen from '../../features/settings/screens/SettingsScreen';
 import {colors} from '../../theme';
@@ -27,6 +29,7 @@ export default function TabsLayout() {
         <View style={styles.page}>
           <ScreenComponent />
         </View>
+        <BottomNav items={TAB_NAV_ITEMS} />
       </View>
     </TabScreenHostContext.Provider>
   );

@@ -1,4 +1,4 @@
-const DEFAULT_API_BASE = 'https://api.commutelive.com';
+const DEFAULT_API_BASE = 'https://staging.commutelive.com';
 
 const trimTrailingSlash = (value: string) => value.replace(/\/+$/, '');
 
