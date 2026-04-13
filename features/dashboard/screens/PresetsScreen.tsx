@@ -151,6 +151,25 @@ export default function DisplayManagementSection({
   const previewTrackAnim = useRef(new Animated.Value(1)).current;
   const previousDisplayIdRef = useRef<string | null>(null);
   const previousDisplayRef = useRef<DeviceDisplay | null>(null);
+  const ledScale = useRef(new Animated.Value(1)).current;
+
+  const handleLedPressIn = useCallback(() => {
+    Animated.spring(ledScale, {
+      toValue: 1.04,
+      useNativeDriver: true,
+      speed: 28,
+      bounciness: 6,
+    }).start();
+  }, [ledScale]);
+
+  const handleLedPressOut = useCallback(() => {
+    Animated.spring(ledScale, {
+      toValue: 1,
+      useNativeDriver: true,
+      speed: 20,
+      bounciness: 4,
+    }).start();
+  }, [ledScale]);
 
   useEffect(() => {
     if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -672,10 +691,11 @@ export default function DisplayManagementSection({
       {!loading && !errorText ? (
         currentDisplay ? (
           <>
-            <View
-              onTouchStart={() => setIsDisplayGestureRegionActive(true)}
-              onTouchEnd={() => setIsDisplayGestureRegionActive(false)}
-              onTouchCancel={() => setIsDisplayGestureRegionActive(false)}
+            <Animated.View
+              style={{transform: [{scale: ledScale}]}}
+              onTouchStart={() => { setIsDisplayGestureRegionActive(true); handleLedPressIn(); }}
+              onTouchEnd={() => { setIsDisplayGestureRegionActive(false); handleLedPressOut(); }}
+              onTouchCancel={() => { setIsDisplayGestureRegionActive(false); handleLedPressOut(); }}
               {...displaySwipeResponder.panHandlers}>
               <View
                 style={styles.cardPreviewContainer}>
@@ -743,7 +763,7 @@ export default function DisplayManagementSection({
                 </View>
               </View>
 
-            </View>
+            </Animated.View>
 
             <View style={styles.displayCard}>
               <View style={styles.navActionsRow}>
@@ -1155,9 +1175,7 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     overflow: 'hidden',
   },
-  displayCardActive: {
-    borderColor: colors.successBorder,
-  },
+  displayCardActive: {},
 
   // Card header: name + badges
   cardHeader: {
@@ -1393,8 +1411,8 @@ const styles = StyleSheet.create({
   },
   brightnessLabel: {
     color: colors.text,
-    fontSize: 15,
-    fontWeight: '600',
+    fontSize: 16,
+    fontWeight: '700',
   },
   brightnessInlineControls: {
     flexDirection: 'row',
@@ -1407,18 +1425,18 @@ const styles = StyleSheet.create({
     borderRadius: radii.md,
     borderWidth: 1,
     borderColor: colors.border,
-    backgroundColor: colors.surface,
+    backgroundColor: colors.card,
     alignItems: 'center',
     justifyContent: 'center',
   },
   brightnessValueBadge: {
-    minWidth: 52,
-    height: 31,
+    minWidth: 58,
+    height: 34,
     paddingHorizontal: spacing.sm,
     borderRadius: radii.md,
     borderWidth: 1,
     borderColor: colors.border,
-    backgroundColor: colors.surface,
+    backgroundColor: colors.card,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1432,7 +1450,7 @@ const styles = StyleSheet.create({
   brightnessValueText: {
     color: colors.text,
     fontSize: 15,
-    fontWeight: '600',
+    fontWeight: '700',
   },
   settingItemSub: {
     color: colors.text,
@@ -1488,6 +1506,28 @@ const styles = StyleSheet.create({
     color: colors.textTertiary,
     fontSize: 12,
     fontWeight: '600',
+  },
+
+  editBtn: {
+    width: layout.iconButton,
+    height: layout.iconButton,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.card,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  editBtnText: {color: colors.text, fontSize: 12, fontWeight: '700'},
+  deleteBtn: {
+    width: layout.iconButton,
+    height: layout.iconButton,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: colors.dangerBorder,
+    backgroundColor: colors.dangerSurface,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 
   // ─── Reorder Modal ───────────────────────────────────────────────────────

@@ -48,7 +48,7 @@ export const CITY_OPTIONS: CityOption[] = [
     shortLabel: 'NJ',
     agencyCode: 'NJT',
     agencyName: 'NJ Transit',
-    description: 'NJ Transit rail and bus across all corridors',
+    description: 'NJ Transit rail across all corridors',
   },
 ];
 

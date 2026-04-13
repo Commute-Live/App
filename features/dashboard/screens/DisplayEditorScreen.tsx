@@ -206,7 +206,7 @@ const getPresetDescriptionForMode = (
     if (presetId === 2) return 'Trip destination on the left, next arrival on the right.';
     if (presetId === 5) return 'Trip destination with upcoming arrivals.';
   }
-  if (city === 'new-jersey' && (mode === 'train' || mode === 'bus')) {
+  if (city === 'new-jersey' && mode === 'train') {
     if (presetId === 2) return 'Trip destination on the left, next arrival on the right.';
     if (presetId === 5) return 'Trip destination with upcoming arrivals.';
   }
@@ -830,6 +830,11 @@ export default function DisplayEditorScreen() {
             const displayFormat = normalizeDisplayFormat(saved.displayFormat);
             const mapping = cityModeFromSavedLine(saved);
             const mode: ModeId = mapping?.mode ?? 'train';
+            const savedProvider = typeof saved.provider === 'string' ? saved.provider.trim().toLowerCase() : '';
+            const savedProviderMode = typeof saved.providerMode === 'string' ? saved.providerMode.trim().toLowerCase() : '';
+            const isSavedNjtRail = savedProvider === 'njt-rail' || savedProviderMode === 'njt/rail';
+            const savedLine = typeof saved.line === 'string' ? saved.line.trim() : '';
+            const savedShortName = typeof saved.shortName === 'string' ? saved.shortName.trim() : '';
             const normalizedSavedStop = typeof saved.stop === 'string' ? saved.stop.trim().toUpperCase() : '';
             const dir: Direction = deserializeUiDirection(
               city,
@@ -841,7 +846,7 @@ export default function DisplayEditorScreen() {
               id: `line-${i + 1}`,
               mode,
               stationId: normalizeSavedStationId(saved.provider, normalizedSavedStop),
-              routeId: saved.shortName?.trim() || saved.line,
+              routeId: isSavedNjtRail ? savedLine || savedShortName : savedShortName || savedLine,
               direction: dir,
               scrolling: saved.scrolling === true || (saved.scrolling === undefined && sourceDisplay.config?.scrolling === true),
               label: typeof saved.label === 'string' ? saved.label : typeof saved.topText === 'string' ? saved.topText : '',
@@ -1066,12 +1071,16 @@ export default function DisplayEditorScreen() {
           presetBehavior.supportsBottomCustom && line.secondaryLabel.trim().length > 0
             ? 'custom'
             : presetBehavior.secondaryContent;
+        const persistedRouteId =
+          city === 'new-jersey' && normalizedMode === 'train'
+            ? route?.shortName?.trim() || line.routeId
+            : line.routeId;
 
         return {
           ...(direction ? {direction} : {}),
           provider,
           providerMode,
-          line: line.routeId,
+          line: persistedRouteId,
           shortName: route?.shortName ?? undefined,
           stop: line.stationId,
           stopName: station?.name ?? undefined,
@@ -3291,7 +3300,6 @@ const getServiceDescription = (city: CityId, mode: ModeId) => {
   }
   if (city === 'new-jersey') {
     if (mode === 'train') return 'NJ Transit rail lines and transfer hubs';
-    if (mode === 'bus') return 'NJ Transit bus routes across all corridors';
   }
   return 'Choose the service you want to show on this display.';
 };

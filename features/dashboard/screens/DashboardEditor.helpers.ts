@@ -64,6 +64,7 @@ const PROVIDER_MODE_TO_CITY_MODE: Record<string, {city: CityId; mode: ModeId}> =
   'mbta/rail': {city: 'boston', mode: 'commuter-rail'},
   'cta/subway': {city: 'chicago', mode: 'train'},
   'cta/bus': {city: 'chicago', mode: 'bus'},
+  'njt/rail': {city: 'new-jersey', mode: 'train'},
 };
 
 const normalizeProviderMode = (value: string | undefined | null) => {
@@ -100,7 +101,6 @@ export function resolveBackendProviderMode(c: CityId, mode: ModeId): string {
     return 'cta/subway';
   }
   if (c === 'new-jersey') {
-    if (mode === 'bus') return 'njt/bus';
     return 'njt/rail';
   }
   if (mode === 'bus') return 'mbta/bus';

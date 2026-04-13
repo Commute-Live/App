@@ -37,8 +37,7 @@ export type TransitBackendProviderId =
   | 'mbta-rail'
   | 'cta-subway'
   | 'cta-bus'
-  | 'njt-rail'
-  | 'njt-bus';
+  | 'njt-rail';
 export type TransitProviderMode = `${TransitProvider}/${TransitBackendMode}`;
 
 export type TransitModeMapping = {

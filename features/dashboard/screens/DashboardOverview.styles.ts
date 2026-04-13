@@ -173,6 +173,20 @@ export const styles = StyleSheet.create({
   devicePillText: {color: colors.text, fontSize: 13, fontWeight: '600'},
   devicePillTextActive: {color: colors.accent},
 
+  // ─── Quiet Hours Section ────────────────────────────────────────────────────
+  quietSection: {
+    backgroundColor: colors.surface,
+    borderRadius: radii.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: layout.cardPaddingLg,
+    gap: layout.screenGap,
+  },
+  sectionDivider: {
+    height: 1,
+    backgroundColor: colors.border,
+  },
+
   // ─── Generic Card ─────────────────────────────────────────────────────────
   card: {
     backgroundColor: colors.card,
@@ -307,7 +321,7 @@ export const styles = StyleSheet.create({
     alignItems: 'flex-start',
     gap: spacing.sm,
   },
-  cardTitle: {color: colors.text, fontSize: 15, fontWeight: '600'},
+  cardTitle: {color: colors.text, fontSize: 16, fontWeight: '700'},
   cardSubtitle: {color: colors.textMuted, fontSize: 13, marginTop: spacing.xxs},
 
   // ─── Quiet Hours Header ───────────────────────────────────────────────────
@@ -333,7 +347,7 @@ export const styles = StyleSheet.create({
     borderRadius: radii.md,
     borderWidth: 1,
     borderColor: colors.border,
-    backgroundColor: colors.surface,
+    backgroundColor: colors.card,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -351,34 +365,36 @@ export const styles = StyleSheet.create({
   quietDaysRow: {flexDirection: 'row', justifyContent: 'center', gap: 10},
   quietDaysRowDisabled: {opacity: 0.45},
   quietDayPill: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    borderWidth: 1,
-    borderColor: colors.border,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    borderWidth: 0,
     backgroundColor: colors.card,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  quietDayPillActive: {borderColor: colors.accent, backgroundColor: colors.accentMuted},
-  quietDayPillText: {color: colors.textMuted, fontSize: 13, fontWeight: '700'},
-  quietDayPillTextActive: {color: colors.accent},
+  quietDayPillActive: {
+    backgroundColor: colors.accent,
+  },
+  quietDayPillText: {color: colors.textTertiary, fontSize: 13, fontWeight: '600'},
+  quietDayPillTextActive: {color: '#FFFFFF', fontWeight: '700'},
   quietRangeRow: {flexDirection: 'row', gap: spacing.sm},
   timeField: {
     flex: 1,
-    borderRadius: radii.md,
+    borderRadius: radii.lg,
     borderWidth: 1,
     borderColor: colors.border,
     backgroundColor: colors.surface,
-    padding: spacing.sm,
-    gap: spacing.xs,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    gap: 6,
   },
   timeFieldLabel: {
-    color: colors.textMuted,
+    color: colors.textTertiary,
     fontSize: 11,
-    fontWeight: '700',
+    fontWeight: '600',
     textTransform: 'uppercase',
-    letterSpacing: 0.8,
+    letterSpacing: 1.0,
   },
   timeFieldControls: {
     flexDirection: 'row',
@@ -397,7 +413,7 @@ export const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   timeFieldButtonText: {color: colors.text, fontSize: 18, fontWeight: '600'},
-  timeFieldValue: {color: colors.text, fontSize: 14, fontWeight: '800'},
+  timeFieldValue: {color: colors.text, fontSize: 18, fontWeight: '700', letterSpacing: -0.3},
   timeFieldDisabled: {opacity: 0.45},
   timePickerButton: {
     paddingHorizontal: spacing.xs,

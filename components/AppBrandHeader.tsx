@@ -82,7 +82,7 @@ const styles = StyleSheet.create({
     letterSpacing: -0.5,
   },
   wordmarkCommute: {
-    color: colors.textSecondary,
+    color: colors.text,
   },
   wordmarkLive: {
     color: colors.accent,

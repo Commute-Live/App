@@ -48,7 +48,6 @@ const PROVIDER_MODE_TO_UI_MODE: Partial<Record<string, LocalMode>> = {
   'cta/subway': 'train',
   'cta/bus': 'bus',
   'njt/rail': 'train',
-  'njt/bus': 'bus',
 };
 
 const defaultDirectionLabel = (direction: UiDirection, variant: DirectionVariant) => {

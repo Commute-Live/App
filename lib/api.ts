@@ -12,6 +12,35 @@ const resolveUrl = (input: string) => {
   return `${API_BASE}${path}`;
 };
 
+const formatRequestBodyForLog = (body: RequestInit['body']) => {
+  if (body == null) return null;
+  if (typeof body === 'string') {
+    try {
+      return JSON.stringify(JSON.parse(body), null, 2);
+    } catch {
+      return body;
+    }
+  }
+  if (body instanceof FormData) {
+    const entries = Array.from(body.entries()).map(([key, value]) => [
+      key,
+      typeof value === 'string' ? value : `[file:${value.name}]`,
+    ]);
+    return JSON.stringify(Object.fromEntries(entries), null, 2);
+  }
+  if (body instanceof URLSearchParams) return body.toString();
+  return '[non-text request body]';
+};
+
+const shouldLogRequest = (url: string, method: string) => {
+  if (!__DEV__) return false;
+  if (method === 'GET') return false;
+  return (
+    url.startsWith(`${API_BASE}/device/`) ||
+    url.startsWith(`${API_BASE}/refresh/device/`)
+  );
+};
+
 const getErrorCode = async (response: Response): Promise<string | null> => {
   try {
     const data = await response.clone().json();
@@ -46,6 +75,11 @@ const refreshSession = async () => {
 
 export async function apiFetch(input: string, init: RequestInit = {}): Promise<Response> {
   const url = resolveUrl(input);
+  const method = (init.method ?? 'GET').toUpperCase();
+  if (shouldLogRequest(url, method)) {
+    const formattedBody = formatRequestBodyForLog(init.body);
+    console.warn(`[apiFetch] ${method} ${url}\nbody:\n${formattedBody ?? 'null'}`);
+  }
   const response = await fetch(url, {
     ...init,
     credentials: 'include',

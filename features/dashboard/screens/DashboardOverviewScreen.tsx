@@ -475,7 +475,7 @@ export default function DashboardOverviewScreen() {
           ) : null}
 
           {hasLinkedDevice ? (
-            <View style={[styles.card, {backgroundColor: colors.surface}]}>
+            <View style={styles.quietSection}>
             <View style={styles.quietHeaderRow}>
               <View style={styles.quietHeaderCopy}>
                 <Text style={styles.cardTitle}>Quiet Hours</Text>
