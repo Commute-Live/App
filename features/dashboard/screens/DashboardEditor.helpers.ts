@@ -16,7 +16,7 @@ import {
   resolveCityModeFromBackendProvider,
   SUPPORTED_TRANSIT_CITIES,
 } from '../../../lib/transit/registry';
-import {formatLocalRoutePickerLabel, getDefaultUiDirection, getLocalDirectionOptions, getLocalModeLabel, inferMbtaMode, serializeUiDirection} from '../../../lib/transitUi';
+import {formatLocalRoutePickerLabel, getDefaultUiDirection, getLocalDirectionOptions, getLocalDirectionRequestId, getLocalModeLabel, inferMbtaMode} from '../../../lib/transitUi';
 import {colors} from '../../../theme';
 import type {DisplayContent, DisplayFormat, TransitArrival, TransitStationLine, TransitUiMode} from '../../../types/transit';
 
@@ -161,14 +161,25 @@ export function routeLookupKey(mode: ModeId, stationId: string) {
   return `${mode}:${stationId}`;
 }
 
+export function stopLookupKey(mode: ModeId, routeId: string, direction = '') {
+  return `${mode}:${routeId.trim()}:${direction.trim()}`;
+}
+
 export function resolveSelectedStationForLine(
-  line: Pick<LinePick, 'mode' | 'routeId' | 'stationId'>,
+  line: Pick<LinePick, 'mode' | 'routeId' | 'stationId' | 'direction'>,
   city: CityId,
   stationsByMode: StationsByMode,
   stationsByLine: Partial<Record<string, Station[]>>,
 ) {
   const mode = normalizeMode(city, line.mode);
-  const lineStations = line.routeId ? (stationsByLine[line.routeId] ?? []) : [];
+  const genericKey = line.routeId ? stopLookupKey(mode, line.routeId) : '';
+  const directionKey = line.routeId
+    ? stopLookupKey(mode, line.routeId, getLocalDirectionRequestId(city, mode, line.direction) ?? '')
+    : '';
+  const lineStations = [
+    ...(directionKey ? (stationsByLine[directionKey] ?? []) : []),
+    ...(genericKey ? (stationsByLine[genericKey] ?? []) : []),
+  ];
   const stationFromLine = lineStations.find(station => station.id === line.stationId);
   if (stationFromLine) return stationFromLine;
   return (stationsByMode[mode] ?? []).find(station => station.id === line.stationId);
@@ -281,14 +292,19 @@ function extractLeadingStreetNumber(name: string): number | null {
   return Number.isFinite(value) ? value : null;
 }
 
-export async function loadStopsForLine(city: CityId, mode: ModeId, lineId: string): Promise<Station[]> {
-  const response = await getTransitStopsForLine(city, toTransitUiMode(mode), lineId);
-  return sortStationsForPicker(response.stations.map(station => ({
+export async function loadStopsForLine(
+  city: CityId,
+  mode: ModeId,
+  lineId: string,
+  direction?: string,
+): Promise<Station[]> {
+  const response = await getTransitStopsForLine(city, toTransitUiMode(mode), lineId, {direction});
+  return response.stations.map(station => ({
     id: station.id,
     name: station.name,
     area: station.area ?? buildAreaFromName(station.name),
     lines: station.lines,
-  })));
+  }));
 }
 
 export async function loadStationsForCityMode(city: CityId, mode: ModeId): Promise<Station[]> {
@@ -506,7 +522,7 @@ function statusFromArrival(arrival: TransitArrival): Arrival['status'] {
 }
 
 function getArrivalDirectionParam(city: CityId, line: LinePick): string | undefined {
-  return serializeUiDirection(city, line.mode, line.direction);
+  return getLocalDirectionRequestId(city, line.mode, line.direction);
 }
 
 export async function loadArrivalForSelection(city: CityId, line: LinePick): Promise<Omit<Arrival, 'lineId'> | null> {

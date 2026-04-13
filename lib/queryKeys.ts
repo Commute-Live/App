@@ -14,8 +14,8 @@ export const queryKeys = {
   transitLinesForStation: (city: CityId, mode: string, stationId: string) =>
     ['transit', city, mode, 'stations', stationId, 'lines'] as const,
   transitGlobalLines: (city: CityId, mode: string) => ['transit', city, mode, 'lines', 'global'] as const,
-  transitStopsForLine: (city: CityId, mode: string, lineId: string) =>
-    ['transit', city, mode, 'lines', lineId, 'stops'] as const,
+  transitStopsForLine: (city: CityId, mode: string, lineId: string, direction = '') =>
+    ['transit', city, mode, 'lines', lineId, 'stops', direction] as const,
   transitArrivalsForSelection: (city: CityId, mode: string, stationId: string, routeId: string, direction = '') =>
     ['transit', city, mode, 'stations', stationId, 'arrivals', routeId, direction] as const,
   transitStationName: (providerKey: string, stopId: string) => ['transit', providerKey, 'station-name', stopId] as const,

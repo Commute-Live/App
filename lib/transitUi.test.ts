@@ -1,0 +1,33 @@
+// @ts-nocheck
+import {describe, expect, test} from 'bun:test';
+import {getLocalDirectionRequestId} from './transitUi';
+
+const makeDirection = (id: string, uiKey: string) => ({
+  id,
+  uiKey,
+  label: uiKey,
+  terminal: null,
+  boundLabel: uiKey,
+  toggleLabel: uiKey,
+  summaryLabel: uiKey,
+});
+
+describe('transit direction request ids', () => {
+  test('prefers route metadata ids when present', () => {
+    const route = {
+      id: '22',
+      directions: [
+        makeDirection('0', 'dir0'),
+        makeDirection('1', 'dir1'),
+      ],
+    };
+
+    expect(getLocalDirectionRequestId('chicago', 'bus', 'dir0', route)).toBe('0');
+    expect(getLocalDirectionRequestId('chicago', 'bus', 'dir1', route)).toBe('1');
+  });
+
+  test('falls back to serialized city direction ids when metadata is missing', () => {
+    expect(getLocalDirectionRequestId('new-york', 'train', 'uptown')).toBe('N');
+    expect(getLocalDirectionRequestId('boston', 'commuter-rail', 'inbound')).toBe('1');
+  });
+});

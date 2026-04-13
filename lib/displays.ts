@@ -675,8 +675,14 @@ export async function fetchDisplay(deviceId: string, displayId: string) {
   return data.display as DeviceDisplay;
 }
 
+function logDisplaySaveRequest(method: 'POST' | 'PATCH', path: string, payload: DisplaySavePayload) {
+  console.log('[display-save-request]', JSON.stringify({method, path, payload}, null, 2));
+}
+
 export async function createDisplay(deviceId: string, payload: DisplaySavePayload) {
-  const response = await apiFetch(`/device/${deviceId}/displays`, {
+  const path = `/device/${deviceId}/displays`;
+  logDisplaySaveRequest('POST', path, payload);
+  const response = await apiFetch(path, {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
     body: JSON.stringify(payload),
@@ -686,7 +692,9 @@ export async function createDisplay(deviceId: string, payload: DisplaySavePayloa
 }
 
 export async function updateDisplay(deviceId: string, displayId: string, payload: DisplaySavePayload) {
-  const response = await apiFetch(`/device/${deviceId}/displays/${displayId}`, {
+  const path = `/device/${deviceId}/displays/${displayId}`;
+  logDisplaySaveRequest('PATCH', path, payload);
+  const response = await apiFetch(path, {
     method: 'PATCH',
     headers: {'Content-Type': 'application/json'},
     body: JSON.stringify(payload),

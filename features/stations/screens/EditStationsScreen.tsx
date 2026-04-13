@@ -144,7 +144,7 @@ async function fetchLiveStations(city: CityId, query: string): Promise<StationSe
     ? normalized.filter(station => station.name.toLowerCase().includes(loweredQuery))
     : normalized;
 
-  return filtered.sort((a, b) => a.name.localeCompare(b.name));
+  return filtered;
 }
 
 function getModesForCity(city: CityId): TransitUiMode[] {

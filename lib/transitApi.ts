@@ -119,8 +119,20 @@ const buildLinesEndpoint = (context: TransitContext, stopId: string) =>
 const buildGlobalLinesEndpoint = (context: TransitContext) =>
   `/${encodeURIComponent(context.provider)}/stations/${encodeURIComponent(context.mode)}/lines`;
 
-const buildStopsByLineEndpoint = (context: TransitContext, lineId: string) =>
-  `/${encodeURIComponent(context.provider)}/stations/${encodeURIComponent(context.mode)}/${encodeURIComponent(lineId)}/stopId`;
+const buildStopsByLineEndpoint = (
+  context: TransitContext,
+  lineId: string,
+  options: {
+    direction?: string;
+  } = {},
+) => {
+  const path = `/${encodeURIComponent(context.provider)}/stations/${encodeURIComponent(context.mode)}/${encodeURIComponent(lineId)}/stopId`;
+  if (typeof options.direction !== 'string' || options.direction.trim().length === 0) {
+    return path;
+  }
+  const query = new URLSearchParams({direction: options.direction.trim()});
+  return `${path}?${query.toString()}`;
+};
 
 const buildArrivalsEndpoint = (
   context: TransitContext,
@@ -415,11 +427,14 @@ export const getTransitStopsForLine = async (
   city: TransitCity,
   uiMode: TransitUiMode,
   lineId: string,
+  options: {
+    direction?: string;
+  } = {},
 ): Promise<TransitStationGroup> => {
   const normalizedLineId = normalizeString(lineId);
   if (!normalizedLineId) throw new Error('Transit API requires a non-empty lineId.');
   const context = createContext(city, uiMode);
-  const endpoint = buildStopsByLineEndpoint(context, normalizedLineId);
+  const endpoint = buildStopsByLineEndpoint(context, normalizedLineId, options);
   const response = await apiFetch(endpoint);
   await ensureOk(response, endpoint);
   const payload = await parseJson(response, endpoint);

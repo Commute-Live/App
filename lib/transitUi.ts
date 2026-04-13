@@ -259,7 +259,12 @@ export const getLocalDirectionLabel = (
   const metadataLabel = getRouteDirectionMetadataLabel(route, direction, variant);
   if (metadataLabel) return metadataLabel;
 
-  if (city === 'boston' && route && typeof route !== 'string') {
+  if (
+    city === 'boston'
+    && route
+    && typeof route !== 'string'
+    && (mode === 'train' || mode === 'bus' || mode === 'commuter-rail')
+  ) {
     return getBostonFullDirectionLabel(mode, direction, route, variant);
   }
 
@@ -290,6 +295,18 @@ export const serializeUiDirection = (city: CityId, mode: LocalMode, direction: U
     return 'S';
   }
   return 'N';
+};
+
+export const getLocalDirectionRequestId = (
+  city: CityId,
+  mode: LocalMode,
+  direction: UiDirection,
+  route?: LocalRouteRef,
+) => {
+  const metadataId = getLocalDirectionMetadata(route, direction)?.id?.trim();
+  if (metadataId) return metadataId;
+  const serialized = serializeUiDirection(city, mode, direction).trim();
+  return serialized.length > 0 ? serialized : undefined;
 };
 
 export const deserializeUiDirection = (

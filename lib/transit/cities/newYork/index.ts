@@ -206,7 +206,7 @@ export const newYorkTransitModule: TransitCityModule = {
     return (routeLabel ?? routeId).trim().toUpperCase().slice(0, 4);
   },
   getDirectionLabel: (mode, direction, routeId, variant) =>
-    isNewYorkMode(mode) ? getNewYorkDirectionLabel(mode, direction, routeId, variant) : null,
+    isNewYorkMode(mode) ? getNewYorkDirectionLabel(mode, direction, routeId ?? undefined, variant) : null,
   serializeDirection: (mode, direction) =>
     isNewYorkMode(mode) ? serializeNewYorkDirection(mode, direction) : null,
   deserializeDirection: (mode, value, stopId) =>

@@ -27,6 +27,7 @@ import type {
 } from '../../../lib/transit/frontendTypes';
 import {
   deserializeUiDirection,
+  getLocalDirectionRequestId,
   getLocalDirectionLabel,
   getLocalDirectionOptions,
   getLocalDirectionTerminal,
@@ -79,6 +80,7 @@ import {
   resolveDisplayContent,
   resolveSelectedStationForLine,
   routeLookupKey,
+  stopLookupKey,
   syncArrivals,
 } from './DashboardEditor.helpers';
 import {styles} from './DisplayEditor.styles';
@@ -142,6 +144,17 @@ const getMockStopName = (city: CityId, mode: ModeId) => {
   if (city === 'new-jersey' && mode === 'train') return 'Secaucus Junction';
   if (city === 'new-jersey' && mode === 'bus') return 'Newark Penn Station';
   return 'Times Sq–42 St';
+};
+
+const resolveRouteForLine = (
+  city: CityId,
+  line: Pick<LinePick, 'mode' | 'stationId' | 'routeId'>,
+  routesByStation: RoutesByStation,
+  linesByMode: Partial<Record<ModeId, Route[]>>,
+) => {
+  const mode = normalizeMode(city, line.mode);
+  return (routesByStation[routeLookupKey(mode, line.stationId)] ?? []).find(route => route.id === line.routeId)
+    ?? (linesByMode[mode] ?? []).find(route => route.id === line.routeId);
 };
 
 const DISPLAY_PRESET_OPTIONS = [
@@ -640,23 +653,53 @@ export default function DisplayEditorScreen() {
   useEffect(() => {
     if (!liveSupported) return;
     const pending = lines
-      .map(line => ({mode: normalizeMode(city, line.mode), routeId: line.routeId}))
-      .filter(item => item.routeId.length > 0);
+      .flatMap(line => {
+        const mode = normalizeMode(city, line.mode);
+        const route = resolveRouteForLine(city, line, routesByStation, linesByMode);
+        const directionsToFetch =
+          editorStep === 'stops' && selectedLine?.id === line.id
+            ? getLocalDirectionOptions(city, mode, route).map(direction => ({
+              mode,
+              routeId: line.routeId,
+              direction: getLocalDirectionRequestId(city, mode, direction, route),
+            }))
+            : [{
+              mode,
+              routeId: line.routeId,
+              direction: getLocalDirectionRequestId(city, mode, line.direction, route),
+            }];
+        return directionsToFetch;
+      })
+      .filter(item => item.routeId.length > 0)
+      .filter((item, index, items) =>
+        items.findIndex(candidate =>
+          candidate.mode === item.mode
+          && candidate.routeId === item.routeId
+          && candidate.direction === item.direction,
+        ) === index,
+      );
 
     pending.forEach(item => {
-      const key = `${city}:${item.mode}:${item.routeId}`;
+      const key = `${city}:${item.mode}:${item.routeId}:${item.direction ?? ''}`;
+      const lookupKey = stopLookupKey(item.mode, item.routeId, item.direction);
       if (stationsByLineRef.current.has(key)) return;
       stationsByLineRef.current.add(key);
-      setStationsLoadingByLine(prev => ({...prev, [item.routeId]: true}));
+      setStationsLoadingByLine(prev => ({...prev, [lookupKey]: true}));
       void queryClient.fetchQuery({
-        queryKey: queryKeys.transitStopsForLine(city, item.mode, item.routeId),
-        queryFn: () => loadStopsForLine(city, item.mode, item.routeId),
+        queryKey: queryKeys.transitStopsForLine(city, item.mode, item.routeId, item.direction ?? ''),
+        queryFn: () => loadStopsForLine(city, item.mode, item.routeId, item.direction),
       })
-        .then(stations => setStationsByLine(prev => ({...prev, [item.routeId]: stations})))
-        .catch(() => setStationsByLine(prev => ({...prev, [item.routeId]: []})))
-        .finally(() => setStationsLoadingByLine(prev => ({...prev, [item.routeId]: false})));
+        .then(stations => setStationsByLine(prev => ({
+          ...prev,
+          [lookupKey]: stations,
+        })))
+        .catch(() => setStationsByLine(prev => ({
+          ...prev,
+          [lookupKey]: [],
+        })))
+        .finally(() => setStationsLoadingByLine(prev => ({...prev, [lookupKey]: false})));
     });
-  }, [city, lines, liveSupported, queryClient]);
+  }, [city, editorStep, lines, linesByMode, liveSupported, queryClient, routesByStation, selectedLine]);
 
   useEffect(() => {
     if (!isCreateMode || !deviceId) return;
@@ -1600,10 +1643,33 @@ export default function DisplayEditorScreen() {
   } as const;
 
   const selectedRouteForEditor = selectedLine
-    ? (routesByStation[routeLookupKey(normalizeMode(city, selectedLine.mode), selectedLine.stationId)] ?? []).find(
-      r => r.id === selectedLine.routeId,
-    ) ?? (linesByMode[normalizeMode(city, selectedLine.mode)] ?? []).find(r => r.id === selectedLine.routeId)
+    ? resolveRouteForLine(city, selectedLine, routesByStation, linesByMode)
     : undefined;
+  const selectedStopsLookupKey = selectedLine
+    ? stopLookupKey(
+      normalizeMode(city, selectedLine.mode),
+      selectedLine.routeId,
+      getLocalDirectionRequestId(
+        city,
+        normalizeMode(city, selectedLine.mode),
+        selectedLine.direction,
+        selectedRouteForEditor,
+      ) ?? '',
+    )
+    : '';
+  const fallbackSelectedStopsLookupKey = selectedLine
+    ? stopLookupKey(normalizeMode(city, selectedLine.mode), selectedLine.routeId)
+    : '';
+  const selectedStationsForRoute = selectedLine
+    ? (
+      stationsByLine[selectedStopsLookupKey]
+      ?? stationsByLine[fallbackSelectedStopsLookupKey]
+      ?? []
+    )
+    : [];
+  const selectedStationsLoading = selectedLine
+    ? !!stationsLoadingByLine[selectedStopsLookupKey]
+    : false;
   const selectedStationForEditor = selectedLine
     ? resolveSelectedStationForLine(selectedLine, city, stationsByMode, stationsByLine)
     : undefined;
@@ -1776,8 +1842,8 @@ export default function DisplayEditorScreen() {
               city={city}
               selectedMode={normalizeMode(city, selectedLine.mode)}
               selectedRoute={selectedRouteForEditor}
-              stations={stationsByLine[selectedLine.routeId] ?? []}
-              loading={!!stationsLoadingByLine[selectedLine.routeId]}
+              stations={selectedStationsForRoute}
+              loading={selectedStationsLoading}
               selectedStationId={selectedLine.stationId}
               selectedRouteId={selectedLine.routeId}
               selectedDirection={selectedLine.direction}
