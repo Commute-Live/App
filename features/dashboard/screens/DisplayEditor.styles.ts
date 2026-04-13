@@ -2126,7 +2126,7 @@ export const styles = StyleSheet.create({
     fontWeight: '700',
   },
   inlineCountChipTextActive: {
-    color: colors.onAccent,
+    color: colors.text,
   },
   wizardConfirmBtn: {
     borderRadius: radii.md,

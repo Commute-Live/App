@@ -241,7 +241,7 @@ export const normalizeTransitLine = (value: unknown): TransitLine | null => {
   if (!id) return null;
   const shortName = readFirstString(value, ['shortName']) ?? null;
 
-  const label = readFirstString(value, ['shortName', 'label', 'line', 'longName', 'name']) ?? id;
+  const label = readFirstString(value, ['label', 'longName', 'name', 'line', 'shortName']) ?? id;
 
   const rawColor = readFirstString(value, ['color', 'routeColor', 'bg_color']);
   const color = rawColor ? (rawColor.startsWith('#') ? rawColor : `#${rawColor}`) : null;
@@ -461,6 +461,7 @@ const KNOWN_PROVIDER_MODES = new Set([
   'mbta/rail',
   'cta/subway',
   'cta/bus',
+  'njt/rail',
 ]);
 
 const inferMbtaModeFromStopId = (stopId: string): TransitBackendMode => {

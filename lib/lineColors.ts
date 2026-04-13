@@ -231,6 +231,7 @@ const MNR_ROUTE_COLORS: Record<string, {color: string; textColor: string}> = {
 };
 
 const SEPTA_BUS_DEFAULT: {color: string; textColor: string} = {color: '#005DAA', textColor: '#FFFFFF'};
+const NJT_RAIL_DEFAULT: {color: string; textColor: string} = {color: '#0039A6', textColor: '#FFFFFF'};
 
 const PROVIDER_COLOR_OVERRIDES: Record<string, Record<string, {color: string; textColor: string}>> = {
   'mta-lirr': LIRR_ROUTE_COLORS,
@@ -249,6 +250,7 @@ export function resolveProviderLineColor(
 ): {color: string; textColor: string} | null {
   // SEPTA bus routes are all uniform SEPTA blue — no per-route color table needed
   if (provider === 'septa-bus') return SEPTA_BUS_DEFAULT;
+  if (provider === 'njt-rail') return NJT_RAIL_DEFAULT;
 
   const overrideMap = PROVIDER_COLOR_OVERRIDES[provider];
   if (overrideMap) {

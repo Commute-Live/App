@@ -44,7 +44,7 @@ export type DeviceConfig = {
 };
 
 type LiveArrivalEntry = {
-  label: string;
+  labels: string[];
   status?: string;
 };
 
@@ -128,6 +128,7 @@ const KNOWN_PROVIDER_MODES = new Set([
   'mbta/rail',
   'cta/subway',
   'cta/bus',
+  'njt/rail',
 ]);
 
 const inferMbtaProviderMode = (
@@ -149,6 +150,7 @@ export const resolveLineProviderMode = (
   if (provider === 'mbta') {
     return inferMbtaProviderMode(line.stop, line.line);
   }
+  if (provider === 'njt-rail' && providerMode === 'njt/rail') return providerMode;
 
   return null;
 };
@@ -312,7 +314,7 @@ const extractMinutesFromPreviewTime = (value: string | undefined) => {
 };
 
 const buildPreviewEtaList = (firstMinutes: number, count: number) => {
-  const safeCount = Math.max(1, Math.min(5, Math.round(count || DEFAULT_NEXT_STOPS)));
+  const safeCount = Math.max(0, Math.min(5, Math.round(count || 0)));
   const times: string[] = [];
   let current = Math.max(1, Math.round(firstMinutes)) + 2;
   for (let idx = 0; idx < safeCount; idx += 1) {
@@ -442,28 +444,26 @@ const readEntryField = (record: RecordValue, paths: ReadonlyArray<readonly strin
   return undefined;
 };
 
-const extractTimeFromEntry = (entry: unknown): string | null => {
+const extractTimesFromEntry = (entry: unknown): string[] => {
   const direct = toDisplayTimeLabel(entry);
-  if (direct) return direct;
+  if (direct) return [direct];
 
   const record = asRecord(entry);
-  if (!record) return null;
+  if (!record) return [];
 
   for (const path of TIME_VALUE_PATHS) {
     const label = toDisplayTimeLabel(readPath(record, [...path]));
-    if (label) return label;
+    if (label) return [label];
   }
 
   for (const path of TIME_LIST_PATHS) {
     const raw = readPath(record, [...path]);
     if (!Array.isArray(raw)) continue;
-    for (const value of raw) {
-      const label = extractTimeFromEntry(value);
-      if (label) return label;
-    }
+    const labels = raw.flatMap(extractTimesFromEntry).filter(label => label.length > 0);
+    if (labels.length > 0) return labels;
   }
 
-  return null;
+  return [];
 };
 
 const extractEntryLineKey = (entry: unknown): string | null => {
@@ -534,10 +534,10 @@ export const getLiveArrivalLookup = (payload: unknown): LiveArrivalLookup => {
     if (!Array.isArray(entries)) continue;
 
     entries.forEach((entry, index) => {
-      const label = extractTimeFromEntry(entry);
-      if (!label) return;
+      const labels = extractTimesFromEntry(entry);
+      if (labels.length === 0) return;
       const status = extractStatusFromEntry(entry) ?? undefined;
-      const liveEntry: LiveArrivalEntry = {label, status};
+      const liveEntry: LiveArrivalEntry = {labels, status};
 
       if (!byIndex[index]) byIndex[index] = liveEntry;
 
@@ -591,7 +591,8 @@ export const toPreviewSlots = (
       liveArrivals?.byLineKey[lineKey] ??
       liveArrivals?.byLineKey[toBaseLineKey(lineKey)] ??
       liveArrivals?.byIndex[index];
-    const liveTime = liveArrival?.label;
+    const liveTimes = liveArrival?.labels ?? [];
+    const liveTime = liveTimes[0];
     const liveTimeColor =
       typeof liveTime === 'string' && liveTime.length > 0
         ? isDelayedStatus(liveArrival?.status)
@@ -606,11 +607,13 @@ export const toPreviewSlots = (
     const previewSecondary =
       line.bottomText ||
       resolvePreviewContent(line.secondaryContent, destinationLabel, directionLabel, headsignLabel, line.secondaryLabel);
+    const requestedTimes = line.nextStops ?? DEFAULT_NEXT_STOPS;
+    const liveSubLine = liveTimes.slice(1, requestedTimes).join(', ');
     const previewSubLine =
       displayType === 3
         ? previewSecondary
         : displayType === 4 || displayType === 5
-          ? buildPreviewEtaList(extractMinutesFromPreviewTime(liveTime), line.nextStops ?? DEFAULT_NEXT_STOPS)
+          ? liveSubLine || buildPreviewEtaList(extractMinutesFromPreviewTime(liveTime), Math.max(0, requestedTimes - 1))
           : undefined;
     const badgeShape: PreviewSlot['badgeShape'] = line.provider === 'mta-subway' ? 'circle' : 'pill';
 
