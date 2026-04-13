@@ -1,13 +1,12 @@
-const DEFAULT_API_BASE = 'https://staging.commutelive.com';
-
 const trimTrailingSlash = (value: string) => value.replace(/\/+$/, '');
 
-export const API_BASE = trimTrailingSlash(
-  process.env.EXPO_PUBLIC_SERVER_URL ?? process.env.SERVER_URL ?? DEFAULT_API_BASE,
-);
+export const API_BASE = trimTrailingSlash(process.env.EXPO_PUBLIC_SERVER_URL ?? process.env.SERVER_URL ?? '');
 
 const resolveUrl = (input: string) => {
   if (/^https?:\/\//i.test(input)) return input;
+  if (!API_BASE) {
+    throw new Error('API base URL is not configured. Set EXPO_PUBLIC_SERVER_URL in .env.');
+  }
   const path = input.startsWith('/') ? input : `/${input}`;
   return `${API_BASE}${path}`;
 };
@@ -22,10 +21,10 @@ const formatRequestBodyForLog = (body: RequestInit['body']) => {
     }
   }
   if (body instanceof FormData) {
-    const entries = Array.from(body.entries()).map(([key, value]) => [
-      key,
-      typeof value === 'string' ? value : `[file:${value.name}]`,
-    ]);
+    const entries: Array<[string, string]> = [];
+    body.forEach((value, key) => {
+      entries.push([key, typeof value === 'string' ? value : `[file:${value.name}]`]);
+    });
     return JSON.stringify(Object.fromEntries(entries), null, 2);
   }
   if (body instanceof URLSearchParams) return body.toString();

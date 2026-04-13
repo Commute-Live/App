@@ -126,7 +126,7 @@ const buildStopsByLineEndpoint = (
     direction?: string;
   } = {},
 ) => {
-  const path = `/${encodeURIComponent(context.provider)}/stations/${encodeURIComponent(context.mode)}/${encodeURIComponent(lineId)}/stations`;
+  const path = `/${encodeURIComponent(context.provider)}/stations/${encodeURIComponent(context.mode)}/${encodeURIComponent(lineId)}/stopId`;
   if (typeof options.direction !== 'string' || options.direction.trim().length === 0) {
     return path;
   }
