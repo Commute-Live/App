@@ -23,6 +23,7 @@ import {useLocalSearchParams} from 'expo-router';
 import {useMutation, useQueries, useQuery, useQueryClient} from '@tanstack/react-query';
 import {colors, layout, radii, spacing, typography} from '../../../theme';
 import {apiFetch} from '../../../lib/api';
+import {logger} from '../../../lib/logger';
 import DraggableFlatList, {type RenderItemParams} from 'react-native-draggable-flatlist';
 import {useTabRouteIsActive} from '../../../components/TabScreen';
 import {useSelectedDevice} from '../../../hooks/useSelectedDevice';
@@ -48,7 +49,7 @@ import {queryKeys} from '../../../lib/queryKeys';
 const stopNameCache: Record<string, string> = {};
 const MIN_BRIGHTNESS = 10;
 const MAX_BRIGHTNESS = 100;
-const BRIGHTNESS_COMMIT_DELAY_MS = 2000;
+const BRIGHTNESS_COMMIT_DELAY_MS = 1000;
 const REORDER_ROW_HEIGHT = 76;
 
 const buildDisplayPayload = (
@@ -191,7 +192,7 @@ export default function DisplayManagementSection({
     staleTime: 30_000,
   });
 
-  const displays = displaysQuery.data?.displays ?? [];
+  const displays = useMemo(() => displaysQuery.data?.displays ?? [], [displaysQuery.data?.displays]);
   const activeDisplayId = displaysQuery.data?.activeDisplayId ?? null;
   const loading = displaysQuery.isPending;
   const errorText = displaysQuery.error instanceof Error ? displaysQuery.error.message : '';
@@ -367,7 +368,11 @@ export default function DisplayManagementSection({
       if (display.displayId === activeDisplayId) {
         const refreshRes = await apiFetch(`/refresh/device/${deviceId}`, {method: 'POST'});
         if (!refreshRes.ok) {
-          console.error('[Displays] Refresh failed:', refreshRes.status);
+          logger.error('Display refresh failed', {
+            deviceId,
+            displayId: display.displayId,
+            status: refreshRes.status,
+          });
         }
       }
     },
@@ -813,38 +818,24 @@ export default function DisplayManagementSection({
               </View>
               <View style={styles.cardSettingsDivider} />
               <View style={styles.cardSettings}>
-                <Pressable
-                  style={styles.settingItemRow}
-                  onPress={() => toggleBrightnessControl(currentDisplay.displayId)}>
+                <View style={styles.settingItemRow}>
                   <Text style={styles.brightnessLabel}>Brightness</Text>
                   <View style={styles.brightnessInlineControls}>
                     <Pressable
-                      style={({pressed}) => [
-                        styles.brightnessValueBadge,
-                        isBrightnessControlExpanded && styles.brightnessValueBadgeActive,
-                        pressed && styles.brightnessValueBadgePressed,
-                      ]}
-                      onPress={() => toggleBrightnessControl(currentDisplay.displayId)}>
-                      <Text style={styles.brightnessValueText}>{currentBrightness}%</Text>
+                      style={[styles.brightnessStepperBtn, currentBrightness <= MIN_BRIGHTNESS && styles.brightnessStepperBtnDisabled]}
+                      disabled={currentBrightness <= MIN_BRIGHTNESS}
+                      onPress={() => handleBrightnessChange(currentDisplay, Math.max(MIN_BRIGHTNESS, currentBrightness - 5))}>
+                      <Text style={styles.brightnessStepperBtnText}>−</Text>
                     </Pressable>
-                    <View style={styles.brightnessInlineBtn}>
-                      <Ionicons
-                        name={isBrightnessControlExpanded ? 'chevron-up' : 'chevron-down'}
-                        size={14}
-                        color={colors.textMuted}
-                      />
-                    </View>
+                    <Text style={styles.brightnessStepperValue}>{currentBrightness}%</Text>
+                    <Pressable
+                      style={[styles.brightnessStepperBtn, currentBrightness >= MAX_BRIGHTNESS && styles.brightnessStepperBtnDisabled]}
+                      disabled={currentBrightness >= MAX_BRIGHTNESS}
+                      onPress={() => handleBrightnessChange(currentDisplay, Math.min(MAX_BRIGHTNESS, currentBrightness + 5))}>
+                      <Text style={styles.brightnessStepperBtnText}>+</Text>
+                    </Pressable>
                   </View>
-                </Pressable>
-                {isBrightnessControlExpanded ? (
-                  <BrightnessSlider
-                    value={currentBrightness}
-                    min={MIN_BRIGHTNESS}
-                    max={MAX_BRIGHTNESS}
-                    onChange={value => handleBrightnessChange(currentDisplay, value)}
-                    onCommit={() => {}}
-                  />
-                ) : null}
+                </View>
               </View>
             </View>
           </>
@@ -1083,11 +1074,10 @@ function ReorderListRow({
             <View style={styles.reorderActivePill}>
               <Text style={styles.reorderActivePillText}>Active</Text>
             </View>
-          ) : (
-            <View style={styles.reorderHandle}>
-              <Ionicons name="reorder-three-outline" size={18} color={colors.textMuted} />
-            </View>
-          )}
+          ) : null}
+          <View style={styles.reorderHandle}>
+            <Ionicons name="reorder-three-outline" size={18} color={colors.textMuted} />
+          </View>
           <Pressable style={styles.reorderDeleteBtn} onPress={() => onDelete(display)} disabled={saving}>
             <Ionicons name="trash-outline" size={16} color={colors.dangerText} />
           </Pressable>
@@ -1457,6 +1447,32 @@ const styles = StyleSheet.create({
     backgroundColor: colors.card,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  brightnessStepperBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.card,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  brightnessStepperBtnDisabled: {
+    opacity: 0.35,
+  },
+  brightnessStepperBtnText: {
+    color: colors.text,
+    fontSize: 18,
+    fontWeight: '500',
+    lineHeight: 20,
+  },
+  brightnessStepperValue: {
+    minWidth: 48,
+    textAlign: 'center',
+    color: colors.text,
+    fontSize: 15,
+    fontWeight: '700',
   },
   brightnessValueBadge: {
     minWidth: 58,

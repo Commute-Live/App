@@ -10,9 +10,9 @@ import {GoogleSignin} from '../lib/googleSignIn';
 import {googleAuthConfig} from '../lib/googleAuthConfig';
 import {AppStateProvider} from '../state/appState';
 import {colors} from '../theme';
-import {setSessionInvalidHandler} from '../lib/api';
 import {queryClient} from '../lib/queryClient';
 import {AuthProvider, useAuth} from '../state/authProvider';
+import {ErrorBoundary} from '../components/ErrorBoundary';
 import '../lib/fontPatch';
 import 'react-native-reanimated';
 
@@ -45,16 +45,7 @@ const datadogConfig = createDatadogConfig();
 
 function AppNavigator() {
   const router = useRouter();
-  const {clearAuth, status} = useAuth();
-
-  useEffect(() => {
-    setSessionInvalidHandler(() => {
-      clearAuth();
-    });
-    return () => {
-      setSessionInvalidHandler(null);
-    };
-  }, [clearAuth]);
+  const {status} = useAuth();
 
   useEffect(() => {
     if (status === 'unauthenticated') {
@@ -97,7 +88,9 @@ export default function RootLayout() {
           <AppStateProvider>
             <AuthProvider>
               <StatusBar style="dark" />
-              <AppNavigator />
+              <ErrorBoundary label="root">
+                <AppNavigator />
+              </ErrorBoundary>
             </AuthProvider>
           </AppStateProvider>
         </SafeAreaProvider>

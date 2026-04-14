@@ -1,3 +1,5 @@
+import {logger} from './logger';
+
 const trimTrailingSlash = (value: string) => value.replace(/\/+$/, '');
 
 export const API_BASE = trimTrailingSlash(process.env.EXPO_PUBLIC_SERVER_URL ?? process.env.SERVER_URL ?? '');
@@ -77,7 +79,11 @@ export async function apiFetch(input: string, init: RequestInit = {}): Promise<R
   const method = (init.method ?? 'GET').toUpperCase();
   if (shouldLogRequest(url, method)) {
     const formattedBody = formatRequestBodyForLog(init.body);
-    console.warn(`[apiFetch] ${method} ${url}\nbody:\n${formattedBody ?? 'null'}`);
+    logger.warn('API request body', {
+      method,
+      url,
+      body: formattedBody,
+    });
   }
   const response = await fetch(url, {
     ...init,

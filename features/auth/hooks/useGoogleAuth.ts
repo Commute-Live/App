@@ -6,7 +6,7 @@ import {useAuth} from '../../../state/authProvider';
 import {getPostAuthRoute} from '../../../lib/deviceSetup';
 import {googleAuthConfig} from '../../../lib/googleAuthConfig';
 import {signInWithGooglePopup} from '../../../lib/googleWebAuth';
-import {logger} from '../../../lib/datadog';
+import {logger} from '../../../lib/logger';
 
 const DEVELOPER_ERROR_CODES = new Set(['10', 'DEVELOPER_ERROR']);
 const SIGN_IN_FAILED_CODES = new Set(['8', '12500', 'SIGN_IN_FAILED']);
@@ -94,8 +94,11 @@ export function useGoogleAuth() {
     } catch (error: unknown) {
       const resolvedError = getGoogleAuthErrorMessage(error);
       if (resolvedError !== 'cancelled') {
-        console.warn('Google Sign-In failed', error);
-        logger.error('Google sign-in failed', {error: resolvedError, platform: Platform.OS});
+        logger.error('Google sign-in failed', {
+          error: resolvedError,
+          platform: Platform.OS,
+          details: error instanceof Error ? error.message : String(error),
+        });
       }
       return {ok: false, error: resolvedError};
     }

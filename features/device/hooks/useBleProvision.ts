@@ -2,7 +2,7 @@ import {useCallback, useEffect, useRef, useState} from 'react';
 import {BleManager, Device, BleError} from 'react-native-ble-plx';
 import {Platform, PermissionsAndroid} from 'react-native';
 import {Buffer} from 'buffer';
-import {logger} from '../../../lib/datadog';
+import {logger} from '../../../lib/logger';
 
 // CommuteLive custom GATT UUIDs — must match firmware ble_provisioner.cpp
 export const BLE_SERVICE_UUID    = 'a1b2c3d4-0000-4a5b-8c7d-9e0f1a2b3c4d';
@@ -361,10 +361,9 @@ export function useBleProvision() {
         errorMsg: null,
         statusUpdate: null,
       });
-      console.log(
-        '[BLE] Found devices =',
-        foundDevices.map(device => device.name ?? device.id).join(', '),
-      );
+      logger.info('BLE devices found', {
+        devices: foundDevices.map(device => device.name ?? device.id),
+      });
     };
 
     scanTimeoutRef.current = setTimeout(finishScan, SCAN_TIMEOUT_MS);
@@ -391,7 +390,7 @@ export function useBleProvision() {
         }
       }
     });
-  }, [cleanup, setPhase, fail]);
+  }, [cleanup, setPhase, fail, syncBluetoothState]);
 
   const selectFoundDevice = useCallback((device: Device) => {
     deviceRef.current = device;
@@ -430,7 +429,7 @@ export function useBleProvision() {
             if (isCancelledBleError(error)) {
               return;
             }
-            console.log('[BLE] status monitor error:', error.message);
+            logger.warn('BLE status monitor error', {error: error.message});
             return;
           }
 
@@ -441,7 +440,7 @@ export function useBleProvision() {
           const nextDeviceId = payload.deviceId ?? connected.name ?? null;
 
           if (rawValue) {
-            console.log('[BLE] status update:', rawValue);
+            logger.debug('BLE status update', {rawValue});
           }
 
           setState(prev => ({
@@ -455,7 +454,7 @@ export function useBleProvision() {
           }
 
           if (terminalProvisionStatusRef.current) {
-            console.log('[BLE] ignoring late status update after terminal result:', rawValue);
+            logger.debug('BLE late status update ignored', {rawValue});
             return;
           }
 
@@ -550,7 +549,7 @@ export function useBleProvision() {
         );
         setPhase('waiting_wifi', {errorMsg: null, statusUpdate: null});
         const deviceId = await wifiResult;
-        console.log('[BLE] Credentials result deviceId =', deviceId);
+        logger.info('BLE credentials completed', {deviceId});
         return deviceId;
       } catch (e: unknown) {
         if (pendingWifiResultRef.current) {
@@ -600,7 +599,7 @@ export function useBleProvision() {
         .sort((a, b) => b.r - a.r)
         .map(n => ({ssid: n.s, rssi: n.r, encryption: n.e as WifiNetwork['encryption']}));
       setState(prev => ({...prev, wifiNetworks: networks, isScanning: false}));
-      console.log('[BLE] WiFi scan complete, networks:', networks.length);
+      logger.info('BLE WiFi scan complete', {networkCount: networks.length});
     };
 
     wifiScanSubscriptionRef.current = device.monitorCharacteristicForService(
@@ -611,7 +610,7 @@ export function useBleProvision() {
           if (isCancelledBleError(error)) {
             return;
           }
-          console.log('[BLE] scan monitor error:', error.message);
+          logger.warn('BLE WiFi scan monitor error', {error: error.message});
           return;
         }
         const raw = characteristic?.value
@@ -629,7 +628,7 @@ export function useBleProvision() {
             finalizeScanResults();
           }
         } catch {
-          console.log('[BLE] scan chunk parse error:', raw);
+          logger.warn('BLE WiFi scan chunk parse error', {raw});
         }
       },
     );
@@ -644,7 +643,9 @@ export function useBleProvision() {
         encoded,
       );
     } catch (e: unknown) {
-      console.log('[BLE] scan request write failed:', e instanceof Error ? e.message : String(e));
+      logger.warn('BLE WiFi scan request write failed', {
+        error: e instanceof Error ? e.message : String(e),
+      });
       setState(prev => ({...prev, isScanning: false}));
     }
   }, []);

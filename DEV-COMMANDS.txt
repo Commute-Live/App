@@ -1,5 +1,5 @@
 npx expo start
-npx expo run:ios
+can 
 
 Staging: (update will only work if there are minor js changes)
 - New staging TestFlight build: npm run build:staging:ios

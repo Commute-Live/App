@@ -1,5 +1,5 @@
 import React, {useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState} from 'react';
-import {Alert, Animated, Easing, Image, Keyboard, KeyboardAvoidingView, LayoutAnimation, Modal, PanResponder, Platform, Pressable, ScrollView, Text, TextInput, UIManager, View} from 'react-native';
+import {Alert, Animated, Easing, Keyboard, KeyboardAvoidingView, LayoutAnimation, Modal, PanResponder, Platform, Pressable, ScrollView, Text, TextInput, UIManager, View} from 'react-native';
 import {SafeAreaView} from 'react-native-safe-area-context';
 import {Ionicons} from '@expo/vector-icons';
 import {useLocalSearchParams, useRouter} from 'expo-router';
@@ -211,7 +211,6 @@ const DISPLAY_PRESET_OPTIONS = [
   {id: 5, label: 'Direction + Upcoming Trains', description: 'Travel direction with upcoming arrivals.'},
   {id: 6, label: 'Destination + Upcoming Trains', description: 'Route destination with upcoming arrivals.'},
 ] as const;
-const PRESET_CAROUSEL_ITEM_WIDTH = 292;
 const Haptics = {selectionAsync: async () => {}, notificationAsync: async (_: any) => {}};
 
 const isNewYorkRailDestinationOnlyMode = (city: CityId, mode: ModeId) =>
@@ -284,15 +283,6 @@ const formatSaveErrorMessage = (message: string) => {
   }
 
   return normalized;
-};
-
-const getPresetIdForOffset = (
-  offsetX: number,
-  presetOptions: readonly (typeof DISPLAY_PRESET_OPTIONS)[number][] = DISPLAY_PRESET_OPTIONS,
-) => {
-  const nextIndex = Math.round(offsetX / PRESET_CAROUSEL_ITEM_WIDTH);
-  const safeIndex = Math.max(0, Math.min(presetOptions.length - 1, nextIndex));
-  return presetOptions[safeIndex]?.id ?? presetOptions[0]?.id ?? DISPLAY_PRESET_OPTIONS[0].id;
 };
 
 const getPresetBehavior = (presetId: number) => {
@@ -500,7 +490,7 @@ const getWizardStepDefs = ({
 ];
 
 const WIZARD_STEP_DEFAULT_COLOR = colors.accent;
-const WIZARD_STEP_ACTIVE_COLOR = colors.editorStepComplete;
+const WIZARD_STEP_ACTIVE_COLOR = colors.accent;
 
 export default function DisplayEditorScreen() {
   const queryClient = useQueryClient();
@@ -956,8 +946,6 @@ export default function DisplayEditorScreen() {
     return () => {
       cancelled = true;
     };
-    // Run once on mount when device is known
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [city, editingDisplayId, hasLinkedDevice, isCreateMode, queryClient, selectedDevice.id]);
 
   const activeLiveSelections = useMemo(
@@ -1802,6 +1790,7 @@ export default function DisplayEditorScreen() {
           <TopBar
             layoutSlots={layoutSlots}
             presetName={presetName}
+            editorStep={editorStep}
             onPresetNameChange={setPresetName}
             onLayoutOpen={() => setShowLayoutSelector(true)}
             onBackPress={handleTopBarBackPress}
@@ -2282,12 +2271,14 @@ function EditorPreviewCarousel({
 function TopBar({
   layoutSlots,
   presetName,
+  editorStep,
   onPresetNameChange,
   onLayoutOpen,
   onBackPress,
 }: {
   layoutSlots: number;
   presetName: string;
+  editorStep: EditorStep;
   onPresetNameChange: (value: string) => void;
   onLayoutOpen: () => void;
   onBackPress: () => void;
@@ -2327,12 +2318,14 @@ function TopBar({
           </View>
         </View>
 
-        <View style={styles.topBarSideRight}>
-          <Pressable style={styles.layoutPillTopRight} onPress={onLayoutOpen}>
-            <Text style={styles.layoutPillTopRightText}>{layoutSlots} {layoutSlots === 1 ? 'line' : 'lines'}</Text>
-            <Text style={styles.layoutPillChevron}>⌄</Text>
-          </Pressable>
-        </View>
+        {editorStep !== 'city' && editorStep !== 'service' && editorStep !== 'lines' ? (
+          <View style={styles.topBarSideRight}>
+            <Pressable style={styles.layoutPillTopRight} onPress={onLayoutOpen}>
+              <Text style={styles.layoutPillTopRightText}>{layoutSlots === 1 ? '1 line' : '2 lines'}</Text>
+              <Text style={styles.layoutPillChevron}>⌄</Text>
+            </Pressable>
+          </View>
+        ) : null}
       </View>
 
       <FadeSection visible={renameOpen}>
@@ -2424,28 +2417,6 @@ function CityPickerStep({
             </Pressable>
           );
         })}
-      </View>
-    </View>
-  );
-}
-
-function NycServiceBrandStrip({mode}: {mode: ModeId}) {
-  const brand = NYC_SERVICE_BRANDS[mode];
-
-  if (!brand) return null;
-
-  return (
-    <View style={styles.nycBrandStrip}>
-      <View style={styles.nycBrandLogoPlate}>
-        <Image
-          source={NYC_BRAND_ASSETS[brand.asset]}
-          style={[styles.nycBrandLogo, {width: brand.width, height: brand.height}]}
-          resizeMode="contain"
-        />
-      </View>
-      <View style={styles.nycBrandCopy}>
-        <Text style={styles.nycBrandEyebrow}>Officially Licensed</Text>
-        <Text style={styles.nycBrandLabel}>{brand.label}</Text>
       </View>
     </View>
   );
@@ -2733,34 +2704,6 @@ function ConfirmDiscardModal({
   );
 }
 
-function RouteGridPicker({
-  routes,
-  selected,
-  onToggle,
-}: {
-  routes: Route[];
-  selected: string[];
-  onToggle: (id: string) => void;
-}) {
-  return (
-    <View style={styles.routeGrid}>
-      {routes.map(route => {
-        const active = selected.includes(route.id);
-        return (
-          <Pressable
-            key={route.id}
-            style={[styles.routeTile, active && styles.routeTileActive]}
-            onPress={() => onToggle(route.id)}>
-            <View style={[styles.routeCircle, {backgroundColor: route.color}]}>
-              <Text style={[styles.routeCircleText, {color: route.textColor ?? colors.text}]}>{route.label}</Text>
-            </View>
-          </Pressable>
-        );
-      })}
-    </View>
-  );
-}
-
 function SaveBar({
   dirty,
   loading,
@@ -2998,387 +2941,6 @@ function SimplePicker({
   );
 }
 
-function DisplayPresetPickerStep({
-  city,
-  selectedPreset,
-  line,
-  selectedRoute,
-  selectedStation,
-  arrival,
-  showCompletionHint,
-  onChangeLine,
-  onSelect,
-}: {
-  city: CityId;
-  selectedPreset: number | null;
-  line: LinePick;
-  selectedRoute: Route | undefined;
-  selectedStation: Station | undefined;
-  arrival: Arrival | undefined;
-  showCompletionHint: boolean;
-  onChangeLine: (next: Partial<LinePick>) => void;
-  onSelect: (preset: number) => void;
-}) {
-  const presetOptions = getDisplayPresetOptionsForMode(city, line.mode);
-  const visibleSelectedPreset =
-    typeof selectedPreset === 'number' && presetOptions.some(option => option.id === selectedPreset)
-      ? selectedPreset
-      : (presetOptions[0]?.id ?? DEFAULT_DISPLAY_PRESET);
-  const carouselRef = useRef<ScrollView | null>(null);
-  const [visiblePresetId, setVisiblePresetId] = useState<number>(visibleSelectedPreset);
-  const routeLabel = selectedRoute?.label ?? line.routeId ?? '?';
-  const routeBadgeLabel = getLocalRouteBadgeLabel(city, line.mode, line.routeId, routeLabel, selectedRoute?.shortName);
-  const directionLabel = getDirectionCueLabel(city, line.mode, line.direction, selectedRoute ?? line.routeId);
-  const headsignLabel = getHeadsignLabel(city, line.mode, line.direction, selectedRoute ?? line.routeId, routeLabel);
-  const routeColor = selectedRoute?.color ?? colors.routeFallback;
-  const routeTextColor = selectedRoute?.textColor ?? colors.routeFallbackText;
-  const stopLabel = selectedStation?.name?.trim() || 'Selected stop';
-  const secondaryStopLabel = isRailLinePreviewMode(city, line.mode)
-    ? getRailPreviewRouteLabel(city, line.mode, routeLabel, line.routeId)
-    : selectedStation?.area?.trim() || selectedStation?.name?.trim() || routeLabel || 'Route';
-  const etaText = arrival ? `${Math.max(0, Math.round(arrival.minutes))}m` : '3m';
-  const etaListText = buildNextArrivalTimes(arrival?.minutes ?? 3, line.nextStops).join(', ');
-  useEffect(() => {
-    const index = Math.max(0, presetOptions.findIndex(option => option.id === visibleSelectedPreset));
-    const presetId = presetOptions[index]?.id ?? presetOptions[0]?.id ?? DEFAULT_DISPLAY_PRESET;
-    setVisiblePresetId(presetId);
-    carouselRef.current?.scrollTo({x: index * PRESET_CAROUSEL_ITEM_WIDTH, animated: true});
-  }, [visibleSelectedPreset, presetOptions]);
-
-  return (
-    <View style={styles.stepSection}>
-      <Text style={styles.stepTitle}>Select display type</Text>
-      <Text style={styles.stepSubtitle}>Choose the screen style that best fits this display.</Text>
-      <ScrollView
-        ref={carouselRef}
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        snapToInterval={PRESET_CAROUSEL_ITEM_WIDTH}
-        decelerationRate="fast"
-        onScroll={event => {
-          const nextPresetId = getPresetIdForOffset(event.nativeEvent.contentOffset.x, presetOptions);
-          setVisiblePresetId(prev => (prev === nextPresetId ? prev : nextPresetId));
-        }}
-        scrollEventThrottle={16}
-        contentContainerStyle={styles.presetCarousel}>
-        {presetOptions.map((option, index) => {
-          const behavior = getPresetBehavior(option.id);
-          const optionLabel = getPresetLabelForMode(city, line.mode, option.id, option.label);
-          const optionDescription = getPresetDescriptionForMode(city, line.mode, option.id, option.description);
-          const primaryText =
-            resolveDisplayContent(
-              line.label.trim().length > 0 ? 'custom' : behavior.primaryContent,
-              stopLabel,
-              directionLabel,
-              headsignLabel,
-              line.label,
-            ) || routeLabel || 'Preview';
-          const secondaryText =
-            resolveDisplayContent(
-              behavior.supportsBottomCustom && line.secondaryLabel.trim().length > 0 ? 'custom' : behavior.secondaryContent,
-              secondaryStopLabel,
-              directionLabel,
-              headsignLabel,
-              line.secondaryLabel,
-            ) || routeLabel || 'Preview';
-
-          return (
-            <PresetChoiceCard
-              key={option.id}
-              option={option}
-              optionLabel={optionLabel}
-              optionDescription={optionDescription}
-              index={index}
-              active={option.id === visibleSelectedPreset}
-              routeLabel={routeBadgeLabel}
-              routeColor={routeColor}
-              routeTextColor={routeTextColor}
-              primaryText={primaryText}
-              secondaryText={option.id === 3 ? secondaryText : secondaryText}
-              etaText={etaText}
-              etaListText={etaListText}
-              onPress={() => onSelect(option.id)}
-            />
-          );
-        })}
-      </ScrollView>
-      <View style={styles.presetCarouselIndicators}>
-        {presetOptions.map(option => {
-          const active = option.id === visiblePresetId;
-          return <View key={option.id} style={[styles.presetCarouselIndicator, active && styles.presetCarouselIndicatorActive]} />;
-        })}
-      </View>
-      <View style={styles.customTextEditor}>
-        {getPresetBehavior(visibleSelectedPreset ?? visiblePresetId).displayFormat === 'times-line' ? (
-          <View style={styles.sectionBlock}>
-            <Text style={styles.sectionLabel}>Additional Times</Text>
-            <View style={styles.segmented}>
-              {Array.from({length: MAX_NEXT_STOPS}, (_, idx) => idx + 1).map(count => {
-                const active = line.nextStops === count;
-                return (
-                  <Pressable
-                    key={count}
-                    style={[styles.segment, active && styles.segmentActive]}
-                    onPress={() => onChangeLine({nextStops: count})}>
-                    <Text style={[styles.segmentText, active && styles.segmentTextActive]}>{count}</Text>
-                  </Pressable>
-                );
-              })}
-            </View>
-          </View>
-        ) : null}
-      </View>
-      {showCompletionHint ? (
-        <Text style={styles.sectionHint}>Display is ready. Use steps above to go back and edit before saving.</Text>
-      ) : null}
-    </View>
-  );
-}
-
-function BuilderProgress({
-  items,
-}: {
-  items: ReadonlyArray<{
-    id: string;
-    label: string;
-    value: string;
-    state: 'complete' | 'active' | 'upcoming';
-    onPress?: () => void;
-  }>;
-}) {
-  return (
-    <View style={styles.builderProgress}>
-      {items.map((item, index) => {
-        const complete = item.state === 'complete';
-        const active = item.state === 'active';
-        const editable = !!item.onPress;
-        return (
-          <Pressable
-            key={item.id}
-            style={[
-              styles.builderProgressItem,
-              editable && styles.builderProgressItemEditable,
-            ]}
-            onPress={item.onPress}
-            disabled={!editable}>
-            {index < items.length - 1 ? (
-              <View style={[styles.builderProgressConnector, complete && styles.builderProgressConnectorComplete]} />
-            ) : null}
-            <View style={styles.builderProgressTopRow}>
-              <View
-                style={[
-                  styles.builderProgressDot,
-                  index === 1 && styles.builderProgressDotCenter,
-                  complete && styles.builderProgressDotComplete,
-                  active && styles.builderProgressDotActive,
-                ]}>
-                <Text style={[styles.builderProgressDotText, (complete || active) && styles.builderProgressDotTextActive]}>
-                  {complete ? String.fromCharCode(10003) : index + 1}
-                </Text>
-              </View>
-            </View>
-            <Text style={[styles.builderProgressLabel, active && styles.builderProgressLabelActive]}>{item.label}</Text>
-          </Pressable>
-        );
-      })}
-    </View>
-  );
-}
-
-function PresetChoiceCard({
-  option,
-  optionLabel,
-  optionDescription,
-  index,
-  active,
-  routeLabel,
-  routeColor,
-  routeTextColor,
-  primaryText,
-  secondaryText,
-  etaText,
-  etaListText,
-  onPress,
-}: {
-  option: (typeof DISPLAY_PRESET_OPTIONS)[number];
-  optionLabel: string;
-  optionDescription: string;
-  index: number;
-  active: boolean;
-  routeLabel: string;
-  routeColor: string;
-  routeTextColor: string;
-  primaryText: string;
-  secondaryText: string;
-  etaText: string;
-  etaListText: string;
-  onPress: () => void;
-}) {
-  const enterAnim = useRef(new Animated.Value(0)).current;
-  const activeAnim = useRef(new Animated.Value(active ? 1 : 0)).current;
-  const pressAnim = useRef(new Animated.Value(1)).current;
-
-  useEffect(() => {
-    Animated.timing(enterAnim, {
-      toValue: 1,
-      duration: 220,
-      delay: index * 35,
-      easing: Easing.out(Easing.cubic),
-      useNativeDriver: true,
-    }).start();
-  }, [enterAnim, index]);
-
-  useEffect(() => {
-    Animated.spring(activeAnim, {
-      toValue: active ? 1 : 0,
-      tension: 180,
-      friction: 18,
-      useNativeDriver: true,
-    }).start();
-  }, [active, activeAnim]);
-
-  return (
-    <Animated.View
-      style={{
-        opacity: enterAnim,
-        transform: [
-          {
-            translateY: enterAnim.interpolate({
-              inputRange: [0, 1],
-              outputRange: [10, 0],
-            }),
-          },
-          {
-            scale: activeAnim.interpolate({
-              inputRange: [0, 1],
-              outputRange: [1, 1],
-            }),
-          },
-          {scale: pressAnim},
-        ],
-      }}>
-      <Pressable
-        style={[styles.presetChoiceCard, styles.presetCarouselCard, active && styles.presetChoiceCardActive]}
-        onPress={onPress}
-        onPressIn={() => {
-          Animated.spring(pressAnim, {
-            toValue: 0.985,
-            tension: 220,
-            friction: 16,
-            useNativeDriver: true,
-          }).start();
-        }}
-        onPressOut={() => {
-          Animated.spring(pressAnim, {
-            toValue: 1,
-            tension: 220,
-            friction: 14,
-            useNativeDriver: true,
-          }).start();
-        }}>
-        <View style={styles.presetChoiceHeader}>
-          <Text style={[styles.presetChoiceLabel, active && styles.presetChoiceLabelActive]}>{optionLabel}</Text>
-          <View style={[styles.choiceRowCheck, active && styles.choiceRowCheckActive]}>
-            {active ? <Text style={styles.choiceRowCheckText}>✓</Text> : null}
-          </View>
-        </View>
-        <Text style={styles.presetChoiceDescription}>{optionDescription}</Text>
-        <PresetDiagram
-          presetId={option.id}
-          routeLabel={routeLabel}
-          routeColor={routeColor}
-          routeTextColor={routeTextColor}
-          primaryText={primaryText}
-          secondaryText={secondaryText}
-          etaText={etaText}
-          etaListText={etaListText}
-        />
-      </Pressable>
-    </Animated.View>
-  );
-}
-
-function PresetDiagram({
-  presetId,
-  routeLabel = '4',
-  routeColor = colors.routeFallback,
-  routeTextColor = colors.routeFallbackText,
-  primaryText = 'Woodlawn',
-  secondaryText = 'Uptown',
-  etaText = '3m',
-  etaListText = '3m, 5m, 8m',
-}: {
-  presetId: number;
-  routeLabel?: string;
-  routeColor?: string;
-  routeTextColor?: string;
-  primaryText?: string;
-  secondaryText?: string;
-  etaText?: string;
-  etaListText?: string;
-}) {
-  const isDualLabel = false;
-  const hasSecondaryEtaLine = presetId === 4 || presetId === 5 || presetId === 6;
-
-  return (
-    <View style={styles.presetDiagramFrame}>
-      <View style={[styles.presetDiagramLineBadge, {backgroundColor: routeColor}]}>
-        <Text style={[styles.presetDiagramLineBadgeText, {color: routeTextColor}]}>{routeLabel.slice(0, 4)}</Text>
-      </View>
-
-      <View style={styles.presetDiagramCenter}>
-        {isDualLabel ? (
-          <>
-            <Text style={styles.presetDiagramPrimaryText} numberOfLines={1} ellipsizeMode="tail">{primaryText}</Text>
-            <Text style={[styles.presetDiagramPrimaryText, styles.presetDiagramSecondaryTextMuted]} numberOfLines={1} ellipsizeMode="tail">{secondaryText}</Text>
-          </>
-        ) : (
-          <Text style={styles.presetDiagramPrimaryText} numberOfLines={1} ellipsizeMode="tail">{primaryText}</Text>
-        )}
-        {hasSecondaryEtaLine ? <Text style={styles.presetDiagramSecondaryEta} numberOfLines={1} ellipsizeMode="tail">{etaListText}</Text> : null}
-      </View>
-
-      <Text style={styles.presetDiagramRightEta} numberOfLines={1}>{etaText}</Text>
-    </View>
-  );
-}
-
-function LayoutSlotsPickerStep({
-  selectedSlots,
-  onSelect,
-}: {
-  selectedSlots: number;
-  onSelect: (slots: number) => void;
-}) {
-  return (
-    <View style={styles.stepSection}>
-      <Text style={styles.stepTitle}>How many stops?</Text>
-      <Text style={styles.stepSubtitle}>Choose how many lines to save. The device will sort them by soonest arrival and rotate automatically.</Text>
-      <View style={styles.choiceList}>
-        {LAYOUT_OPTIONS.map(option => {
-          const active = option.slots === selectedSlots;
-          return (
-            <Pressable
-              key={option.id}
-              style={[styles.choiceRow, active && styles.choiceRowActive]}
-              onPress={() => onSelect(option.slots)}>
-              <View style={styles.choiceRowCopy}>
-                <Text style={[styles.choiceRowLabel, active && styles.choiceRowLabelActive]}>{option.label}</Text>
-                <Text style={[styles.choiceRowHint, active && styles.choiceRowHintActive]}>
-                  {option.slots === 1 ? 'Save one line and keep one active row on the display.' : `Save ${option.slots} lines and rotate through them two rows at a time.`}
-                </Text>
-              </View>
-              <View style={[styles.choiceRowCheck, active && styles.choiceRowCheckActive]}>
-                {active ? <Text style={styles.choiceRowCheckText}>✓</Text> : null}
-              </View>
-            </Pressable>
-          );
-        })}
-      </View>
-    </View>
-  );
-}
-
 function StepTransitionMessage({
   message,
   badgeLabel,
@@ -3471,35 +3033,6 @@ function FadeSection({
   );
 }
 
-function AnimatedChevron({expanded}: {expanded: boolean}) {
-  const anim = useRef(new Animated.Value(expanded ? 1 : 0)).current;
-
-  useEffect(() => {
-    Animated.timing(anim, {
-      toValue: expanded ? 1 : 0,
-      duration: 160,
-      easing: Easing.out(Easing.cubic),
-      useNativeDriver: true,
-    }).start();
-  }, [anim, expanded]);
-
-  return (
-    <Animated.View
-      style={{
-        transform: [
-          {
-            rotate: anim.interpolate({
-              inputRange: [0, 1],
-              outputRange: ['0deg', '180deg'],
-            }),
-          },
-        ],
-      }}>
-      <Text style={styles.collapsibleArrow}>▼</Text>
-    </Animated.View>
-  );
-}
-
 const NYC_MODE_COLORS: Partial<Record<ModeId, string>> = {
   train: '#C4651A',
   bus: '#0039A6',
@@ -3527,20 +3060,6 @@ const CITY_MODE_COLORS: Partial<Record<CityId, Partial<Record<ModeId, string>>>>
     train: '#0039A6',
     bus: '#0039A6',
   },
-};
-
-const NYC_BRAND_ASSETS = {
-  mta: require('../../../assets/images/mta/source/mta-logo.png'),
-  nyct: require('../../../assets/images/mta/extract/nyct/page-000.png'),
-  lirr: require('../../../assets/images/mta/extract/lirr/page-000.png'),
-  mnr: require('../../../assets/images/mta/extract/mnr/page-000.png'),
-} as const;
-
-const NYC_SERVICE_BRANDS: Partial<Record<ModeId, {asset: keyof typeof NYC_BRAND_ASSETS; label: string; width: number; height: number}>> = {
-  train: {asset: 'nyct', label: 'Subway service', width: 124, height: 24},
-  bus: {asset: 'mta', label: 'Bus service', width: 48, height: 24},
-  lirr: {asset: 'lirr', label: 'Long Island Rail Road', width: 128, height: 24},
-  mnr: {asset: 'mnr', label: 'Metro-North Railroad', width: 126, height: 24},
 };
 
 const getServiceDescription = (city: CityId, mode: ModeId) => {
@@ -3664,7 +3183,7 @@ function LinePickerStep({
   onSelectLine: (routeId: string) => void;
   onAddDevice: () => void;
 }) {
-  const allRoutes = linesByMode[selectedMode] ?? [];
+  const allRoutes = useMemo(() => linesByMode[selectedMode] ?? [], [linesByMode, selectedMode]);
   const isLoading = !!linesLoadingByMode[selectedMode];
   const [lineSearch, setLineSearch] = useState('');
   const [variantPickerEntry, setVariantPickerEntry] = useState<RoutePickerItem | null>(null);
@@ -4074,7 +3593,6 @@ function StopPickerStep({
     const ordered = BOROUGH_ORDER.filter(b => map[b]).map(b => ({area: b, stations: map[b]}));
     const rest = Object.entries(map).filter(([k]) => !BOROUGH_ORDER.includes(k)).map(([k, v]) => ({area: k, stations: v}));
     return [...ordered, ...rest];
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [stations, isBusGrouped, term]);
 
   return (
@@ -4213,337 +3731,6 @@ function StopRow({
         <Text style={styles.chevron}>›</Text>
       ) : null}
     </Pressable>
-  );
-}
-
-function DoneStep({
-  city,
-  line,
-  displayPreset,
-  presetConfirmed,
-  selectedRoute,
-  selectedStation,
-  onClearLine,
-  onClearStop,
-  onClearDisplayType,
-}: {
-  city: CityId;
-  line: LinePick;
-  displayPreset: number;
-  presetConfirmed: boolean;
-  selectedRoute: Route | undefined;
-  selectedStation: Station | undefined;
-  onClearLine: () => void;
-  onClearStop: () => void;
-  onClearDisplayType: () => void;
-}) {
-  const showBusBadge = false;
-  const selectedRouteBadgeLabel = selectedRoute?.label ?? '';
-  const onChangeLine = onClearLine;
-  const onChangeStop = onClearStop;
-  const onChangeDisplayType = onClearDisplayType;
-  const liveStatusText = '';
-  const presetOption = DISPLAY_PRESET_OPTIONS.find(option => option.id === displayPreset);
-  const presetLabel = getPresetLabelForMode(city, line.mode, displayPreset, presetOption?.label ?? `Display Type ${displayPreset}`);
-  const directionLabel = getDirectionSummaryLabel(city, line.mode, line.direction, selectedRoute ?? line.routeId);
-
-  return (
-    <View style={styles.doneStepContainer}>
-      <View style={styles.contextChipRow} pointerEvents="none">
-        {selectedRoute ? (
-          <Pressable style={styles.contextChip} onPress={onChangeLine}>
-            <View style={[styles.contextChipBadge, showBusBadge && styles.contextChipBadgeBus, {backgroundColor: selectedRoute.color}]}>
-              <Text
-                adjustsFontSizeToFit
-                minimumFontScale={0.74}
-                numberOfLines={1}
-                style={[styles.contextChipBadgeText, showBusBadge && styles.contextChipBadgeTextBus, {color: selectedRoute.textColor ?? colors.text}]}>
-                {selectedRouteBadgeLabel}
-              </Text>
-            </View>
-            <Text style={styles.contextChipLabel}>{selectedRoute.label} line</Text>
-            <Text style={styles.contextChipX}>✕</Text>
-          </Pressable>
-        ) : (
-          <Pressable style={styles.contextChip} onPress={onChangeLine}>
-            <Text style={styles.contextChipLabel}>Choose line</Text>
-            <Text style={styles.contextChipX}>→</Text>
-          </Pressable>
-        )}
-        {selectedStation ? (
-          <Pressable style={styles.contextChip} onPress={onChangeStop}>
-            <Text style={styles.contextChipLabel} numberOfLines={1}>{selectedStation.name}</Text>
-            <Text style={styles.contextChipX}>✕</Text>
-          </Pressable>
-        ) : (
-          <Pressable style={styles.contextChip} onPress={onChangeStop}>
-            <Text style={styles.contextChipLabel}>Choose stop</Text>
-            <Text style={styles.contextChipX}>→</Text>
-          </Pressable>
-        )}
-        <Pressable style={styles.contextChip} onPress={onChangeDisplayType}>
-          <Text style={styles.contextChipLabel} numberOfLines={1}>
-            {presetConfirmed ? presetLabel : 'Choose display type'}
-          </Text>
-          <Text style={styles.contextChipX}>{presetConfirmed ? 'x' : '>'}</Text>
-        </Pressable>
-      </View>
-
-      {liveStatusText ? <Text style={styles.sectionHint}>{liveStatusText}</Text> : null}
-
-      <View style={styles.secondarySectionCard}>
-        <View style={styles.sectionBlock}>
-          <Text style={styles.sectionLabel}>Device Preset</Text>
-          <Text style={styles.sectionHint}>
-            {presetConfirmed ? presetLabel : 'Not selected yet'}
-          </Text>
-          {presetConfirmed && presetOption?.description ? <Text style={styles.sectionHint}>{presetOption.description}</Text> : null}
-          <PresetDiagram presetId={displayPreset} />
-        </View>
-        <View style={styles.sectionBlock}>
-          <Text style={styles.sectionLabel}>Direction</Text>
-          <Text style={styles.sectionHint}>{directionLabel}</Text>
-        </View>
-      </View>
-    </View>
-  );
-}
-
-function ReviewDoneStep({
-  city,
-  line,
-  displayPreset,
-  presetConfirmed,
-  selectedRoute,
-  selectedStation,
-  onChangeLine,
-  onClearLine,
-  onClearStop,
-  onClearDisplayType,
-}: {
-  city: CityId;
-  line: LinePick;
-  displayPreset: number;
-  presetConfirmed: boolean;
-  selectedRoute: Route | undefined;
-  selectedStation: Station | undefined;
-  onChangeLine: (next: Partial<LinePick>) => void;
-  onClearLine: () => void;
-  onClearStop: () => void;
-  onClearDisplayType: () => void;
-}) {
-  const presetOption = DISPLAY_PRESET_OPTIONS.find(option => option.id === displayPreset);
-  const presetLabel = getPresetLabelForMode(city, line.mode, displayPreset, presetOption?.label ?? `Display Type ${displayPreset}`);
-  const directionLabel = getDirectionSummaryLabel(city, line.mode, line.direction, selectedRoute ?? line.routeId);
-  const activePresetBehavior = getPresetBehavior(displayPreset);
-  const routeLabel = selectedRoute?.label ?? line.routeId ?? 'Route';
-  const previewDirectionLabel = getDirectionCueLabel(city, line.mode, line.direction, selectedRoute ?? line.routeId);
-  const previewHeadsignLabel = getHeadsignLabel(city, line.mode, line.direction, selectedRoute ?? line.routeId, routeLabel);
-  const topPlaceholder = resolveDisplayContent(
-    activePresetBehavior.primaryContent,
-    selectedStation?.name?.trim() || 'Selected stop',
-    previewDirectionLabel,
-    previewHeadsignLabel,
-    '',
-  );
-  const bottomPlaceholder = resolveDisplayContent(
-    activePresetBehavior.secondaryContent,
-    isRailLinePreviewMode(city, line.mode)
-      ? getRailPreviewRouteLabel(city, line.mode, routeLabel, line.routeId)
-      : selectedStation?.area?.trim() || selectedStation?.name?.trim() || routeLabel || 'Route',
-    previewDirectionLabel,
-    previewHeadsignLabel,
-    '',
-  );
-
-  return (
-    <View style={styles.doneStepContainer}>
-      <Text style={styles.reviewEyebrow}>Final Check</Text>
-      <View style={styles.reviewControlsCard}>
-        <View style={styles.reviewField}>
-          <Text style={styles.reviewFieldLabel}>Top Text</Text>
-          <TextInput
-            value={line.label}
-            onChangeText={text =>
-              onChangeLine({
-                label: text,
-                primaryContent: text.trim().length > 0 ? 'custom' : activePresetBehavior.primaryContent,
-              })
-            }
-            placeholder={topPlaceholder}
-            placeholderTextColor={colors.textMuted}
-            style={styles.reviewFieldInput}
-            returnKeyType="done"
-          />
-        </View>
-        {activePresetBehavior.supportsBottomCustom ? (
-          <View style={styles.reviewField}>
-            <Text style={styles.reviewFieldLabel}>Bottom Text</Text>
-            <TextInput
-              value={line.secondaryLabel}
-              onChangeText={text =>
-                onChangeLine({
-                  secondaryLabel: text,
-                  secondaryContent: text.trim().length > 0 ? 'custom' : activePresetBehavior.secondaryContent,
-                })
-              }
-              placeholder={bottomPlaceholder}
-              placeholderTextColor={colors.textMuted}
-              style={styles.reviewFieldInput}
-              returnKeyType="done"
-            />
-          </View>
-        ) : null}
-      </View>
-      <View style={styles.doneReviewList}>
-        <ReviewRow label="Line" value={selectedRoute?.label ? `${selectedRoute.label} line` : 'Not selected'} onClear={onClearLine} />
-        <ReviewRow label="Stop" value={selectedStation?.name ?? 'Not selected'} onClear={onClearStop} />
-        <ReviewRow label="Direction" value={directionLabel} onClear={onClearStop} />
-        <ReviewRow
-          label="Display Type"
-          value={presetConfirmed ? presetLabel : 'Not selected'}
-          onClear={onClearDisplayType}
-        />
-      </View>
-    </View>
-  );
-}
-
-function ReviewRow({label, value, onClear}: {label: string; value: string; onClear: () => void}) {
-  return (
-    <View style={styles.reviewRow}>
-      <View style={styles.reviewRowAccent} />
-      <View style={styles.reviewRowCopy}>
-        <Text style={styles.reviewRowLabel}>{label}</Text>
-        <Text style={styles.reviewRowValue} numberOfLines={1}>{value}</Text>
-      </View>
-      <Pressable style={styles.reviewRowClear} onPress={onClear}>
-        <Text style={styles.reviewRowClearText}>X</Text>
-      </Pressable>
-    </View>
-  );
-}
-
-// ─── Mini LED mockup inside each style row ────────────────────────────────────
-function StyleMockLed({city, preset, routeColor, routeLabel, routeId, route, destinationLabel, active, mode, direction, nextStops = 2, branchLabel, badgeShape = 'circle', hideBadgeLabel = false}: {
-  city: CityId;
-  preset: number;
-  routeColor: string;
-  routeLabel: string;
-  routeId?: string;
-  route?: Route;
-  destinationLabel: string;
-  active: boolean;
-  mode: ModeId;
-  direction: Direction;
-  nextStops?: number;
-  branchLabel?: string;
-  badgeShape?: 'circle' | 'pill' | 'rail' | 'bar';
-  hideBadgeLabel?: boolean;
-}) {
-  const textOpacity = active ? 1 : 0.55;
-  const dirLabel = getDirectionLabel(city, mode, direction, route ?? routeId);
-  const headsignLabel = branchLabel ?? getHeadsignLabel(city, mode, direction, route ?? routeId, routeLabel);
-  const destLabel = destinationLabel.trim().length > 0 ? destinationLabel : 'Selected stop';
-
-  const badge = (
-    <View
-      style={[
-        styles.mockBadge,
-        badgeShape === 'pill' && styles.mockBadgePill,
-        badgeShape === 'rail' && styles.mockBadgeRail,
-        badgeShape === 'bar' && styles.mockBadgeBar,
-        {backgroundColor: routeColor, opacity: active ? 1 : 0.65},
-      ]}>
-      {!hideBadgeLabel && badgeShape !== 'bar' ? (
-        <Text
-          style={[
-            styles.mockBadgeText,
-            badgeShape !== 'circle' && styles.mockBadgeTextCompact,
-          ]}
-          numberOfLines={badgeShape === 'circle' ? 1 : 2}>
-          {routeLabel}
-        </Text>
-      ) : null}
-    </View>
-  );
-  const destText = (
-    <Text style={[styles.mockText, {opacity: textOpacity}]} numberOfLines={1}>{destLabel}</Text>
-  );
-  const dirText = (
-    <Text style={[styles.mockText, {opacity: textOpacity}]} numberOfLines={1}>{dirLabel}</Text>
-  );
-  const headsignText = (
-    <Text style={[styles.mockText, {opacity: textOpacity}]} numberOfLines={1}>{headsignLabel}</Text>
-  );
-  const timeText = (
-    <Text style={[styles.mockTimeText, {opacity: textOpacity}]}>3m</Text>
-  );
-  const mockUpcomingTimes = buildNextArrivalTimes(3, nextStops);
-  const arrivalChip = (label: string) => (
-    <View style={[styles.mockMiniTag, {opacity: textOpacity}]}>
-      <Text style={styles.mockMiniTagText}>{label}</Text>
-    </View>
-  );
-
-  const layout: Record<number, React.ReactNode> = {
-    // Your Station: badge · stop name · arrival time
-    1: <>{badge}<View style={styles.mockFlex}>{destText}</View>{timeText}</>,
-    // Direction: badge · direction · arrival time
-    2: <>{badge}<View style={styles.mockFlex}>{dirText}</View>{timeText}</>,
-    // Headsign: badge · destination · arrival time
-    3: <>{badge}<View style={styles.mockFlex}>{headsignText}</View>{timeText}</>,
-    // Your Station + Upcoming Trains: badge · [stop name / arrival chips] · next arrival
-    4: (
-      <>
-        {badge}
-        <View style={styles.mockCol}>
-          {destText}
-          <View style={styles.mockMiniTags}>
-            {mockUpcomingTimes.map(label => (
-              <React.Fragment key={`dest-upcoming-${label}`}>{arrivalChip(label)}</React.Fragment>
-            ))}
-          </View>
-        </View>
-        {timeText}
-      </>
-    ),
-    // Direction + Upcoming Trains: badge · [direction / arrival chips] · next arrival
-    5: (
-      <>
-        {badge}
-        <View style={styles.mockCol}>
-          {dirText}
-          <View style={styles.mockMiniTags}>
-            {mockUpcomingTimes.map(label => (
-              <React.Fragment key={`dir-upcoming-${label}`}>{arrivalChip(label)}</React.Fragment>
-            ))}
-          </View>
-        </View>
-        {timeText}
-      </>
-    ),
-    // Headsign + Upcoming Trains: badge · [headsign / arrival chips] · next arrival
-    6: (
-      <>
-        {badge}
-        <View style={styles.mockCol}>
-          {headsignText}
-          <View style={styles.mockMiniTags}>
-            {mockUpcomingTimes.map(label => (
-              <React.Fragment key={`headsign-upcoming-${label}`}>{arrivalChip(label)}</React.Fragment>
-            ))}
-          </View>
-        </View>
-        {timeText}
-      </>
-    ),
-  };
-
-  return (
-    <View style={[styles.mockScreen, [4, 5, 6].includes(preset) && styles.mockScreenTall, active && styles.mockScreenActive]}>
-      {layout[preset] ?? layout[1]}
-    </View>
   );
 }
 
@@ -4834,20 +4021,6 @@ function WizardReviewStep({
           </View>
         </View>
       </View>
-    </View>
-  );
-}
-
-function WizardReviewRow({label, value, onEdit}: {label: string; value: string; onEdit: () => void}) {
-  return (
-    <View style={styles.wizardReviewRow}>
-      <View style={styles.wizardReviewRowCopy}>
-        <Text style={styles.wizardReviewRowLabel}>{label}</Text>
-        <Text style={styles.wizardReviewRowValue} numberOfLines={1}>{value}</Text>
-      </View>
-      <Pressable style={styles.wizardReviewEditBtn} onPress={onEdit}>
-        <Text style={styles.wizardReviewEditText}>Edit</Text>
-      </Pressable>
     </View>
   );
 }

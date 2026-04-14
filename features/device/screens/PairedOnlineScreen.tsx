@@ -1,4 +1,4 @@
-import React, {useEffect, useState} from 'react';
+import React, {useEffect, useMemo, useState} from 'react';
 import {Pressable, ScrollView, StyleSheet, Text, View} from 'react-native';
 import {SafeAreaView} from 'react-native-safe-area-context';
 import {Ionicons} from '@expo/vector-icons';
@@ -8,7 +8,7 @@ import {PreviewCard} from '../../../components/PreviewCard';
 import {colors, layout, radii, spacing, typography} from '../../../theme';
 import {apiFetch} from '../../../lib/api';
 import {useAuth} from '../../../state/authProvider';
-import {logger} from '../../../lib/datadog';
+import {logger} from '../../../lib/logger';
 
 const fallbackDevice = {id: 'commutelive-001', name: 'My Device'};
 
@@ -19,12 +19,12 @@ export default function PairedOnlineScreen() {
   const [linkMessage, setLinkMessage] = useState('');
   const {deviceId, user, clearAuth} = useAuth();
   const userId = user?.id ?? null;
-  const devices = [
+  const devices = useMemo(() => [
     {
       id: deviceId ?? fallbackDevice.id,
       name: fallbackDevice.name,
     },
-  ];
+  ], [deviceId]);
   const [selected, setSelected] = useState(devices[0]);
 
   const linkDeviceMutation = useMutation({
@@ -60,7 +60,7 @@ export default function PairedOnlineScreen() {
 
   useEffect(() => {
     setSelected(devices[0]);
-  }, [deviceId]);
+  }, [deviceId, devices]);
 
   useEffect(() => {
     if (!deviceId || !userId) return;

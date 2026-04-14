@@ -45,7 +45,7 @@ export default function EditStationsScreen() {
     retry: false,
   });
 
-  const results = liveStationsQuery.data?.slice(0, 12) ?? [];
+  const results = useMemo(() => liveStationsQuery.data?.slice(0, 12) ?? [], [liveStationsQuery.data]);
   const loading = liveStationsQuery.isPending || liveStationsQuery.isFetching;
   const error = liveStationsQuery.isError ? 'Unable to load stations right now.' : '';
 

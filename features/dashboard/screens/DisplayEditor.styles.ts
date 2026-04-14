@@ -736,7 +736,7 @@ export const styles = StyleSheet.create({
     backgroundColor: colors.surface,
   },
   servicePickerAccent: {
-    width: 4,
+    width: 0,
     alignSelf: 'stretch',
   },
   servicePickerBody: {
@@ -774,6 +774,7 @@ export const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: spacing.sm,
     paddingVertical: spacing.xs,
+    minWidth: 80,
   },
   servicePickerBadgeText: {
     fontSize: 12,

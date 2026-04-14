@@ -26,6 +26,7 @@ import {useAppState} from '../../../state/appState';
 import {useAuth} from '../../../state/authProvider';
 import {useSelectedDevice} from '../../../hooks/useSelectedDevice';
 import {apiFetch} from '../../../lib/api';
+import {logger} from '../../../lib/logger';
 import {queryKeys} from '../../../lib/queryKeys';
 import {DISPLAY_WEEKDAYS, type DisplayWeekday} from '../../../lib/displays';
 import {styles} from './DashboardOverview.styles';
@@ -212,7 +213,10 @@ export default function DashboardOverviewScreen() {
       await updateDeviceSettings(selectedDevice.id, payload);
       const refreshResponse = await apiFetch(`/refresh/device/${selectedDevice.id}`, {method: 'POST'});
       if (!refreshResponse.ok) {
-        console.error('[QuietHours] Refresh failed:', refreshResponse.status);
+        logger.error('Quiet hours refresh failed', {
+          deviceId: selectedDevice.id,
+          status: refreshResponse.status,
+        });
       }
     },
     onSuccess: () => {
@@ -287,7 +291,7 @@ export default function DashboardOverviewScreen() {
     } finally {
       setDashboardRefreshing(false);
     }
-  }, [dashboardRefreshing, hasLinkedDevice, queryClient, selectedDevice.id, status]);
+  }, [dashboardRefreshing, dashboardScrollY, hasLinkedDevice, queryClient, selectedDevice.id, status]);
 
   const handleDashboardScrollEndDrag = useCallback(
     (event: NativeSyntheticEvent<NativeScrollEvent>) => {

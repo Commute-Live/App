@@ -18,7 +18,7 @@ const signal = {
   // Text hierarchy — Apple's exact light-mode values
   text: '#1D1D1F',
   textSecondary: 'rgba(29,29,31,0.55)',
-  textTertiary: 'rgba(29,29,31,0.32)',
+  textTertiary: 'rgba(29,29,31,0.42)',
   textDisabled: 'rgba(29,29,31,0.18)',
 
   // Semantic
@@ -123,10 +123,10 @@ export const colors = {
 };
 
 export const settingsSectionColors = {
-  account: {bg: 'rgba(245,163,32,0.10)', fg: signal.accentStrong},
-  device: {bg: 'rgba(26,127,60,0.09)', fg: '#1A7F3C'},
-  timeFormat: {bg: 'rgba(0,113,227,0.08)', fg: '#0071E3'},
-  notifications: {bg: 'rgba(245,163,32,0.09)', fg: signal.accent},
+  account: {bg: 'rgba(0,0,0,0.05)', fg: signal.textSecondary},
+  device: {bg: 'rgba(0,0,0,0.05)', fg: signal.textSecondary},
+  timeFormat: {bg: 'rgba(0,0,0,0.05)', fg: signal.textSecondary},
+  notifications: {bg: 'rgba(0,0,0,0.05)', fg: signal.textSecondary},
   privacy: {bg: 'rgba(0,0,0,0.05)', fg: signal.textSecondary},
   session: {bg: 'rgba(209,50,40,0.08)', fg: '#C0392B'},
 } as const;

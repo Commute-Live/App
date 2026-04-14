@@ -1,7 +1,7 @@
 import React, {createContext, useCallback, useContext, useEffect, useMemo, useState} from 'react';
 import {useMutation, useQuery, useQueryClient} from '@tanstack/react-query';
 import {GoogleSignin} from '../lib/googleSignIn';
-import {apiFetch} from '../lib/api';
+import {apiFetch, setSessionInvalidHandler} from '../lib/api';
 import {queryKeys} from '../lib/queryKeys';
 import {useAppState} from './appState';
 import {setDatadogUser, clearDatadogUser} from '../lib/datadog';
@@ -117,6 +117,15 @@ export function AuthProvider({children}: {children: React.ReactNode}) {
     clearAppAuth();
     clearDatadogUser();
   }, [clearAppAuth]);
+
+  useEffect(() => {
+    setSessionInvalidHandler(() => {
+      clearAuth();
+    });
+    return () => {
+      setSessionInvalidHandler(null);
+    };
+  }, [clearAuth]);
 
   const authMeQuery = useQuery({
     queryKey: queryKeys.auth.me,

@@ -7,6 +7,7 @@ import {deserializeUiDirection, getLocalDirectionLabel, getLocalDirectionTermina
 import {getTransitCityModule} from './transit/registry';
 import {validateScheduleWindow, type DisplayWeekday} from './schedules';
 import {colors} from '../theme';
+import {logger} from './logger';
 
 export {DISPLAY_WEEKDAYS} from './schedules';
 export type {DisplayWeekday} from './schedules';
@@ -684,7 +685,7 @@ export async function fetchDisplay(deviceId: string, displayId: string) {
 }
 
 function logDisplaySaveRequest(method: 'POST' | 'PATCH', path: string, payload: DisplaySavePayload) {
-  console.log('[display-save-request]', JSON.stringify({method, path, payload}, null, 2));
+  logger.info('Display save request', {method, path, payload});
 }
 
 export async function createDisplay(deviceId: string, payload: DisplaySavePayload) {
