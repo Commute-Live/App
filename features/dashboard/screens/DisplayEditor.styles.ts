@@ -1880,6 +1880,73 @@ export const styles = StyleSheet.create({
     paddingBottom: 0,
     backgroundColor: colors.surface,
   },
+  editorPreviewCarousel: {
+    gap: spacing.xs,
+  },
+  editorPreviewStage: {
+    position: 'relative',
+    overflow: 'visible',
+  },
+  editorPreviewPane: {
+    width: '100%',
+  },
+  editorPreviewPaneHidden: {
+    opacity: 0,
+  },
+  editorPreviewPaneFloating: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    right: 0,
+  },
+  editorPreviewNavRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.sm,
+    paddingHorizontal: spacing.xs,
+    paddingTop: spacing.xs,
+  },
+  editorPreviewArrowButton: {
+    width: 32,
+    height: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  editorPreviewNavCenter: {
+    flex: 1,
+    minWidth: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 2,
+  },
+  editorPreviewNavTitle: {
+    color: colors.text,
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  editorPreviewNavMeta: {
+    color: colors.textMuted,
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  editorPreviewDots: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.xs,
+    paddingBottom: spacing.xs,
+  },
+  editorPreviewDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: colors.border,
+  },
+  editorPreviewDotActive: {
+    width: 16,
+    backgroundColor: colors.accent,
+  },
   wizardPreviewEyebrow: {
     color: colors.info,
     fontSize: 11,

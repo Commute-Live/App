@@ -645,6 +645,7 @@ export const validateDisplayDraft = (payload: DisplaySavePayload) => {
 
   const lines = payload.config.lines ?? [];
   if (lines.length === 0) return 'Add at least one line';
+  if (lines.length > 6) return 'A display can include at most 6 lines';
 
   for (const [index, line] of lines.entries()) {
     if (!line.provider?.trim()) return `Line ${index + 1}: provider is required`;

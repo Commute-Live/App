@@ -1,5 +1,5 @@
-import React, {useEffect, useMemo, useRef, useState} from 'react';
-import {Alert, Animated, Easing, Image, Keyboard, KeyboardAvoidingView, LayoutAnimation, Modal, Platform, Pressable, ScrollView, Text, TextInput, UIManager, View} from 'react-native';
+import React, {useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState} from 'react';
+import {Alert, Animated, Easing, Image, Keyboard, KeyboardAvoidingView, LayoutAnimation, Modal, PanResponder, Platform, Pressable, ScrollView, Text, TextInput, UIManager, View} from 'react-native';
 import {SafeAreaView} from 'react-native-safe-area-context';
 import {Ionicons} from '@expo/vector-icons';
 import {useLocalSearchParams, useRouter} from 'expo-router';
@@ -114,15 +114,21 @@ const DEFAULT_NEXT_STOPS = 3;
 const MIN_NEXT_STOPS = 1;
 const MAX_NEXT_STOPS = 5;
 const DEFAULT_LAYOUT_SLOTS = 1;
+const MAX_LAYOUT_SLOTS = 6;
 const DEFAULT_DISPLAY_PRESET = 1;
 const DEFAULT_BRIGHTNESS = 40;
 const MIN_BRIGHTNESS = 10;
 const MAX_BRIGHTNESS = 100;
 const MIN_STEP_SWIPE_DISTANCE = 56;
-const LAYOUT_OPTIONS = [
-  {id: 'layout-1', slots: 1, label: '1 line'},
-  {id: 'layout-2', slots: 2, label: '2 lines'},
-];
+const LAYOUT_OPTIONS = Array.from({length: MAX_LAYOUT_SLOTS}, (_, index) => {
+  const slots = index + 1
+  return {
+    id: `layout-${slots}`,
+    slots,
+    label: `${slots} ${slots === 1 ? 'line' : 'lines'}`,
+  }
+})
+const lineSlotId = (index: number) => `line-${index + 1}`
 const withHexAlpha = (color: string, alpha: string) => (/^#[0-9a-f]{6}$/i.test(color) ? `${color}${alpha}` : color);
 const getCityAgencyPillPalette = (city: CityId) => {
   const brand = CITY_BRANDS[city];
@@ -145,6 +151,46 @@ const getMockStopName = (city: CityId, mode: ModeId) => {
   if (city === 'new-jersey' && mode === 'bus') return 'Newark Penn Station';
   return 'Times Sq–42 St';
 };
+
+const getBlankLine = (
+  city: CityId,
+  index: number,
+  stationsByMode: StationsByMode,
+  routesByStation: RoutesByStation,
+): LinePick => {
+  const seeded = ensureLineCount([], city, index + 1, stationsByMode, routesByStation)[index]
+  const base = seeded ?? ensureLineCount([], city, 1, stationsByMode, routesByStation)[0]
+  return normalizeLine(
+    city,
+    {
+      ...(base ?? {
+        id: lineSlotId(index),
+        mode: 'train' as ModeId,
+        stationId: '',
+        routeId: '',
+        direction: 'uptown' as Direction,
+        scrolling: false,
+        label: '',
+        secondaryLabel: '',
+        textColor: DEFAULT_TEXT_COLOR,
+        nextStops: DEFAULT_NEXT_STOPS,
+        displayFormat: 'single-line' as DisplayFormat,
+        primaryContent: 'destination' as DisplayContent,
+        secondaryContent: 'direction' as DisplayContent,
+      }),
+      id: lineSlotId(index),
+      routeId: '',
+      stationId: '',
+      scrolling: false,
+      label: '',
+      secondaryLabel: '',
+      primaryContent: 'destination',
+      secondaryContent: 'direction',
+    },
+    stationsByMode,
+    routesByStation,
+  )
+}
 
 const resolveRouteForLine = (
   city: CityId,
@@ -807,7 +853,7 @@ export default function DisplayEditorScreen() {
           ? getDisplayPresetFromPersistedType(Math.trunc(savedDisplayType))
           : DEFAULT_DISPLAY_PRESET;
         const citySavedLines = savedLines.filter((saved: any) => cityModeFromSavedLine(saved)?.city === city);
-        const nextLayoutSlots = citySavedLines.length > 1 ? 2 : 1;
+        const nextLayoutSlots = Math.max(1, Math.min(MAX_LAYOUT_SLOTS, citySavedLines.length || 1));
         let nextLines = ensureLineCount([], city, nextLayoutSlots, {}, {});
 
         setPresetName(typeof sourceDisplay.name === 'string' && sourceDisplay.name.trim().length > 0 ? sourceDisplay.name : 'Display 1');
@@ -826,7 +872,7 @@ export default function DisplayEditorScreen() {
         }
 
         if (citySavedLines.length > 0) {
-          const restoredLines: LinePick[] = citySavedLines.slice(0, 2).map((saved: any, i: number) => {
+          const restoredLines: LinePick[] = citySavedLines.slice(0, MAX_LAYOUT_SLOTS).map((saved: any, i: number) => {
             const displayFormat = normalizeDisplayFormat(saved.displayFormat);
             const mapping = cityModeFromSavedLine(saved);
             const mode: ModeId = mapping?.mode ?? 'train';
@@ -1332,115 +1378,89 @@ export default function DisplayEditorScreen() {
 
   const applyLayout = (slots: number) => {
     animateSectionLayout();
-    const safeSlots = slots === 1 ? 1 : 2;
-    const nextLines =
-      safeSlots === layoutSlots
-        ? lines
-        : safeSlots === 2 && layoutSlots === 1
-          ? ensureLineCount(lines, city, 2, stationsByMode, routesByStation).map((line, index) =>
-              index === 1
-                ? normalizeLine(
-                    city,
-                    {
-                      ...line,
-                      routeId: '',
-                      stationId: '',
-                      scrolling: false,
-                      label: '',
-                      secondaryLabel: '',
-                      primaryContent: 'destination',
-                      secondaryContent: 'direction',
-                    },
-                    stationsByMode,
-                    routesByStation,
-                  )
-                : line,
-            )
-          : ensureLineCount(lines, city, safeSlots, stationsByMode, routesByStation);
+    const safeSlots = Math.max(1, Math.min(MAX_LAYOUT_SLOTS, Math.round(slots || 1)));
+    const nextLines = ensureLineCount(lines, city, safeSlots, stationsByMode, routesByStation).map((line, index) =>
+      index >= layoutSlots
+        ? getBlankLine(city, index, stationsByMode, routesByStation)
+        : line,
+    )
 
     if (safeSlots !== layoutSlots) {
-      setLayoutSlots(safeSlots);
-      setLines(nextLines);
-      if (safeSlots === 2 && layoutSlots === 1) {
-        setDisplayPresetsByLine(prev => {
-          const next = {...prev};
-          delete next['line-2'];
-          return next;
-        });
-      }
+      const allowedIds = new Set(nextLines.map(line => line.id))
+      setLayoutSlots(safeSlots)
+      setLines(nextLines)
+      setDisplayPresetsByLine(prev =>
+        Object.fromEntries(Object.entries(prev).filter(([id]) => allowedIds.has(id))),
+      )
     }
 
     const nextSelectedLineId =
       selectedLineId && nextLines.some(line => line.id === selectedLineId)
         ? selectedLineId
-        : nextLines[0]?.id ?? 'line-1';
-    const nextSelectedLine = nextLines.find(line => line.id === nextSelectedLineId);
+        : nextLines[0]?.id ?? 'line-1'
+    const nextSelectedLine = nextLines.find(line => line.id === nextSelectedLineId)
 
-    setSelectedLineId(nextSelectedLineId);
-    setEditorStep(resolveEditorStepForLine(nextSelectedLine ?? null));
+    setSelectedLineId(nextSelectedLineId)
+    setEditorStep(resolveEditorStepForLine(nextSelectedLine ?? null))
 
-    void Haptics.selectionAsync();
+    void Haptics.selectionAsync()
   };
 
-  const expandToTwoStops = () => {
-    animateSectionLayout();
-    const seededLines = ensureLineCount(lines, city, 2, stationsByMode, routesByStation).map((line, index) =>
-      index === 1
-        ? normalizeLine(
-            city,
-            {
-              ...line,
-              routeId: '',
-              stationId: '',
-              scrolling: false,
-              label: '',
-              secondaryLabel: '',
-              primaryContent: 'destination',
-              secondaryContent: 'direction',
-            },
-            stationsByMode,
-            routesByStation,
-          )
+  const addLineToLayout = () => {
+    if (layoutSlots >= MAX_LAYOUT_SLOTS) return
+    animateSectionLayout()
+    const nextLayoutSlots = layoutSlots + 1
+    const nextLines = ensureLineCount(lines, city, nextLayoutSlots, stationsByMode, routesByStation).map((line, index) =>
+      index >= layoutSlots
+        ? getBlankLine(city, index, stationsByMode, routesByStation)
         : line,
-    );
-    const nextLines = seededLines;
-    const nextLine = nextLines[1] ?? nextLines[0];
-    setLayoutSlots(2);
-    setLines(nextLines);
-    setDisplayPresetsByLine(prev => {
-      const next = {...prev};
-      delete next['line-2'];
-      return next;
-    });
-    setSelectedLineId(nextLine?.id ?? 'line-2');
-    setEditorStep(nextLine?.routeId ? resolveEditorStepForLine(nextLine) : 'service');
-    void Haptics.selectionAsync();
-  };
+    )
+    const nextLine = nextLines[nextLayoutSlots - 1] ?? nextLines[0]
+    setLayoutSlots(nextLayoutSlots)
+    setLines(nextLines)
+    setSelectedLineId(nextLine?.id ?? lineSlotId(nextLayoutSlots - 1))
+    setEditorStep(nextLine?.routeId ? resolveEditorStepForLine(nextLine) : 'service')
+    void Haptics.selectionAsync()
+  }
 
   const removeStopFromLayout = (id: string) => {
-    if (layoutSlots < 2) return;
-    animateSectionLayout();
-    const remaining = lines.find(line => line.id !== id) ?? lines[0];
-    const normalizedRemaining = normalizeLine(city, {...remaining, id: 'line-1'}, stationsByMode, routesByStation);
-    const nextLines = ensureLineCount([normalizedRemaining], city, 1, stationsByMode, routesByStation);
-    const preservedPreset = displayPresetsByLine[remaining.id];
-    setLayoutSlots(1);
-    setLines(nextLines);
-    setDisplayPresetsByLine(preservedPreset != null ? {'line-1': preservedPreset} : {});
-    setSelectedLineId('line-1');
-    setEditorStep(resolveEditorStepForLine(nextLines[0] ?? null));
-    void Haptics.selectionAsync();
+    if (layoutSlots < 2) return
+    animateSectionLayout()
+    const remaining = lines.filter(line => line.id !== id)
+    const nextLines = remaining.map((line, index) =>
+      normalizeLine(city, {...line, id: lineSlotId(index)}, stationsByMode, routesByStation),
+    )
+    const nextPresets = remaining.reduce<Record<string, number>>((acc, line, index) => {
+      const preset = displayPresetsByLine[line.id]
+      if (preset != null) {
+        acc[lineSlotId(index)] = preset
+      }
+      return acc
+    }, {})
+    const nextSelectedLineId =
+      selectedLineId === id
+        ? nextLines[Math.min(nextLines.length - 1, lines.findIndex(line => line.id === id))]?.id ?? 'line-1'
+        : nextLines.find(line => line.id === selectedLineId)?.id ?? nextLines[0]?.id ?? 'line-1'
+    const nextSelectedLine = nextLines.find(line => line.id === nextSelectedLineId) ?? nextLines[0] ?? null
+
+    setLayoutSlots(nextLines.length)
+    setLines(nextLines)
+    setDisplayPresetsByLine(nextPresets)
+    setSelectedLineId(nextSelectedLineId)
+    setEditorStep(resolveEditorStepForLine(nextSelectedLine))
+    void Haptics.selectionAsync()
   };
 
   const advanceToNextSlotIfNeeded = (completedLineId: string) => {
-    if (layoutSlots < 2 || completedLineId !== lines[0]?.id) return false;
+    const completedIndex = lines.findIndex(line => line.id === completedLineId)
+    if (completedIndex < 0) return false
 
-    const nextLine = lines[1];
-    if (!nextLine || (nextLine.routeId && nextLine.stationId)) return false;
+    const nextLine = lines.slice(completedIndex + 1).find(line => !line.routeId || !line.stationId)
+    if (!nextLine) return false
 
-    setSelectedLineId(nextLine.id);
-    setEditorStep(nextLine.routeId ? resolveEditorStepForLine(nextLine) : 'service');
-    return true;
+    setSelectedLineId(nextLine.id)
+    setEditorStep(nextLine.routeId ? resolveEditorStepForLine(nextLine) : 'service')
+    return true
   };
 
   const updateLine = (id: string, next: Partial<LinePick>) => {
@@ -1584,6 +1604,11 @@ export default function DisplayEditorScreen() {
       }),
     [arrivals, city, displayPresetsByLine, editorStep, lines, linesByMode, liveDisplayType, routesByStation, selectedLineId, stationsByLine, stationsByMode],
   );
+  const previewEmptyMessage =
+    editorStep === 'lines' && !lines.some(line => line.routeId)
+      ? 'Select a line below to preview'
+      : undefined;
+  const previewHasMultipleDevices = !previewEmptyMessage && previewSlots.length > 2;
 
   const headerAnimatedStyle = {
     opacity: headerEnter,
@@ -1734,7 +1759,7 @@ export default function DisplayEditorScreen() {
     const nextStep = wizardStepDefs[currentWizardStepIndex + 1];
     return nextStep?.reachable ? nextStep.id : null;
   })();
-  const canSwipeBetweenSteps = true;
+  const canSwipeBetweenSteps = !previewHasMultipleDevices;
   const handleSwipeStep = (targetStep: EditorStep | null) => {
     if (!targetStep) return;
     setEditorStep(targetStep);
@@ -1803,19 +1828,13 @@ export default function DisplayEditorScreen() {
         {/* ── Fixed preview — always visible, never scrolls ─────────────── */}
         {editorStep !== 'city' && editorStep !== 'service' ? (
           <Animated.View style={[styles.wizardFixedPreview, previewAnimatedStyle]}>
-            <DashboardPreviewSection
+            <EditorPreviewCarousel
               slots={previewSlots}
               displayType={getPersistedDisplayType(liveDisplayType)}
               onSelectSlot={handleSelectSlotForEdit}
               onReorderSlot={reorderLineByHold}
               onDragStateChange={setPreviewDragging}
-              showHint={false}
-              showGlow={false}
-              emptyMessage={
-                editorStep === 'lines' && !lines.some(line => line.routeId)
-                  ? 'Select a line below to preview'
-                  : undefined
-              }
+              emptyMessage={previewEmptyMessage}
             />
           </Animated.View>
         ) : null}
@@ -1975,8 +1994,8 @@ export default function DisplayEditorScreen() {
                 success={saveDone}
                 disabled={!canSaveToDevice}
                 message={liveStatusText}
-                secondaryActionLabel={layoutSlots < 2 && selectedLinePresetConfirmed ? 'Add Another Line' : undefined}
-                onSecondaryActionPress={layoutSlots < 2 && selectedLinePresetConfirmed ? expandToTwoStops : undefined}
+                secondaryActionLabel={layoutSlots < MAX_LAYOUT_SLOTS && selectedLinePresetConfirmed ? 'Add Another Line' : undefined}
+                onSecondaryActionPress={layoutSlots < MAX_LAYOUT_SLOTS && selectedLinePresetConfirmed ? addLineToLayout : undefined}
                 dangerActionLabel={layoutSlots > 1 && selectedLine ? 'Remove a Line' : undefined}
                 onDangerActionPress={layoutSlots > 1 && selectedLine ? () => removeStopFromLayout(selectedLine.id) : undefined}
                 onPress={handleSave}
@@ -1999,17 +2018,263 @@ export default function DisplayEditorScreen() {
               layoutSlots={layoutSlots}
               onClose={() => setShowLayoutSelector(false)}
               onSelect={slots => {
-                setShowLayoutSelector(false);
-                if (layoutSlots === 2 && slots === 1 && selectedLineId === 'line-2') {
-                  removeStopFromLayout('line-2');
-                  return;
-                }
-                applyLayout(slots);
+                setShowLayoutSelector(false)
+                applyLayout(slots)
               }}
             />
           </SafeAreaView>
       </PanGestureHandler>
     </GestureHandlerRootView>
+  );
+}
+
+function EditorPreviewCarousel({
+  slots,
+  displayType,
+  onSelectSlot,
+  onReorderSlot,
+  onDragStateChange,
+  emptyMessage,
+}: {
+  slots: Display3DSlot[];
+  displayType: number;
+  onSelectSlot: (id: string) => void;
+  onReorderSlot: (id: string) => void;
+  onDragStateChange?: (dragging: boolean) => void;
+  emptyMessage?: string;
+}) {
+  const deviceGroups = useMemo(() => {
+    if (emptyMessage || slots.length <= 2) return [slots];
+    const groups: Display3DSlot[][] = [];
+    for (let index = 0; index < slots.length; index += 2) {
+      groups.push(slots.slice(index, index + 2));
+    }
+    return groups;
+  }, [emptyMessage, slots]);
+  const [carouselIndex, setCarouselIndex] = useState(0);
+  const [carouselDirection, setCarouselDirection] = useState<1 | -1>(1);
+  const [previewStageWidth, setPreviewStageWidth] = useState(0);
+  const [previewTransition, setPreviewTransition] = useState<{
+    outgoing: Display3DSlot[];
+    incoming: Display3DSlot[];
+    direction: 1 | -1;
+  } | null>(null);
+  const previewTrackAnim = useRef(new Animated.Value(1)).current;
+  const previousGroupRef = useRef<Display3DSlot[] | null>(null);
+  const previousIndexRef = useRef<number | null>(null);
+  const selectedSlotIndex = slots.findIndex(slot => slot.selected);
+  const hasMultipleDevices = !emptyMessage && deviceGroups.length > 1;
+  const safeIndex = hasMultipleDevices ? Math.min(carouselIndex, deviceGroups.length - 1) : 0;
+  const currentGroup = deviceGroups[safeIndex] ?? slots;
+  const currentGroupKey = currentGroup.map(slot => slot.id).join('|');
+  const previewTravelDistance = (previewStageWidth > 0 ? previewStageWidth : 320) + 24;
+
+  useEffect(() => {
+    if (!hasMultipleDevices) {
+      setCarouselIndex(0);
+      return;
+    }
+
+    if (selectedSlotIndex >= 0) {
+      const nextIndex = Math.floor(selectedSlotIndex / 2);
+      if (nextIndex !== safeIndex) {
+        setCarouselDirection(nextIndex > safeIndex ? 1 : -1);
+        setCarouselIndex(nextIndex);
+      }
+      return;
+    }
+
+    if (carouselIndex >= deviceGroups.length) {
+      setCarouselIndex(deviceGroups.length - 1);
+    }
+  }, [carouselIndex, deviceGroups.length, hasMultipleDevices, safeIndex, selectedSlotIndex]);
+
+  useLayoutEffect(() => {
+    if (!hasMultipleDevices) {
+      previousIndexRef.current = null;
+      previousGroupRef.current = currentGroup;
+      setPreviewTransition(null);
+      previewTrackAnim.setValue(1);
+      return;
+    }
+
+    if (previousIndexRef.current === null) {
+      previousIndexRef.current = safeIndex;
+      previousGroupRef.current = currentGroup;
+      previewTrackAnim.setValue(1);
+      return;
+    }
+
+    if (previousIndexRef.current === safeIndex) {
+      previousGroupRef.current = currentGroup;
+      return;
+    }
+
+    const outgoingGroup = previousGroupRef.current;
+    previousIndexRef.current = safeIndex;
+    previousGroupRef.current = currentGroup;
+
+    if (!outgoingGroup) {
+      setPreviewTransition(null);
+      previewTrackAnim.setValue(1);
+      return;
+    }
+
+    setPreviewTransition({
+      outgoing: outgoingGroup,
+      incoming: currentGroup,
+      direction: carouselDirection,
+    });
+    previewTrackAnim.stopAnimation();
+    previewTrackAnim.setValue(0);
+    Animated.timing(previewTrackAnim, {
+      toValue: 1,
+      duration: 260,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: true,
+    }).start(({finished}) => {
+      if (finished) {
+        setPreviewTransition(current =>
+          current && current.incoming.map(slot => slot.id).join('|') === currentGroupKey ? null : current,
+        );
+      }
+    });
+  }, [carouselDirection, currentGroup, currentGroupKey, hasMultipleDevices, previewTrackAnim, safeIndex]);
+
+  const goTo = useCallback(
+    (index: number) => {
+      if (!hasMultipleDevices) return;
+      const normalizedIndex = (index + deviceGroups.length) % deviceGroups.length;
+      if (normalizedIndex !== safeIndex) {
+        const wrappedForward = safeIndex === deviceGroups.length - 1 && normalizedIndex === 0;
+        const wrappedBackward = safeIndex === 0 && normalizedIndex === deviceGroups.length - 1;
+        setCarouselDirection(
+          wrappedForward ? 1 : wrappedBackward ? -1 : normalizedIndex > safeIndex ? 1 : -1,
+        );
+      }
+      setCarouselIndex(normalizedIndex);
+    },
+    [deviceGroups.length, hasMultipleDevices, safeIndex],
+  );
+
+  const moveCarousel = useCallback(
+    (direction: 1 | -1) => {
+      if (!hasMultipleDevices) return;
+      goTo(safeIndex + direction);
+    },
+    [goTo, hasMultipleDevices, safeIndex],
+  );
+
+  const displaySwipeResponder = useMemo(
+    () =>
+      PanResponder.create({
+        onMoveShouldSetPanResponder: (_event, gestureState) =>
+          hasMultipleDevices &&
+          Math.abs(gestureState.dx) > 14 &&
+          Math.abs(gestureState.dx) > Math.abs(gestureState.dy) * 1.2,
+        onPanResponderRelease: (_event, gestureState) => {
+          if (Math.abs(gestureState.dx) < 40) return;
+          moveCarousel(gestureState.dx < 0 ? 1 : -1);
+        },
+      }),
+    [hasMultipleDevices, moveCarousel],
+  );
+
+  const renderPreviewGroup = (group: Display3DSlot[]) => (
+    <DashboardPreviewSection
+      slots={group}
+      displayType={displayType}
+      onSelectSlot={onSelectSlot}
+      onReorderSlot={onReorderSlot}
+      onDragStateChange={onDragStateChange}
+      showHint={false}
+      showGlow={false}
+      emptyMessage={emptyMessage}
+    />
+  );
+
+  return (
+    <View style={styles.editorPreviewCarousel}>
+      <Animated.View {...(hasMultipleDevices ? displaySwipeResponder.panHandlers : {})}>
+        <View
+          style={styles.editorPreviewStage}
+          onLayout={event => setPreviewStageWidth(event.nativeEvent.layout.width)}>
+          <View style={[styles.editorPreviewPane, previewTransition && styles.editorPreviewPaneHidden]}>
+            {renderPreviewGroup(currentGroup)}
+          </View>
+          {previewTransition ? (
+            <>
+              <Animated.View
+                style={[
+                  styles.editorPreviewPaneFloating,
+                  {
+                    transform: [
+                      {
+                        translateX: previewTrackAnim.interpolate({
+                          inputRange: [0, 1],
+                          outputRange: [
+                            0,
+                            previewTransition.direction > 0 ? -previewTravelDistance : previewTravelDistance,
+                          ],
+                        }),
+                      },
+                    ],
+                  },
+                ]}>
+                {renderPreviewGroup(previewTransition.outgoing)}
+              </Animated.View>
+              <Animated.View
+                style={[
+                  styles.editorPreviewPaneFloating,
+                  {
+                    transform: [
+                      {
+                        translateX: previewTrackAnim.interpolate({
+                          inputRange: [0, 1],
+                          outputRange: [
+                            previewTransition.direction > 0 ? previewTravelDistance : -previewTravelDistance,
+                            0,
+                          ],
+                        }),
+                      },
+                    ],
+                  },
+                ]}>
+                {renderPreviewGroup(previewTransition.incoming)}
+              </Animated.View>
+            </>
+          ) : null}
+        </View>
+      </Animated.View>
+
+      {hasMultipleDevices ? (
+        <>
+          <View style={styles.editorPreviewNavRow}>
+            <Pressable style={styles.editorPreviewArrowButton} onPress={() => goTo(safeIndex - 1)}>
+              <Ionicons name="chevron-back" size={18} color={colors.textMuted} />
+            </Pressable>
+            <View style={styles.editorPreviewNavCenter}>
+              <Text style={styles.editorPreviewNavTitle}>Device {safeIndex + 1}</Text>
+              <Text style={styles.editorPreviewNavMeta}>
+                {currentGroup.length} {currentGroup.length === 1 ? 'line' : 'lines'}
+              </Text>
+            </View>
+            <Pressable style={styles.editorPreviewArrowButton} onPress={() => goTo(safeIndex + 1)}>
+              <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+            </Pressable>
+          </View>
+          <View style={styles.editorPreviewDots}>
+            {deviceGroups.map((_, index) => (
+              <Pressable
+                key={`editor-preview-dot-${index + 1}`}
+                style={[styles.editorPreviewDot, index === safeIndex && styles.editorPreviewDotActive]}
+                onPress={() => goTo(index)}
+              />
+            ))}
+          </View>
+        </>
+      ) : null}
+    </View>
   );
 }
 
@@ -2063,7 +2328,7 @@ function TopBar({
 
         <View style={styles.topBarSideRight}>
           <Pressable style={styles.layoutPillTopRight} onPress={onLayoutOpen}>
-            <Text style={styles.layoutPillTopRightText}>{layoutSlots === 1 ? '1 line' : '2 lines'}</Text>
+            <Text style={styles.layoutPillTopRightText}>{layoutSlots} {layoutSlots === 1 ? 'line' : 'lines'}</Text>
             <Text style={styles.layoutPillChevron}>⌄</Text>
           </Pressable>
         </View>
@@ -3087,7 +3352,7 @@ function LayoutSlotsPickerStep({
   return (
     <View style={styles.stepSection}>
       <Text style={styles.stepTitle}>How many stops?</Text>
-      <Text style={styles.stepSubtitle}>Choose whether the device should show one line or two.</Text>
+      <Text style={styles.stepSubtitle}>Choose how many lines to save. The device will sort them by soonest arrival and rotate automatically.</Text>
       <View style={styles.choiceList}>
         {LAYOUT_OPTIONS.map(option => {
           const active = option.slots === selectedSlots;
@@ -3099,7 +3364,7 @@ function LayoutSlotsPickerStep({
               <View style={styles.choiceRowCopy}>
                 <Text style={[styles.choiceRowLabel, active && styles.choiceRowLabelActive]}>{option.label}</Text>
                 <Text style={[styles.choiceRowHint, active && styles.choiceRowHintActive]}>
-                  {option.slots === 1 ? 'Single row with one saved service.' : 'Two active rows, one per saved service.'}
+                  {option.slots === 1 ? 'Save one line and keep one active row on the display.' : `Save ${option.slots} lines and rotate through them two rows at a time.`}
                 </Text>
               </View>
               <View style={[styles.choiceRowCheck, active && styles.choiceRowCheckActive]}>
