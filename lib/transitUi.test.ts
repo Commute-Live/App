@@ -1,6 +1,10 @@
 // @ts-nocheck
 import {describe, expect, test} from 'bun:test';
-import {getLocalDirectionRequestId} from './transitUi';
+import {
+  formatLocalRoutePickerLabel,
+  getLocalDirectionRequestId,
+  getLocalLineLabel,
+} from './transitUi';
 
 const makeDirection = (id: string, uiKey: string) => ({
   id,
@@ -29,5 +33,17 @@ describe('transit direction request ids', () => {
   test('falls back to serialized city direction ids when metadata is missing', () => {
     expect(getLocalDirectionRequestId('new-york', 'train', 'uptown')).toBe('N');
     expect(getLocalDirectionRequestId('boston', 'commuter-rail', 'inbound')).toBe('1');
+  });
+});
+
+describe('New York commuter rail labels', () => {
+  test('maps numeric LIRR ids to branch names', () => {
+    expect(formatLocalRoutePickerLabel('new-york', 'lirr', '9', '9')).toBe('Port Washington Branch');
+    expect(getLocalLineLabel('new-york', 'lirr', '9', '9')).toBe('Port Washington');
+  });
+
+  test('preserves explicit backend labels when present', () => {
+    expect(formatLocalRoutePickerLabel('new-york', 'lirr', '9', 'Port Washington Branch')).toBe('Port Washington Branch');
+    expect(getLocalLineLabel('new-york', 'lirr', '9', 'Port Washington Branch')).toBe('Port Washington');
   });
 });
