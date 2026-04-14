@@ -125,7 +125,8 @@ export default function Display3DPreview({
   emptyMessage,
   showGlow = true,
 }: Props) {
-  const compact = slots.length > 1 || displayType >= 3;
+  const useTwoRowSingleLineLayout = slots.length === 1;
+  const compact = slots.length > 1 || useTwoRowSingleLineLayout || displayType >= 3;
   const safeBrightness = Math.max(0, Math.min(100, brightness));
   const brightnessOverlayOpacity = ((100 - safeBrightness) / 100) * 0.65;
   const [draggingId, setDraggingId] = useState<string | null>(null);
@@ -216,95 +217,98 @@ export default function Display3DPreview({
               <Text style={styles.emptyStateText}>{emptyMessage}</Text>
             </View>
           ) : (
-            slots.map(slot => (
-              <Pressable
-                key={slot.id}
-                style={[
-                  styles.slot,
-                  slot.selected && styles.slotActive,
-                  compact && styles.slotCompact,
-                  draggingId === slot.id && styles.slotDragging,
-                  draggingId === slot.id && {transform: [{translateY: dragOffsetY}]},
-                ]}
-                onPress={() => onSelectSlot(slot.id)}
-                onPressIn={event => handlePressIn(slot.id, event.nativeEvent.pageY)}
-                onLongPress={() => handleLongPress(slot.id)}
-                onTouchMove={(event: GestureResponderEvent) => handleTouchMove(slot.id, event.nativeEvent.pageY)}
-                onPressOut={endDrag}
-                delayLongPress={260}>
-                <View style={[styles.slotLead, compact && styles.slotLeadCompact]}>
-                  {slot.badgeShape === 'bar' ? (
-                    <View style={[styles.routeBadgeBarWrap, compact && styles.routeBadgeBarWrapCompact]}>
-                      <View style={[styles.routeBadgeBar, compact && styles.routeBadgeBarCompact, {backgroundColor: slot.color}]} />
-                    </View>
-                  ) : (
-                    <View
-                      style={[
-                        styles.routeBadge,
-                        compact && styles.routeBadgeCompact,
-                        slot.badgeShape === 'pill' && styles.routeBadgePill,
-                        compact && slot.badgeShape === 'pill' && styles.routeBadgePillCompact,
-                        slot.badgeShape === 'rail' && styles.routeBadgeRail,
-                        compact && slot.badgeShape === 'rail' && styles.routeBadgeRailCompact,
-                        {backgroundColor: slot.color},
-                      ]}>
-                      <Text
-                        adjustsFontSizeToFit
-                        minimumFontScale={0.72}
-                        numberOfLines={1}
+            <>
+              {slots.map(slot => (
+                <Pressable
+                  key={slot.id}
+                  style={[
+                    styles.slot,
+                    slot.selected && styles.slotActive,
+                    compact && styles.slotCompact,
+                    draggingId === slot.id && styles.slotDragging,
+                    draggingId === slot.id && {transform: [{translateY: dragOffsetY}]},
+                  ]}
+                  onPress={() => onSelectSlot(slot.id)}
+                  onPressIn={event => handlePressIn(slot.id, event.nativeEvent.pageY)}
+                  onLongPress={() => handleLongPress(slot.id)}
+                  onTouchMove={(event: GestureResponderEvent) => handleTouchMove(slot.id, event.nativeEvent.pageY)}
+                  onPressOut={endDrag}
+                  delayLongPress={260}>
+                  <View style={[styles.slotLead, compact && styles.slotLeadCompact]}>
+                    {slot.badgeShape === 'bar' ? (
+                      <View style={[styles.routeBadgeBarWrap, compact && styles.routeBadgeBarWrapCompact]}>
+                        <View style={[styles.routeBadgeBar, compact && styles.routeBadgeBarCompact, {backgroundColor: slot.color}]} />
+                      </View>
+                    ) : (
+                      <View
                         style={[
-                          styles.routeBadgeText,
-                          slot.badgeShape === 'pill' && styles.routeBadgeTextPill,
-                          compact && styles.routeBadgeTextCompact,
-                          compact && slot.badgeShape === 'pill' && styles.routeBadgeTextPillCompact,
-                          slot.badgeShape === 'rail' && styles.routeBadgeTextRail,
-                          compact && slot.badgeShape === 'rail' && styles.routeBadgeTextRailCompact,
-                          {color: slot.badgeShape === 'circle' ? '#FFFFFF' : slot.textColor},
+                          styles.routeBadge,
+                          compact && styles.routeBadgeCompact,
+                          slot.badgeShape === 'pill' && styles.routeBadgePill,
+                          compact && slot.badgeShape === 'pill' && styles.routeBadgePillCompact,
+                          slot.badgeShape === 'rail' && styles.routeBadgeRail,
+                          compact && slot.badgeShape === 'rail' && styles.routeBadgeRailCompact,
+                          {backgroundColor: slot.color},
                         ]}>
-                        {slot.routeLabel}
+                        <Text
+                          adjustsFontSizeToFit
+                          minimumFontScale={0.72}
+                          numberOfLines={1}
+                          style={[
+                            styles.routeBadgeText,
+                            slot.badgeShape === 'pill' && styles.routeBadgeTextPill,
+                            compact && styles.routeBadgeTextCompact,
+                            compact && slot.badgeShape === 'pill' && styles.routeBadgeTextPillCompact,
+                            slot.badgeShape === 'rail' && styles.routeBadgeTextRail,
+                            compact && slot.badgeShape === 'rail' && styles.routeBadgeTextRailCompact,
+                            {color: slot.badgeShape === 'circle' ? '#FFFFFF' : slot.textColor},
+                          ]}>
+                          {slot.routeLabel}
+                        </Text>
+                      </View>
+                    )}
+                  </View>
+                  <View style={styles.slotBody}>
+                    {slot.stopName ? (
+                      <MarqueeText
+                        text={slot.stopName}
+                        textStyle={[
+                          styles.slotTitle,
+                          compact && styles.slotTitleCompact,
+                        ]}
+                        enabled={slot.scrollLabel === true}
+                        scrollClock={hasMultipleScrolling && slot.scrollLabel ? scrollClock : undefined}
+                      />
+                    ) : (
+                      <View style={[styles.slotTitlePlaceholder, compact && styles.slotTitlePlaceholderCompact]} />
+                    )}
+                    {slot.subLine ? (
+                      <Text
+                        style={[
+                          styles.slotSubLine,
+                          compact && styles.slotSubLineCompact,
+                          slot.subLineColor ? {color: slot.subLineColor} : null,
+                        ]}
+                        numberOfLines={1}>
+                        {slot.subLine}
                       </Text>
-                    </View>
-                  )}
-                </View>
-                <View style={styles.slotBody}>
-                  {slot.stopName ? (
-                    <MarqueeText
-                      text={slot.stopName}
-                      textStyle={[
-                        styles.slotTitle,
-                        compact && styles.slotTitleCompact,
-                      ]}
-                      enabled={slot.scrollLabel === true}
-                      scrollClock={hasMultipleScrolling && slot.scrollLabel ? scrollClock : undefined}
-                    />
-                  ) : (
-                    <View style={[styles.slotTitlePlaceholder, compact && styles.slotTitlePlaceholderCompact]} />
-                  )}
-                  {slot.subLine ? (
+                    ) : null}
+                  </View>
+                  <View style={[styles.slotTrailing, compact && styles.slotTrailingCompact]}>
                     <Text
                       style={[
-                        styles.slotSubLine,
-                        compact && styles.slotSubLineCompact,
-                        slot.subLineColor ? {color: slot.subLineColor} : null,
+                        styles.slotTimes,
+                        compact && styles.slotTimesCompact,
+                        slot.timesColor ? {color: slot.timesColor} : null,
                       ]}
                       numberOfLines={1}>
-                      {slot.subLine}
+                      {slot.times}
                     </Text>
-                  ) : null}
-                </View>
-                <View style={[styles.slotTrailing, compact && styles.slotTrailingCompact]}>
-                  <Text
-                    style={[
-                      styles.slotTimes,
-                      compact && styles.slotTimesCompact,
-                      slot.timesColor ? {color: slot.timesColor} : null,
-                    ]}
-                    numberOfLines={1}>
-                    {slot.times}
-                  </Text>
-                </View>
-              </Pressable>
-            ))
+                  </View>
+                </Pressable>
+              ))}
+              {useTwoRowSingleLineLayout ? <View style={[styles.slot, styles.slotSpacer, compact && styles.slotCompact]} /> : null}
+            </>
           )}
           {brightnessOverlayOpacity > 0 ? (
             <View pointerEvents="none" style={[styles.brightnessOverlay, {opacity: brightnessOverlayOpacity}]} />
@@ -409,6 +413,10 @@ const styles = StyleSheet.create({
     minHeight: 0,
     paddingHorizontal: 5,
     paddingVertical: 10,
+  },
+  slotSpacer: {
+    borderWidth: 0,
+    backgroundColor: 'transparent',
   },
   slotActive: {
     backgroundColor: colors.displaySlotActiveSurface,
