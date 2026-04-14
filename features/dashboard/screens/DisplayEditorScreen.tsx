@@ -2062,6 +2062,7 @@ function EditorPreviewCarousel({
   const previewTrackAnim = useRef(new Animated.Value(1)).current;
   const previousGroupRef = useRef<Display3DSlot[] | null>(null);
   const previousIndexRef = useRef<number | null>(null);
+  const previousSelectedSlotIndexRef = useRef<number | null>(null);
   const selectedSlotIndex = slots.findIndex(slot => slot.selected);
   const hasMultipleDevices = !emptyMessage && deviceGroups.length > 1;
   const safeIndex = hasMultipleDevices ? Math.min(carouselIndex, deviceGroups.length - 1) : 0;
@@ -2072,10 +2073,12 @@ function EditorPreviewCarousel({
   useEffect(() => {
     if (!hasMultipleDevices) {
       setCarouselIndex(0);
+      previousSelectedSlotIndexRef.current = selectedSlotIndex;
       return;
     }
 
-    if (selectedSlotIndex >= 0) {
+    if (selectedSlotIndex >= 0 && previousSelectedSlotIndexRef.current !== selectedSlotIndex) {
+      previousSelectedSlotIndexRef.current = selectedSlotIndex;
       const nextIndex = Math.floor(selectedSlotIndex / 2);
       if (nextIndex !== safeIndex) {
         setCarouselDirection(nextIndex > safeIndex ? 1 : -1);
@@ -2083,6 +2086,8 @@ function EditorPreviewCarousel({
       }
       return;
     }
+
+    previousSelectedSlotIndexRef.current = selectedSlotIndex;
 
     if (carouselIndex >= deviceGroups.length) {
       setCarouselIndex(deviceGroups.length - 1);
@@ -2142,15 +2147,11 @@ function EditorPreviewCarousel({
   }, [carouselDirection, currentGroup, currentGroupKey, hasMultipleDevices, previewTrackAnim, safeIndex]);
 
   const goTo = useCallback(
-    (index: number) => {
+    (index: number, directionHint?: 1 | -1) => {
       if (!hasMultipleDevices) return;
       const normalizedIndex = (index + deviceGroups.length) % deviceGroups.length;
       if (normalizedIndex !== safeIndex) {
-        const wrappedForward = safeIndex === deviceGroups.length - 1 && normalizedIndex === 0;
-        const wrappedBackward = safeIndex === 0 && normalizedIndex === deviceGroups.length - 1;
-        setCarouselDirection(
-          wrappedForward ? 1 : wrappedBackward ? -1 : normalizedIndex > safeIndex ? 1 : -1,
-        );
+        setCarouselDirection(directionHint ?? (normalizedIndex > safeIndex ? 1 : -1));
       }
       setCarouselIndex(normalizedIndex);
     },
@@ -2160,7 +2161,7 @@ function EditorPreviewCarousel({
   const moveCarousel = useCallback(
     (direction: 1 | -1) => {
       if (!hasMultipleDevices) return;
-      goTo(safeIndex + direction);
+      goTo(safeIndex + direction, direction);
     },
     [goTo, hasMultipleDevices, safeIndex],
   );
