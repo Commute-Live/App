@@ -116,6 +116,9 @@ const sortDisplaysForCarousel = (items: DeviceDisplay[], activeDisplayId: string
     return a.name.localeCompare(b.name);
   });
 
+const getHiddenDisplayLineCount = (display: DeviceDisplay | null) =>
+  Math.max(0, (display?.config.lines?.length ?? 0) - 2);
+
 type DisplayManagementSectionProps = {
   onSwipeEnabledChange?: (enabled: boolean) => void;
 };
@@ -392,6 +395,7 @@ export default function DisplayManagementSection({
   const currentBrightness = currentDisplay
     ? brightnessOverrides[currentDisplay.displayId] ?? currentDisplay.config.brightness ?? 60
     : 60;
+  const currentDisplayHiddenLineCount = getHiddenDisplayLineCount(currentDisplay);
   const isBrightnessControlExpanded = currentDisplay ? !!expandedBrightnessControls[currentDisplay.displayId] : false;
   const showSetActiveButton = !!currentDisplay && currentDisplay.displayId !== activeDisplayId;
   const effectivePreviewWidth = previewStageWidth > 0 ? previewStageWidth : 320;
@@ -775,7 +779,14 @@ export default function DisplayManagementSection({
                     <Ionicons name="chevron-back" size={22} color={colors.textMuted} />
                   </Pressable>
                   <View style={styles.navTitleBlock}>
-                    <Text style={styles.navDisplayName} numberOfLines={1}>{currentDisplay.name}</Text>
+                    <View style={styles.navDisplayNameRow}>
+                      <Text style={styles.navDisplayName} numberOfLines={1}>{currentDisplay.name}</Text>
+                      {currentDisplayHiddenLineCount > 0 ? (
+                        <View style={styles.navOverflowBadge}>
+                          <Text style={styles.navOverflowBadgeText}>+{currentDisplayHiddenLineCount}</Text>
+                        </View>
+                      ) : null}
+                    </View>
                     {currentDisplay.displayId === activeDisplayId ? (
                       <View style={styles.navActiveLabelCompact}>
                         <View style={styles.navActiveDotCompact} />
@@ -1302,18 +1313,36 @@ const styles = StyleSheet.create({
     gap: spacing.xxs,
     paddingHorizontal: spacing.xs,
   },
+  navDisplayNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.xs,
+    maxWidth: '100%',
+  },
   navDisplayName: {
     color: colors.text,
     fontSize: 16,
     fontWeight: '700',
     textAlign: 'center',
-    width: '100%',
+    maxWidth: '100%',
   },
-  navDisplayCity: {
+  navOverflowBadge: {
+    minWidth: 28,
+    height: 22,
+    borderRadius: radii.sm,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.card,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: spacing.xs,
+    flexShrink: 0,
+  },
+  navOverflowBadgeText: {
     color: colors.textSecondary,
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '600',
-    textAlign: 'center',
   },
   navActiveLabelCompact: {
     flexDirection: 'row',

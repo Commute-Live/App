@@ -55,6 +55,7 @@ export type LiveArrivalLookup = {
 
 export type PreviewSlotOptions = {
   showDirectionFallback?: boolean;
+  maxSlots?: number;
 };
 
 type PreviewSlot = {
@@ -567,7 +568,10 @@ export const toPreviewSlots = (
   options: PreviewSlotOptions = {},
 ): PreviewSlot[] => {
   const showDirectionFallback = options.showDirectionFallback ?? true;
-  return (display.config.lines ?? []).slice(0, 2).map((line, index) => {
+  const maxSlots = Number.isFinite(options.maxSlots)
+    ? Math.max(1, Math.trunc(options.maxSlots ?? 0))
+    : 2;
+  return (display.config.lines ?? []).slice(0, maxSlots).map((line, index) => {
     const city = providerToCity(line.provider ?? null);
     const mode = inferUiModeFromProvider(line.provider, line.stop, line.line, line.providerMode);
     const lineColors = city ? (CITY_LINE_COLORS[city] ?? {}) : {};
