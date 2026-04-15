@@ -8,50 +8,24 @@ import type {
 } from '../frontendTypes';
 
 type ChicagoMode = Extract<ModeId, 'train' | 'bus'>;
-type ChicagoDirection = Extract<UiDirection, 'dir0' | 'dir1'>;
-
-type DirectionCopy = Record<ChicagoDirection, Record<DirectionVariant, string>>;
-
-const CTA_TRAIN_DIRECTION_COPY: Record<string, DirectionCopy> = {
-  BLUE: {
-    dir0: {toggle: "O'Hare", bound: "O'Hare-bound", summary: "O'Hare"},
-    dir1: {toggle: 'Forest Park', bound: 'Forest Park-bound', summary: 'Forest Park'},
-  },
-  RED: {
-    dir0: {toggle: 'Howard', bound: 'Howard-bound', summary: 'Howard'},
-    dir1: {toggle: '95th', bound: '95th-bound', summary: '95th'},
-  },
-  BRN: {
-    dir0: {toggle: 'Kimball', bound: 'Kimball-bound', summary: 'Kimball'},
-    dir1: {toggle: 'Loop', bound: 'Loop-bound', summary: 'Loop'},
-  },
-  G: {
-    dir0: {toggle: 'Harlem/Lake', bound: 'Harlem/Lake-bound', summary: 'Harlem/Lake'},
-    dir1: {
-      toggle: 'Ashland/63rd or Cottage Grove',
-      bound: 'Ashland/63rd or Cottage Grove',
-      summary: 'Ashland/63rd or Cottage Grove',
-    },
-  },
-  ORG: {
-    dir0: {toggle: 'Loop', bound: 'Loop-bound', summary: 'Loop'},
-    dir1: {toggle: 'Midway', bound: 'Midway-bound', summary: 'Midway'},
-  },
-  P: {
-    dir0: {toggle: 'Linden', bound: 'Linden-bound', summary: 'Linden'},
-    dir1: {toggle: 'Loop', bound: 'Loop-bound', summary: 'Loop'},
-  },
-  PINK: {
-    dir0: {toggle: 'Loop', bound: 'Loop-bound', summary: 'Loop'},
-    dir1: {toggle: '54th/Cermak', bound: '54th/Cermak-bound', summary: '54th/Cermak'},
-  },
-  Y: {
-    dir0: {toggle: 'Skokie', bound: 'Skokie-bound', summary: 'Skokie'},
-    dir1: {toggle: 'Howard', bound: 'Howard-bound', summary: 'Howard'},
-  },
-};
 
 const CHICAGO_TRAIN_ORDER = ['RED', 'BLUE', 'BRN', 'BROWN', 'G', 'GREEN', 'ORG', 'ORANGE', 'PINK', 'P', 'PURPLE', 'Y', 'YELLOW'];
+
+const CTA_TRAIN_LINE_NAMES: Record<string, string> = {
+  RED: 'Red Line',
+  BLUE: 'Blue Line',
+  BRN: 'Brown Line',
+  BROWN: 'Brown Line',
+  G: 'Green Line',
+  GREEN: 'Green Line',
+  ORG: 'Orange Line',
+  ORANGE: 'Orange Line',
+  PINK: 'Pink Line',
+  P: 'Purple Line',
+  PURPLE: 'Purple Line',
+  Y: 'Yellow Line',
+  YELLOW: 'Yellow Line',
+};
 
 const naturalRouteLabelCompare = (left: string, right: string) =>
   left.localeCompare(right, undefined, {numeric: true, sensitivity: 'base'});
@@ -59,6 +33,12 @@ const naturalRouteLabelCompare = (left: string, right: string) =>
 const normalizeToken = (value: string | null | undefined) => value?.trim().toUpperCase() ?? '';
 
 const trimLineSuffix = (value: string) => value.replace(/\s+Line$/i, '').trim();
+
+const getChicagoTrainLineName = (routeId: string, routeLabel: string) => {
+  const safeLabel = routeLabel.trim();
+  if (/\s+Line$/i.test(safeLabel)) return safeLabel;
+  return CTA_TRAIN_LINE_NAMES[normalizeToken(routeId)] ?? CTA_TRAIN_LINE_NAMES[normalizeToken(safeLabel)] ?? safeLabel;
+};
 
 const routeToPickerItem = (
   route: TransitRouteRecord,
@@ -103,7 +83,7 @@ export const formatChicagoRoutePickerLabel = (
   _routeId: string,
   routeLabel: string,
 ) => {
-  if (mode === 'train') return trimLineSuffix(routeLabel);
+  if (mode === 'train') return getChicagoTrainLineName(_routeId, routeLabel);
   return routeLabel.trim();
 };
 
@@ -126,15 +106,12 @@ export const getChicagoRouteBadgeLabel = (
 
 export const getChicagoDirectionLabel = (
   mode: ChicagoMode,
-  direction: UiDirection,
-  routeId?: string | null,
-  variant: DirectionVariant = 'bound',
+  _direction: UiDirection,
+  _routeId?: string | null,
+  _variant: DirectionVariant = 'bound',
 ) => {
   if (mode === 'bus') return 'To destination';
-  if (direction !== 'dir0' && direction !== 'dir1') return null;
-  const copy = CTA_TRAIN_DIRECTION_COPY[normalizeToken(routeId)];
-  if (!copy) return null;
-  return copy[direction][variant];
+  return null;
 };
 
 export const serializeChicagoDirection = (
@@ -164,7 +141,10 @@ export const prepareChicagoRouteEntries = (
 ): TransitRoutePickerItem[] | null => {
   if (mode !== 'train') return null;
   return sortChicagoTrainRoutes(routes).map(route =>
-    routeToPickerItem(route, getChicagoLineLabel(mode, route.id, route.label)),
+    routeToPickerItem(
+      {...route, label: getChicagoLineLabel(mode, route.id, route.label)},
+      getChicagoLineLabel(mode, route.id, route.label),
+    ),
   );
 };
 

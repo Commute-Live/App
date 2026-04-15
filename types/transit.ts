@@ -22,7 +22,7 @@ export type TransitUiDirection =
   | 'inbound';
 
 export type TransitProvider = 'mta' | 'septa' | 'cta' | 'mbta' | 'njt';
-export type TransitBackendMode = 'subway' | 'bus' | 'lirr' | 'mnr' | 'rail' | 'trolley';
+export type TransitBackendMode = 'subway' | 'l' | 'bus' | 'lirr' | 'mnr' | 'rail' | 'trolley';
 export type TransitBackendProviderId =
   | 'mta-subway'
   | 'mta-bus'

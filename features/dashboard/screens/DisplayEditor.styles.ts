@@ -1365,6 +1365,27 @@ export const styles = StyleSheet.create({
     columnGap: spacing.xs,
     rowGap: 2,
   },
+  chicagoLineList: {
+    width: '100%',
+    gap: spacing.sm,
+  },
+  chicagoLineRow: {
+    minHeight: 58,
+    width: '100%',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderRadius: radii.md,
+    paddingHorizontal: spacing.lg,
+  },
+  chicagoLineRowSelected: {
+    borderWidth: 2,
+  },
+  chicagoLineRowText: {
+    fontSize: 24,
+    lineHeight: 29,
+    fontWeight: '900',
+    letterSpacing: 0,
+  },
   bostonRouteCardList: {
     gap: spacing.xs,
     width: '100%',

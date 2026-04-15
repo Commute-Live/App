@@ -21,6 +21,13 @@ export type {UiDirection};
 
 const normalizeToken = (value: string | null | undefined) => value?.trim().toUpperCase() ?? '';
 const normalizeProviderMode = (value: string | null | undefined) => value?.trim().toLowerCase() ?? '';
+const normalizeDirectionDisplayToken = (value: string) =>
+  value
+    .trim()
+    .toLowerCase()
+    .replace(/^to\s+/, '')
+    .replace(/-bound$/, '')
+    .replace(/\s+/g, ' ');
 
 const BOSTON_SUBWAY_ROUTE_IDS = new Set([
   'RED',
@@ -45,6 +52,7 @@ const PROVIDER_MODE_TO_UI_MODE: Partial<Record<string, LocalMode>> = {
   'mbta/subway': 'train',
   'mbta/bus': 'bus',
   'mbta/rail': 'commuter-rail',
+  'cta/l': 'train',
   'cta/subway': 'train',
   'cta/bus': 'bus',
   'njt/rail': 'train',
@@ -92,6 +100,22 @@ export const getLocalDirectionTerminal = (
   direction: UiDirection,
 ) => getLocalDirectionMetadata(route, direction)?.terminal ?? null;
 
+export const getDirectionTerminalDisplayLabel = (
+  primaryLabel: string | null | undefined,
+  terminal: string | null | undefined,
+) => {
+  const safeTerminal = terminal?.trim();
+  if (!safeTerminal) return null;
+  const safePrimaryLabel = primaryLabel?.trim();
+  if (!safePrimaryLabel) return safeTerminal;
+
+  if (normalizeDirectionDisplayToken(safePrimaryLabel) === normalizeDirectionDisplayToken(safeTerminal)) {
+    return null;
+  }
+
+  return safeTerminal;
+};
+
 const NEW_YORK_DIRECTION_OPTIONS: Partial<Record<LocalMode, UiDirection[]>> = {
   train: ['uptown', 'downtown'],
   bus: ['dir0', 'dir1'],
@@ -126,6 +150,10 @@ export const getLocalDirectionOptions = (
   if (route && typeof route !== 'string' && Array.isArray(route.directions)) {
     const fromMetadata = route.directions.map(entry => entry.uiKey).filter((value, index, values) => values.indexOf(value) === index);
     if (fromMetadata.length > 0) return fromMetadata;
+  }
+
+  if (city === 'chicago') {
+    return [];
   }
 
   if (city === 'new-york') {

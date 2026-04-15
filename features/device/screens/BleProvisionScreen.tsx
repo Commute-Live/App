@@ -13,7 +13,7 @@ import {
 } from 'react-native';
 import Animated, {FadeIn, FadeOut} from 'react-native-reanimated';
 import {SafeAreaView} from 'react-native-safe-area-context';
-import {useRouter} from 'expo-router';
+import {useLocalSearchParams, useRouter} from 'expo-router';
 import {colors, layout, radii, spacing, typography} from '../../../theme';
 import {useAppState} from '../../../state/appState';
 import {apiFetch, API_BASE} from '../../../lib/api';
@@ -78,9 +78,11 @@ const humanizeToken = (value: string) =>
 const getProvisionProgressCopy = ({
   statusUpdate,
   provisionStep,
+  phase,
 }: {
   statusUpdate: ReturnType<typeof useBleProvision>['state']['statusUpdate'];
   provisionStep: ProvisionStep;
+  phase: ReturnType<typeof useBleProvision>['state']['phase'];
 }): {
   title: string;
   message: string;
@@ -90,6 +92,16 @@ const getProvisionProgressCopy = ({
     return {
       title: 'Finishing setup',
       message: 'Wi-Fi is connected. Linking the display to your account now.',
+      details: statusUpdate?.deviceId
+        ? [{label: 'Display', value: statusUpdate.deviceId}]
+        : [],
+    };
+  }
+
+  if (phase === 'reconnecting') {
+    return {
+      title: 'Still working on it',
+      message: 'Keep the app open. The display is reconnecting and setup will continue automatically. This can take up to 6 minutes.',
       details: statusUpdate?.deviceId
         ? [{label: 'Display', value: statusUpdate.deviceId}]
         : [],
@@ -413,11 +425,14 @@ function PasswordModal({
 // ── Main screen ──────────────────────────────────────────────────────────────
 export default function BleProvisionScreen() {
   const router = useRouter();
+  const params = useLocalSearchParams<{deviceId?: string; mode?: string}>();
   const {setDeviceId, setDeviceStatus} = useAppState();
   const {hydrate} = useAuth();
+  const targetDeviceId = typeof params.deviceId === 'string' ? params.deviceId : null;
+  const isChangeWifiFlow = params.mode === 'change-wifi';
 
   const {state, startScan, selectFoundDevice, connectToDevice, sendCredentials, requestWifiScan, clearError, reset} =
-    useBleProvision();
+    useBleProvision({targetDeviceId});
 
   const [modalVisible, setModalVisible] = useState(false);
   const [modalNetwork, setModalNetwork] = useState<WifiNetwork | null>(null);
@@ -435,6 +450,7 @@ export default function BleProvisionScreen() {
     state.phase === 'connecting' ||
     state.phase === 'provisioning' ||
     state.phase === 'waiting_wifi' ||
+    state.phase === 'reconnecting' ||
     isProvisioning;
   const canStartScan = !isBusy && !bluetoothMessage;
 
@@ -446,13 +462,21 @@ export default function BleProvisionScreen() {
     (
       state.phase === 'provisioning' ||
       state.phase === 'waiting_wifi' ||
+      state.phase === 'reconnecting' ||
       provisionStep !== 'idle' ||
       (state.statusUpdate?.status === 'connected' && !state.errorMsg && linkError.length === 0)
     );
   const provisionProgress = getProvisionProgressCopy({
     statusUpdate: state.statusUpdate,
     provisionStep,
+    phase: state.phase,
   });
+
+  useEffect(() => {
+    if (targetDeviceId && state.phase === 'idle') {
+      startScan();
+    }
+  }, [startScan, state.phase, targetDeviceId]);
 
   useEffect(() => {
     if (state.phase === 'connected' && !hasRequestedScanRef.current) {
@@ -472,6 +496,22 @@ export default function BleProvisionScreen() {
       // non-fatal
     }
   };
+
+  useEffect(() => {
+    if (!targetDeviceId || state.phase !== 'device_found' || state.foundDevice) {
+      return;
+    }
+    const matchedDevice = state.foundDevices.find(device => device.name === targetDeviceId);
+    if (!matchedDevice) {
+      return;
+    }
+    selectFoundDevice(matchedDevice);
+    void connectToDevice(matchedDevice).then(success => {
+      if (success) {
+        void fetchPairingToken();
+      }
+    });
+  }, [connectToDevice, selectFoundDevice, state.foundDevice, state.foundDevices, state.phase, targetDeviceId]);
 
   const openNetworkModal = (network: WifiNetwork) => {
     clearError();
@@ -564,7 +604,7 @@ export default function BleProvisionScreen() {
 
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <View style={styles.heroBlock}>
-          <Text style={styles.heading}>Set up your device</Text>
+          <Text style={styles.heading}>{isChangeWifiFlow ? 'Change Wi-Fi network' : 'Set up your device'}</Text>
         </View>
 
         {/* Phase: idle / error */}

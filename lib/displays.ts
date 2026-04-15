@@ -64,7 +64,7 @@ type PreviewSlot = {
   color: string;
   textColor: string;
   routeLabel: string;
-  badgeShape?: 'circle' | 'pill' | 'rail' | 'bar';
+  badgeShape?: 'circle' | 'pill' | 'rail' | 'bar' | 'train';
   selected: boolean;
   stopName: string;
   subLine?: string;
@@ -128,6 +128,7 @@ const KNOWN_PROVIDER_MODES = new Set([
   'mbta/subway',
   'mbta/bus',
   'mbta/rail',
+  'cta/l',
   'cta/subway',
   'cta/bus',
   'njt/rail',
@@ -620,7 +621,8 @@ export const toPreviewSlots = (
         : displayType === 4 || displayType === 5
           ? liveSubLine || buildPreviewEtaList(extractMinutesFromPreviewTime(liveTime), Math.max(0, requestedTimes - 1))
           : undefined;
-    const badgeShape: PreviewSlot['badgeShape'] = line.provider === 'mta-subway' ? 'circle' : 'pill';
+    const badgeShape: PreviewSlot['badgeShape'] =
+      line.provider === 'mta-subway' ? 'circle' : line.provider === 'cta-subway' ? 'train' : 'pill';
 
     return {
       id: `${display.displayId}-${index}`,

@@ -1,6 +1,7 @@
 import React, {useEffect, useRef, useState} from 'react';
 import {Animated, Pressable, StyleSheet, Text, View, type GestureResponderEvent} from 'react-native';
 import type {StyleProp, TextStyle} from 'react-native';
+import Svg, {Circle, Path, Rect} from 'react-native-svg';
 import {colors, radii, spacing} from '../../../theme';
 
 export type Display3DSlot = {
@@ -8,7 +9,7 @@ export type Display3DSlot = {
   color: string;
   textColor: string;
   routeLabel: string;
-  badgeShape?: 'circle' | 'pill' | 'rail' | 'bar';
+  badgeShape?: 'circle' | 'pill' | 'rail' | 'bar' | 'train';
   selected: boolean;
   stopName: string;
   scrollLabel?: boolean;
@@ -110,6 +111,33 @@ function MarqueeText({
         </Text>
       )}
     </View>
+  );
+}
+
+function TrainBadge({
+  color,
+  compact,
+}: {
+  color: string;
+  compact: boolean;
+}) {
+  const width = compact ? 38 : 42;
+  const height = compact ? 30 : 34;
+
+  return (
+    <Svg width={width} height={height} viewBox="0 0 42 34">
+      <Path
+        d="M8 3.5C8 1.8 9.4 1 11.1 1h19.8C32.6 1 34 1.8 34 3.5l2.5 18.2c.2 1.5-.9 2.8-2.4 2.8H7.9c-1.5 0-2.6-1.3-2.4-2.8L8 3.5Z"
+        fill={color}
+      />
+      <Rect x="11" y="6" width="8" height="9" rx="1.2" fill={colors.editorMockSurface} />
+      <Rect x="23" y="6" width="8" height="9" rx="1.2" fill={colors.editorMockSurface} />
+      <Rect x="16" y="19" width="10" height="2.4" rx="0.8" fill={colors.editorMockSurface} />
+      <Circle cx="12.5" cy="20.5" r="2.2" fill={colors.editorMockSurface} />
+      <Circle cx="29.5" cy="20.5" r="2.2" fill={colors.editorMockSurface} />
+      <Path d="M14 24.5h14v5H14z" fill={color} />
+      <Path d="M10 29.5h22M7 33h28" stroke={color} strokeWidth="2.4" strokeLinecap="round" />
+    </Svg>
   );
 }
 
@@ -238,6 +266,10 @@ export default function Display3DPreview({
                     {slot.badgeShape === 'bar' ? (
                       <View style={[styles.routeBadgeBarWrap, compact && styles.routeBadgeBarWrapCompact]}>
                         <View style={[styles.routeBadgeBar, compact && styles.routeBadgeBarCompact, {backgroundColor: slot.color}]} />
+                      </View>
+                    ) : slot.badgeShape === 'train' ? (
+                      <View style={[styles.routeBadgeTrainWrap, compact && styles.routeBadgeTrainWrapCompact]}>
+                        <TrainBadge color={slot.color} compact={compact} />
                       </View>
                     ) : (
                       <View
@@ -462,6 +494,8 @@ const styles = StyleSheet.create({
   routeBadgeBarWrapCompact: {width: 30, height: 30},
   routeBadgeBar: {width: 10, height: 28, borderRadius: 3},
   routeBadgeBarCompact: {width: 10, height: 28, borderRadius: 3},
+  routeBadgeTrainWrap: {width: 42, height: 34, alignItems: 'center', justifyContent: 'center'},
+  routeBadgeTrainWrapCompact: {width: 38, height: 30},
   routeBadgeText: {fontSize: 13, fontWeight: '900'},
   routeBadgeTextPill: {fontSize: 11, lineHeight: 13, textAlign: 'center', includeFontPadding: false},
   routeBadgeTextCompact: {fontSize: 13},

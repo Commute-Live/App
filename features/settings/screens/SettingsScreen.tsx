@@ -9,6 +9,7 @@ import {AppBrandHeader} from '../../../components/AppBrandHeader';
 import {TabScreen} from '../../../components/TabScreen';
 import {useAppState} from '../../../state/appState';
 import {logger} from '../../../lib/datadog';
+import {resetDeviceWifi} from '../../../lib/deviceSetup';
 
 type SectionKey = 'Account' | 'Session' | 'Device' | 'Time Format' | 'Notifications' | 'Privacy';
 
@@ -31,6 +32,7 @@ export default function SettingsScreen() {
   const [isSigningOut, setIsSigningOut] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isDisconnecting, setIsDisconnecting] = useState(false);
+  const [isChangingWifi, setIsChangingWifi] = useState(false);
   const [deviceNotice, setDeviceNotice] = useState<{kind: 'success' | 'error'; text: string} | null>(null);
   const [timeFormat, setTimeFormat] = useState<'ampm' | '24h'>('ampm');
   const [scrollViewportHeight, setScrollViewportHeight] = useState(0);
@@ -104,8 +106,37 @@ export default function SettingsScreen() {
     }
   };
 
+  const runChangeWifiNetwork = async (targetDeviceId: string) => {
+    setIsChangingWifi(true);
+    setDeviceNotice(null);
+    try {
+      const result = await resetDeviceWifi(targetDeviceId);
+      if (!result.ok) {
+        logger.error('Device Wi-Fi change failed', {userId: user?.id, deviceId: targetDeviceId, error: result.error});
+        setDeviceNotice({kind: 'error', text: result.error});
+        return;
+      }
+      logger.info('Device Wi-Fi change started', {userId: user?.id, deviceId: targetDeviceId});
+      router.push(`/ble-provision?deviceId=${encodeURIComponent(targetDeviceId)}&mode=change-wifi`);
+    } finally {
+      setIsChangingWifi(false);
+    }
+  };
+
+  const confirmChangeWifiNetwork = () => {
+    if (!currentDeviceId || isChangingWifi || isDisconnecting) return;
+    Alert.alert(
+      'Change Wi-Fi network?',
+      'The display will enter setup mode so you can choose a new network.',
+      [
+        {text: 'Cancel', style: 'cancel'},
+        {text: 'Continue', onPress: () => { void runChangeWifiNetwork(currentDeviceId); }},
+      ],
+    );
+  };
+
   const confirmUnpairDevice = () => {
-    if (!currentDeviceId || isDisconnecting) return;
+    if (!currentDeviceId || isDisconnecting || isChangingWifi) return;
     Alert.alert(
       'Unpair display?',
       "This will reset your display's Wi-Fi and put it back into setup mode.",
@@ -231,9 +262,19 @@ export default function SettingsScreen() {
                         ) : null}
                         {currentDeviceId ? (
                           <Pressable
-                            style={[styles.destructiveButton, isDisconnecting && styles.buttonDisabled]}
+                            style={[styles.secondaryActionButton, (isChangingWifi || isDisconnecting) && styles.buttonDisabled]}
+                            onPress={confirmChangeWifiNetwork}
+                            disabled={isChangingWifi || isDisconnecting}>
+                            <Text style={styles.secondaryActionButtonText}>
+                              {isChangingWifi ? 'Starting setup…' : 'Change Wi-Fi network'}
+                            </Text>
+                          </Pressable>
+                        ) : null}
+                        {currentDeviceId ? (
+                          <Pressable
+                            style={[styles.destructiveButton, (isDisconnecting || isChangingWifi) && styles.buttonDisabled]}
                             onPress={confirmUnpairDevice}
-                            disabled={isDisconnecting}>
+                            disabled={isDisconnecting || isChangingWifi}>
                             <Text style={styles.destructiveButtonText}>
                               {isDisconnecting ? 'Unpairing…' : 'Unpair display'}
                             </Text>
@@ -446,6 +487,17 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
   },
   destructiveButtonText: {color: colors.dangerText, fontWeight: '700', fontSize: typography.body},
+  secondaryActionButton: {
+    backgroundColor: colors.background,
+    borderColor: colors.border,
+    borderWidth: 1,
+    minHeight: layout.buttonHeight,
+    borderRadius: radii.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: spacing.md,
+  },
+  secondaryActionButtonText: {color: colors.text, fontWeight: '700', fontSize: typography.body},
   ghostButton: {minHeight: 40, alignItems: 'center', justifyContent: 'center', paddingHorizontal: spacing.md},
   ghostButtonText: {color: colors.textMuted, fontWeight: '600', fontSize: typography.label},
   buttonDisabled: {opacity: 0.5},

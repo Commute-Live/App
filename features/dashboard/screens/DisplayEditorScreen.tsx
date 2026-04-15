@@ -27,6 +27,7 @@ import type {
 } from '../../../lib/transit/frontendTypes';
 import {
   deserializeUiDirection,
+  getDirectionTerminalDisplayLabel,
   getLocalDirectionRequestId,
   getLocalDirectionLabel,
   getLocalDirectionOptions,
@@ -538,7 +539,6 @@ export default function DisplayEditorScreen() {
   const [linesByMode, setLinesByMode] = useState<Partial<Record<ModeId, Route[]>>>({});
   const [linesLoadingByMode, setLinesLoadingByMode] = useState<Partial<Record<ModeId, boolean>>>({});
   const stepAnim = useRef(new Animated.Value(1)).current;
-  const stationsByLineRef = useRef(new Set<string>());
   const linesRequestedRef = useRef(new Set<string>());
   const stationsRequestedRef = useRef(new Set<string>());
   const routesRequestedRef = useRef(new Set<string>());
@@ -611,7 +611,6 @@ export default function DisplayEditorScreen() {
     linesRequestedRef.current.clear();
     stationsRequestedRef.current.clear();
     routesRequestedRef.current.clear();
-    stationsByLineRef.current.clear();
     setLines(() => ensureLineCount([], city, layoutSlots, {}, {}));
   }, [city, layoutSlots]);
 
@@ -716,10 +715,7 @@ export default function DisplayEditorScreen() {
       );
 
     pending.forEach(item => {
-      const key = `${city}:${item.mode}:${item.routeId}:${item.direction ?? ''}`;
       const lookupKey = stopLookupKey(item.mode, item.routeId, item.direction);
-      if (stationsByLineRef.current.has(key)) return;
-      stationsByLineRef.current.add(key);
       setStationsLoadingByLine(prev => ({...prev, [lookupKey]: true}));
       void queryClient.fetchQuery({
         queryKey: queryKeys.transitStopsForLine(city, item.mode, item.routeId, item.direction ?? ''),
@@ -1565,6 +1561,8 @@ export default function DisplayEditorScreen() {
         const badgeShape: Display3DSlot['badgeShape'] =
           city === 'new-york' && safeMode === 'train'
             ? 'circle'
+            : city === 'chicago' && safeMode === 'train'
+            ? 'train'
             : 'pill';
 
 
@@ -3196,8 +3194,8 @@ function LinePickerStep({
   const isNycSubwayGrid = city === 'new-york' && selectedMode === 'train';
   const isBostonRouteCardMode =
     city === 'boston' && (selectedMode === 'train' || selectedMode === 'commuter-rail');
+  const isChicagoTrainListMode = city === 'chicago' && selectedMode === 'train';
   const isWidePillMode =
-    (city === 'chicago' && selectedMode === 'train') ||
     (city === 'new-jersey' && selectedMode === 'train');
   const isBranchListMode =
     selectedMode === 'lirr' ||
@@ -3351,6 +3349,40 @@ function LinePickerStep({
                           </Text>
                           {isSelected && <Text style={[styles.lirrBranchCheck, {color: route.textColor || colors.text}]}>✓</Text>}
                         </Pressable>
+                      );
+                    })}
+                  </View>
+                ) : isChicagoTrainListMode ? (
+                  <View style={styles.chicagoLineList}>
+                    {group.routes.map(route => {
+                      const isSelected = route.routes.some(item => item.id === selectedRouteId);
+                      const anim = getPulseAnim(route.id);
+                      return (
+                        <Animated.View
+                          key={route.id}
+                          style={{transform: [{scale: anim}]}}>
+                          <Pressable
+                            style={[
+                              styles.chicagoLineRow,
+                              {
+                                backgroundColor: route.color,
+                                borderColor: isSelected ? colors.text : route.color,
+                              },
+                              isSelected && styles.chicagoLineRowSelected,
+                            ]}
+                            onPress={() => handleSelectLine(route)}>
+                            <Text
+                              style={[
+                                styles.chicagoLineRowText,
+                                {color: route.textColor ?? colors.text},
+                              ]}
+                              numberOfLines={1}
+                              adjustsFontSizeToFit
+                              minimumFontScale={0.82}>
+                              {route.label}
+                            </Text>
+                          </Pressable>
+                        </Animated.View>
                       );
                     })}
                   </View>
@@ -3607,6 +3639,7 @@ function StopPickerStep({
                 getLocalDirectionTerminal(selectedRoute ?? selectedRouteId, dir)
                 ?? getDirectionToggleLabel(city, selectedMode, dir, selectedRoute ?? selectedRouteId).split(': ')[1]
                 ?? '';
+              const terminalDisplayLabel = getDirectionTerminalDisplayLabel(label, terminal);
               return (
                 <Pressable
                   key={dir}
@@ -3627,15 +3660,17 @@ function StopPickerStep({
                       numberOfLines={1}>
                       {label}
                     </Text>
-                    <Text
-                      style={[
-                        styles.stopPickerDirTerminal,
-                        active && styles.stopPickerDirTerminalActive,
-                      ]}
-                      numberOfLines={2}
-                      ellipsizeMode="tail">
-                      {terminal}
-                    </Text>
+                    {terminalDisplayLabel ? (
+                      <Text
+                        style={[
+                          styles.stopPickerDirTerminal,
+                          active && styles.stopPickerDirTerminalActive,
+                        ]}
+                        numberOfLines={2}
+                        ellipsizeMode="tail">
+                        {terminalDisplayLabel}
+                      </Text>
+                    ) : null}
                   </View>
                 </Pressable>
               );

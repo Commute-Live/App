@@ -22,6 +22,7 @@ export type BleProvisionPhase =
   | 'connected'
   | 'provisioning'
   | 'waiting_wifi'
+  | 'reconnecting'
   | 'done'
   | 'error';
 
@@ -57,12 +58,30 @@ type BleStatusPayload = {
 
 type PendingWifiResult = {
   resolve: (deviceId: string | null) => void;
-  timeout: ReturnType<typeof setTimeout>;
+  timeout: ReturnType<typeof setTimeout> | null;
 };
 
-const WIFI_RESULT_TIMEOUT_MS = 45_000;
+type PendingCredentials = {
+  ssid: string;
+  password: string;
+  username: string;
+  token: string;
+  serverUrl: string;
+};
+
+const WIFI_RESULT_TIMEOUT_MS = 135_000;
 const SCAN_TIMEOUT_MS = 20_000;
 const DISCOVERY_SETTLE_MS = 2_500;
+const RECOVERY_SCAN_INTERVAL_MS = 10_000;
+const RECOVERY_SCAN_SLICE_MS = 7_000;
+const RECOVERY_WINDOW_MS = 360_000;
+const EXPECTED_SUCCESS_DISCONNECT_MS = 2_000;
+
+const PHASE_EVENT_NAMES: Partial<Record<BleProvisionPhase, string>> = {
+  scanning: 'ble.scan_started',
+  device_found: 'ble.device_found',
+  connected: 'ble.connected',
+};
 
 const getBluetoothMessage = (bleState: string | null | undefined): string | null => {
   switch (bleState) {
@@ -131,8 +150,28 @@ const getWifiFailureMessage = (payload: BleStatusPayload): string => {
       return 'The display could not join Wi-Fi. Check the password and try again.';
     case 'provision_error':
       return 'The display joined Wi-Fi but could not finish setup. Try again.';
+    case 'timeout':
+      return 'Taking longer than expected. Keep the display powered on, then try setup again from your phone.';
     default:
+      if (payload.reason) {
+        logger.warn('Unknown BLE WiFi failure reason', {
+          reason: payload.reason,
+          phase: payload.phase,
+          wifiStatus: payload.wifiStatus,
+        });
+      }
       return 'Display could not connect to Wi-Fi. Check your network name, username, and password, then try again.';
+  }
+};
+
+const isRecoverableWifiFailure = (payload: BleStatusPayload): boolean => {
+  switch (payload.reason) {
+    case 'auth_error':
+    case 'provision_error':
+    case 'timeout':
+      return false;
+    default:
+      return true;
   }
 };
 
@@ -172,7 +211,8 @@ async function requestAndroidPermissions(): Promise<boolean> {
   return result === PermissionsAndroid.RESULTS.GRANTED;
 }
 
-export function useBleProvision() {
+export function useBleProvision(options: {targetDeviceId?: string | null} = {}) {
+  const targetDeviceId = options.targetDeviceId ?? null;
   const [state, setState] = useState<BleProvisionState>({
     phase: 'idle',
     foundDevice: null,
@@ -194,15 +234,52 @@ export function useBleProvision() {
   const bleStateSubscriptionRef = useRef<{remove: () => void} | null>(null);
   const pendingWifiResultRef = useRef<PendingWifiResult | null>(null);
   const terminalProvisionStatusRef = useRef(false);
+  const expectedSuccessDisconnectUntilRef = useRef(0);
+  const phaseRef = useRef<BleProvisionPhase>('idle');
+  const deviceIdRef = useRef<string | null>(targetDeviceId);
+  const credsSentAtRef = useRef<number | null>(null);
+  const pendingCredentialsRef = useRef<PendingCredentials | null>(null);
+  const recoveryIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const recoveryTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const recoveryScanTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const recoveryActiveRef = useRef(false);
+  const recoveryScanningRef = useRef(false);
+  const handleProvisionStallRef = useRef<(message: string, payload?: BleStatusPayload | null) => void>(() => {});
+  const connectRecoveredDeviceRef = useRef<(device: Device) => Promise<void>>(async () => {});
   const scanChunksRef = useRef<Array<{s: string; r: number; e: number}>>([]);
 
-  const setPhase = useCallback((phase: BleProvisionPhase, extra?: Partial<BleProvisionState>) => {
-    setState(prev => ({...prev, phase, ...extra}));
+  const trackBleEvent = useCallback((event: string, context?: Record<string, unknown>) => {
+    logger.info(event, context ?? {});
   }, []);
+
+  const trackProvisionTerminal = useCallback((event: string, context?: Record<string, unknown>) => {
+    const durationMs = credsSentAtRef.current === null ? null : Date.now() - credsSentAtRef.current;
+    trackBleEvent(event, {...context, durationMs});
+  }, [trackBleEvent]);
+
+  const setPhase = useCallback((phase: BleProvisionPhase, extra?: Partial<BleProvisionState>) => {
+    const previousPhase = phaseRef.current;
+    if (previousPhase !== phase) {
+      phaseRef.current = phase;
+      const eventName = PHASE_EVENT_NAMES[phase];
+      if (eventName) {
+        trackBleEvent(eventName, {
+          previousPhase,
+          deviceId: extra?.deviceId ?? deviceIdRef.current,
+        });
+      }
+    }
+    setState(prev => ({...prev, phase, ...extra}));
+  }, [trackBleEvent]);
 
   const fail = useCallback((msg: string) => {
     setPhase('error', {errorMsg: msg});
   }, [setPhase]);
+
+  useEffect(() => {
+    phaseRef.current = state.phase;
+    deviceIdRef.current = state.deviceId ?? targetDeviceId;
+  }, [state.phase, state.deviceId, targetDeviceId]);
 
   const cleanup = useCallback(() => {
     if (scanTimeoutRef.current) {
@@ -214,10 +291,29 @@ export function useBleProvision() {
       discoveryTimeoutRef.current = null;
     }
     if (pendingWifiResultRef.current) {
-      clearTimeout(pendingWifiResultRef.current.timeout);
+      if (pendingWifiResultRef.current.timeout) {
+        clearTimeout(pendingWifiResultRef.current.timeout);
+      }
       pendingWifiResultRef.current.resolve(null);
       pendingWifiResultRef.current = null;
     }
+    if (recoveryIntervalRef.current) {
+      clearInterval(recoveryIntervalRef.current);
+      recoveryIntervalRef.current = null;
+    }
+    if (recoveryTimeoutRef.current) {
+      clearTimeout(recoveryTimeoutRef.current);
+      recoveryTimeoutRef.current = null;
+    }
+    if (recoveryScanTimeoutRef.current) {
+      clearTimeout(recoveryScanTimeoutRef.current);
+      recoveryScanTimeoutRef.current = null;
+    }
+    recoveryActiveRef.current = false;
+    recoveryScanningRef.current = false;
+    expectedSuccessDisconnectUntilRef.current = 0;
+    credsSentAtRef.current = null;
+    pendingCredentialsRef.current = null;
     terminalProvisionStatusRef.current = false;
     statusSubscriptionRef.current?.remove();
     statusSubscriptionRef.current = null;
@@ -230,6 +326,143 @@ export function useBleProvision() {
       deviceRef.current = null;
     }
   }, []);
+
+  const stopRecovery = useCallback(() => {
+    if (recoveryIntervalRef.current) {
+      clearInterval(recoveryIntervalRef.current);
+      recoveryIntervalRef.current = null;
+    }
+    if (recoveryTimeoutRef.current) {
+      clearTimeout(recoveryTimeoutRef.current);
+      recoveryTimeoutRef.current = null;
+    }
+    if (recoveryScanTimeoutRef.current) {
+      clearTimeout(recoveryScanTimeoutRef.current);
+      recoveryScanTimeoutRef.current = null;
+    }
+    if (recoveryScanningRef.current) {
+      getManager()?.stopDeviceScan();
+    }
+    recoveryActiveRef.current = false;
+    recoveryScanningRef.current = false;
+  }, []);
+
+  const resolvePendingWifiResult = useCallback((deviceId: string | null) => {
+    if (!pendingWifiResultRef.current) {
+      return;
+    }
+    if (pendingWifiResultRef.current.timeout) {
+      clearTimeout(pendingWifiResultRef.current.timeout);
+    }
+    pendingWifiResultRef.current.resolve(deviceId);
+    pendingWifiResultRef.current = null;
+  }, []);
+
+  const hardFailProvision = useCallback((message: string, payload?: BleStatusPayload | null) => {
+    stopRecovery();
+    // Terminal app-side failures should ignore late BLE status notifications from
+    // a previous attempt or a recovered advertising session.
+    terminalProvisionStatusRef.current = true;
+    setPhase('connected', {
+      errorMsg: message,
+      statusUpdate: payload ?? null,
+      deviceId: payload?.deviceId ?? deviceIdRef.current,
+    });
+    trackProvisionTerminal('ble.failed', {
+      deviceId: payload?.deviceId ?? deviceIdRef.current,
+      reason: payload?.reason ?? 'app_error',
+      phase: payload?.phase ?? phaseRef.current,
+      wifiStatus: payload?.wifiStatus ?? null,
+    });
+    resolvePendingWifiResult(null);
+  }, [resolvePendingWifiResult, setPhase, stopRecovery, trackProvisionTerminal]);
+
+  const startProvisionRecovery = useCallback((message: string, payload?: BleStatusPayload | null) => {
+    const pending = pendingWifiResultRef.current;
+    if (!pending) {
+      hardFailProvision(message, payload);
+      return;
+    }
+    if (pending.timeout) {
+      clearTimeout(pending.timeout);
+      pending.timeout = null;
+    }
+
+    const targetId = payload?.deviceId ?? deviceIdRef.current ?? targetDeviceId;
+    if (!targetId) {
+      hardFailProvision(message, payload);
+      return;
+    }
+
+    if (recoveryActiveRef.current) {
+      return;
+    }
+
+    recoveryActiveRef.current = true;
+    setPhase('reconnecting', {
+      errorMsg: null,
+      statusUpdate: payload ?? null,
+      deviceId: targetId,
+    });
+    trackBleEvent('ble.reconnect_started', {
+      deviceId: targetId,
+      reason: payload?.reason ?? 'status_timeout',
+      phase: payload?.phase ?? phaseRef.current,
+    });
+
+    const runScan = () => {
+      if (!recoveryActiveRef.current || recoveryScanningRef.current) {
+        return;
+      }
+
+      const mgr = getManager();
+      if (!mgr) {
+        hardFailProvision('Bluetooth is not available. Try setup again from your phone.', payload);
+        return;
+      }
+
+      recoveryScanningRef.current = true;
+      mgr.stopDeviceScan();
+      recoveryScanTimeoutRef.current = setTimeout(() => {
+        recoveryScanningRef.current = false;
+        mgr.stopDeviceScan();
+      }, RECOVERY_SCAN_SLICE_MS);
+
+      mgr.startDeviceScan(null, {allowDuplicates: false}, (error: BleError | null, device: Device | null) => {
+        if (!recoveryActiveRef.current) {
+          mgr.stopDeviceScan();
+          recoveryScanningRef.current = false;
+          return;
+        }
+        if (error) {
+          logger.warn('BLE recovery scan error', {error: error.message, deviceId: targetId});
+          return;
+        }
+        if (!device?.name || device.name !== targetId) {
+          return;
+        }
+
+        if (recoveryScanTimeoutRef.current) {
+          clearTimeout(recoveryScanTimeoutRef.current);
+          recoveryScanTimeoutRef.current = null;
+        }
+        mgr.stopDeviceScan();
+        recoveryScanningRef.current = false;
+        trackBleEvent('ble.reconnected', {deviceId: targetId});
+        void connectRecoveredDeviceRef.current(device);
+      });
+    };
+
+    recoveryTimeoutRef.current = setTimeout(() => {
+      hardFailProvision('The display did not come back online. Keep it powered on, then try setup again.', payload);
+    }, RECOVERY_WINDOW_MS);
+    runScan();
+    recoveryIntervalRef.current = setInterval(runScan, RECOVERY_SCAN_INTERVAL_MS);
+  }, [hardFailProvision, setPhase, targetDeviceId, trackBleEvent]);
+
+  useEffect(() => {
+    handleProvisionStallRef.current = startProvisionRecovery;
+  }, [startProvisionRecovery]);
 
   const syncBluetoothState = useCallback((bleState: string | null) => {
     const bluetoothMessage = getBluetoothMessage(bleState);
@@ -300,7 +533,7 @@ export function useBleProvision() {
       errorMsg: null,
       foundDevice: null,
       foundDevices: [],
-      deviceId: null,
+      deviceId: targetDeviceId,
       statusUpdate: null,
     });
 
@@ -348,21 +581,29 @@ export function useBleProvision() {
       const foundDevices = Array.from(matchedDevices.values()).sort((a, b) =>
         (a.name ?? a.id).localeCompare(b.name ?? b.id),
       );
-      if (foundDevices.length === 0) {
-        fail('No CommuteLive device found nearby. Make sure it is powered on.');
+      const visibleDevices = targetDeviceId
+        ? foundDevices.filter(device => device.name === targetDeviceId)
+        : foundDevices;
+      if (visibleDevices.length === 0) {
+        fail(
+          targetDeviceId
+            ? `Display ${targetDeviceId} was not found nearby. Keep it powered on and try again.`
+            : 'No CommuteLive device found nearby. Make sure it is powered on.',
+        );
         return;
       }
 
       deviceRef.current = null;
       setPhase('device_found', {
-        foundDevices,
+        foundDevices: visibleDevices,
         foundDevice: null,
-        deviceId: null,
+        deviceId: targetDeviceId,
         errorMsg: null,
         statusUpdate: null,
       });
       logger.info('BLE devices found', {
-        devices: foundDevices.map(device => device.name ?? device.id),
+        devices: visibleDevices.map(device => device.name ?? device.id),
+        targetDeviceId,
       });
     };
 
@@ -390,7 +631,7 @@ export function useBleProvision() {
         }
       }
     });
-  }, [cleanup, setPhase, fail, syncBluetoothState]);
+  }, [cleanup, setPhase, fail, syncBluetoothState, targetDeviceId]);
 
   const selectFoundDevice = useCallback((device: Device) => {
     deviceRef.current = device;
@@ -407,7 +648,7 @@ export function useBleProvision() {
     const device = nextDevice ?? deviceRef.current ?? state.foundDevice;
     if (!device) {
       fail('No device to connect to.');
-      return;
+      return false;
     }
     deviceRef.current = device;
     setState(prev => ({
@@ -427,6 +668,21 @@ export function useBleProvision() {
         (error, characteristic) => {
           if (error) {
             if (isCancelledBleError(error)) {
+              return;
+            }
+            if (
+              terminalProvisionStatusRef.current &&
+              Date.now() < expectedSuccessDisconnectUntilRef.current
+            ) {
+              logger.debug('BLE status monitor ended after successful provisioning', {error: error.message});
+              return;
+            }
+            if (phaseRef.current === 'waiting_wifi' || phaseRef.current === 'provisioning') {
+              logger.warn('BLE status monitor interrupted during provisioning', {error: error.message});
+              handleProvisionStallRef.current(
+                'Still working on it. Keep the app open while the display reconnects.',
+                null,
+              );
               return;
             }
             logger.warn('BLE status monitor error', {error: error.message});
@@ -459,6 +715,20 @@ export function useBleProvision() {
           }
 
           if (payload.status === 'connecting') {
+            if (payload.phase === 'wifi_connecting') {
+              trackBleEvent('ble.wifi_connecting', {
+                deviceId: nextDeviceId,
+                wifiStatus: payload.wifiStatus,
+                attempt: payload.attempt,
+                attempts: payload.attempts,
+              });
+            }
+            if (payload.phase === 'wifi_connected') {
+              trackBleEvent('ble.wifi_connected', {
+                deviceId: nextDeviceId,
+                wifiStatus: payload.wifiStatus,
+              });
+            }
             setPhase('waiting_wifi', {
               deviceId: nextDeviceId,
               errorMsg: null,
@@ -469,43 +739,53 @@ export function useBleProvision() {
 
           if (payload.status === 'connected') {
             terminalProvisionStatusRef.current = true;
+            // Firmware drops BLE shortly after success; disconnects in this window are expected.
+            expectedSuccessDisconnectUntilRef.current = Date.now() + EXPECTED_SUCCESS_DISCONNECT_MS;
+            stopRecovery();
+            trackProvisionTerminal('ble.provisioned', {
+              deviceId: nextDeviceId,
+              phase: payload.phase,
+              wifiStatus: payload.wifiStatus,
+            });
             setPhase('connected', {
               deviceId: nextDeviceId,
               errorMsg: null,
               statusUpdate: payload,
             });
-            if (pendingWifiResultRef.current) {
-              clearTimeout(pendingWifiResultRef.current.timeout);
-              pendingWifiResultRef.current.resolve(nextDeviceId);
-              pendingWifiResultRef.current = null;
-            }
+            resolvePendingWifiResult(nextDeviceId);
             return;
           }
 
           if (payload.status === 'failed') {
-            terminalProvisionStatusRef.current = true;
             logger.error('BLE device WiFi connection failed', {deviceId: nextDeviceId});
-            setPhase('connected', {
-              deviceId: nextDeviceId,
-              errorMsg: getWifiFailureMessage(payload),
-              statusUpdate: payload,
-            });
-            if (pendingWifiResultRef.current) {
-              clearTimeout(pendingWifiResultRef.current.timeout);
-              pendingWifiResultRef.current.resolve(null);
-              pendingWifiResultRef.current = null;
+            if (isRecoverableWifiFailure(payload)) {
+              handleProvisionStallRef.current(
+                'Still working on it. Keep the app open while the display reconnects.',
+                payload,
+              );
+              return;
             }
+            hardFailProvision(getWifiFailureMessage(payload), payload);
           }
         },
       );
       deviceRef.current = connected;
       setPhase('connected', {errorMsg: null});
+      return true;
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
       logger.error('BLE device connection failed', {deviceId: device.name ?? device.id, error: msg});
+      if (phaseRef.current === 'waiting_wifi' || recoveryActiveRef.current) {
+        handleProvisionStallRef.current(
+          'Still working on it. Keep the app open while the display reconnects.',
+          null,
+        );
+        return false;
+      }
       fail(`Connection failed: ${msg}`);
+      return false;
     }
-  }, [fail, setPhase, state.foundDevice]);
+  }, [fail, hardFailProvision, resolvePendingWifiResult, setPhase, state.foundDevice, stopRecovery, trackBleEvent, trackProvisionTerminal]);
 
   // Step 3: write WiFi credentials + pairing token.
   // Returns the deviceId (from device name set during scan) — no characteristic read needed.
@@ -518,25 +798,31 @@ export function useBleProvision() {
       }
       setPhase('provisioning', {errorMsg: null, statusUpdate: null});
       terminalProvisionStatusRef.current = false;
+      expectedSuccessDisconnectUntilRef.current = 0;
+      pendingCredentialsRef.current = {ssid, password, username, token, serverUrl};
+      credsSentAtRef.current = null;
 
       const payload = JSON.stringify({ssid, password, username, token, server_url: serverUrl});
       const encoded = Buffer.from(payload, 'utf8').toString('base64');
 
       try {
         if (pendingWifiResultRef.current) {
-          clearTimeout(pendingWifiResultRef.current.timeout);
+          if (pendingWifiResultRef.current.timeout) {
+            clearTimeout(pendingWifiResultRef.current.timeout);
+          }
           pendingWifiResultRef.current.resolve(null);
           pendingWifiResultRef.current = null;
         }
 
         const wifiResult = new Promise<string | null>((resolve) => {
           const timeout = setTimeout(() => {
-            pendingWifiResultRef.current = null;
-            setPhase('connected', {
-              errorMsg: 'Timed out waiting for the display to join Wi-Fi. Check the credentials and try again.',
-              statusUpdate: null,
-            });
-            resolve(null);
+            if (pendingWifiResultRef.current) {
+              pendingWifiResultRef.current.timeout = null;
+            }
+            handleProvisionStallRef.current(
+              'Still working on it. Keep the app open while the display reconnects.',
+              null,
+            );
           }, WIFI_RESULT_TIMEOUT_MS);
 
           pendingWifiResultRef.current = {resolve, timeout};
@@ -547,13 +833,17 @@ export function useBleProvision() {
           BLE_PROVISION_UUID,
           encoded,
         );
+        credsSentAtRef.current = Date.now();
+        trackBleEvent('ble.creds_sent', {deviceId: deviceIdRef.current ?? device.name ?? device.id});
         setPhase('waiting_wifi', {errorMsg: null, statusUpdate: null});
         const deviceId = await wifiResult;
         logger.info('BLE credentials completed', {deviceId});
         return deviceId;
       } catch (e: unknown) {
         if (pendingWifiResultRef.current) {
-          clearTimeout(pendingWifiResultRef.current.timeout);
+          if (pendingWifiResultRef.current.timeout) {
+            clearTimeout(pendingWifiResultRef.current.timeout);
+          }
           pendingWifiResultRef.current.resolve(null);
           pendingWifiResultRef.current = null;
         }
@@ -563,8 +853,55 @@ export function useBleProvision() {
         return null;
       }
     },
-    [setPhase, fail],
+    [setPhase, fail, trackBleEvent],
   );
+
+  const resendCredentialsAfterRecovery = useCallback(async () => {
+    const creds = pendingCredentialsRef.current;
+    const device = deviceRef.current;
+    if (!creds || !device || !pendingWifiResultRef.current) {
+      return;
+    }
+
+    const payload = JSON.stringify({
+      ssid: creds.ssid,
+      password: creds.password,
+      username: creds.username,
+      token: creds.token,
+      server_url: creds.serverUrl,
+    });
+    const encoded = Buffer.from(payload, 'utf8').toString('base64');
+
+    try {
+      // Firmware treats this as a fresh provisioning write once its prior attempt
+      // has failed or timed out; if it is still busy, the write remains pending.
+      await device.writeCharacteristicWithResponseForService(
+        BLE_SERVICE_UUID,
+        BLE_PROVISION_UUID,
+        encoded,
+      );
+      trackBleEvent('ble.creds_sent', {
+        deviceId: deviceIdRef.current ?? device.name ?? device.id,
+        recovery: true,
+      });
+      setPhase('waiting_wifi', {errorMsg: null});
+    } catch (e: unknown) {
+      logger.warn('BLE credential resend failed during recovery', {
+        error: e instanceof Error ? e.message : String(e),
+        deviceId: deviceIdRef.current,
+      });
+    }
+  }, [setPhase, trackBleEvent]);
+
+  useEffect(() => {
+    connectRecoveredDeviceRef.current = async (device: Device) => {
+      const connected = await connectToDevice(device);
+      if (connected) {
+        stopRecovery();
+        await resendCredentialsAfterRecovery();
+      }
+    };
+  }, [connectToDevice, resendCredentialsAfterRecovery, stopRecovery]);
 
   // Request WiFi network scan from ESP over BLE.
   const requestWifiScan = useCallback(async () => {
@@ -661,7 +998,7 @@ export function useBleProvision() {
       phase: 'idle',
       foundDevice: null,
       foundDevices: [],
-      deviceId: null,
+      deviceId: targetDeviceId,
       errorMsg: null,
       bluetoothState: prev.bluetoothState,
       bluetoothMessage: prev.bluetoothMessage,
@@ -669,7 +1006,7 @@ export function useBleProvision() {
       isScanning: false,
       statusUpdate: null,
     }));
-  }, [cleanup]);
+  }, [cleanup, targetDeviceId]);
 
   return {state, startScan, selectFoundDevice, connectToDevice, sendCredentials, requestWifiScan, clearError, reset};
 }

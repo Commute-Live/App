@@ -14,6 +14,7 @@ export type BleProvisionPhase =
   | 'connected'
   | 'provisioning'
   | 'waiting_wifi'
+  | 'reconnecting'
   | 'done'
   | 'error';
 

@@ -42,7 +42,7 @@ const BACKEND_PROVIDER_CONTEXT: Record<TransitBackendProviderId, BackendContext>
   'mbta-subway': {provider: 'mbta', mode: 'subway'},
   'mbta-bus': {provider: 'mbta', mode: 'bus'},
   'mbta-rail': {provider: 'mbta', mode: 'rail'},
-  'cta-subway': {provider: 'cta', mode: 'subway'},
+  'cta-subway': {provider: 'cta', mode: 'l'},
   'cta-bus': {provider: 'cta', mode: 'bus'},
   'njt-rail': {provider: 'njt', mode: 'rail'},
 };

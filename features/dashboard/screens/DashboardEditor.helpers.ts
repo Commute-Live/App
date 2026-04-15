@@ -62,6 +62,7 @@ const PROVIDER_MODE_TO_CITY_MODE: Record<string, {city: CityId; mode: ModeId}> =
   'mbta/subway': {city: 'boston', mode: 'train'},
   'mbta/bus': {city: 'boston', mode: 'bus'},
   'mbta/rail': {city: 'boston', mode: 'commuter-rail'},
+  'cta/l': {city: 'chicago', mode: 'train'},
   'cta/subway': {city: 'chicago', mode: 'train'},
   'cta/bus': {city: 'chicago', mode: 'bus'},
   'njt/rail': {city: 'new-jersey', mode: 'train'},
@@ -98,7 +99,7 @@ export function resolveBackendProviderMode(c: CityId, mode: ModeId): string {
   }
   if (c === 'chicago') {
     if (mode === 'bus') return 'cta/bus';
-    return 'cta/subway';
+    return 'cta/l';
   }
   if (c === 'new-jersey') {
     return 'njt/rail';
@@ -402,7 +403,7 @@ export async function loadGlobalLinesForCityMode(city: CityId, mode: ModeId): Pr
   return response.lines.map(line => ({
     id: line.id,
     shortName: line.shortName,
-    label: line.shortName || line.id,
+    label: line.label || line.shortName || line.id,
     sortOrder: line.sortOrder,
     color: resolveRouteColor(city, mode, line.id, line.label, line.color),
     textColor: resolveRouteTextColor(city, mode, line.id, line.label, line.textColor),

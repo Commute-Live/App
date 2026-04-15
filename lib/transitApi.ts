@@ -13,6 +13,7 @@ import type {
   TransitLineGroup,
   TransitStation,
   TransitStationGroup,
+  TransitUiDirection,
   TransitUiMode,
 } from '../types/transit';
 import {isUiDirection} from './transit/frontendTypes';
@@ -188,6 +189,27 @@ const minutesFromTimestamp = (timestamp: string | null): number | null => {
   return Math.max(0, Math.round((ms - Date.now()) / 60000));
 };
 
+const inferDirectionUiKey = (
+  id: string | null,
+  context?: TransitContext,
+): TransitUiDirection | null => {
+  if (!id) return null;
+  const normalized = id.trim().toUpperCase();
+  if (context?.provider === 'cta' && (context.mode === 'subway' || context.mode === 'l')) {
+    if (normalized === '1' || normalized === 'N' || normalized === 'DIR0') return 'dir0';
+    if (normalized === '5' || normalized === 'S' || normalized === 'DIR1') return 'dir1';
+  }
+  if (normalized === '0' || normalized === 'N' || normalized === 'DIR0') return 'dir0';
+  if (normalized === '1' || normalized === 'S' || normalized === 'DIR1') return 'dir1';
+  return null;
+};
+
+const terminalFromDirectionLabel = (label: string | null) => {
+  if (!label) return null;
+  const terminal = label.replace(/^to\s+/i, '').trim();
+  return terminal.length > 0 && terminal !== label ? terminal : null;
+};
+
 export const normalizeTransitStation = (value: unknown): TransitStation | null => {
   if (!isRecord(value)) return null;
 
@@ -220,7 +242,7 @@ export const normalizeTransitStation = (value: unknown): TransitStation | null =
   };
 };
 
-export const normalizeTransitLine = (value: unknown): TransitLine | null => {
+export const normalizeTransitLine = (value: unknown, context?: TransitContext): TransitLine | null => {
   if (!isRecord(value)) {
     const lineId = normalizeString(value);
     if (!lineId) return null;
@@ -254,19 +276,20 @@ export const normalizeTransitLine = (value: unknown): TransitLine | null => {
     .map((entry): TransitLineDirection | null => {
       if (!isRecord(entry)) return null;
       const id = readFirstString(entry, ['id']);
-      const uiKey = readFirstString(entry, ['uiKey', 'ui_key']);
+      const rawUiKey = readFirstString(entry, ['uiKey', 'ui_key']);
+      const uiKey = rawUiKey && isUiDirection(rawUiKey) ? rawUiKey : inferDirectionUiKey(id, context);
       const label = readFirstString(entry, ['label']);
-      const boundLabel = readFirstString(entry, ['boundLabel', 'bound_label']);
-      const toggleLabel = readFirstString(entry, ['toggleLabel', 'toggle_label']);
-      const summaryLabel = readFirstString(entry, ['summaryLabel', 'summary_label']);
-      if (!id || !uiKey || !isUiDirection(uiKey) || !label || !boundLabel || !toggleLabel || !summaryLabel) {
+      const boundLabel = readFirstString(entry, ['boundLabel', 'bound_label']) ?? label;
+      const toggleLabel = readFirstString(entry, ['toggleLabel', 'toggle_label']) ?? label;
+      const summaryLabel = readFirstString(entry, ['summaryLabel', 'summary_label']) ?? label;
+      if (!id || !uiKey || !label || !boundLabel || !toggleLabel || !summaryLabel) {
         return null;
       }
       return {
         id,
         uiKey,
         label,
-        terminal: readFirstString(entry, ['terminal']) ?? null,
+        terminal: readFirstString(entry, ['terminal']) ?? terminalFromDirectionLabel(label),
         boundLabel,
         toggleLabel,
         summaryLabel,
@@ -332,7 +355,7 @@ export const normalizeTransitLineGroup = (
     : stopId;
   const lines = dedupeById(
     collectArray(payload, ['lines', 'routes'])
-      .map(normalizeTransitLine)
+      .map(item => normalizeTransitLine(item, context))
       .filter((item): item is TransitLine => item !== null),
   );
 
@@ -459,6 +482,7 @@ const KNOWN_PROVIDER_MODES = new Set([
   'mbta/subway',
   'mbta/bus',
   'mbta/rail',
+  'cta/l',
   'cta/subway',
   'cta/bus',
   'njt/rail',
