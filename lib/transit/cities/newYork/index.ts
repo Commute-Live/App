@@ -202,6 +202,7 @@ export const newYorkTransitModule: TransitCityModule = {
   getRouteBadgeLabel: (mode, routeId, routeLabel) => {
     if (!isNewYorkMode(mode)) return null;
     if (mode === 'bus') return formatNewYorkBusRoutePickerLabel(routeId, routeLabel ?? routeId);
+    if (mode === 'lirr') return getNewYorkLirrLineLabel(routeId, routeLabel ?? routeId).toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 4);
     if (mode === 'mnr') return routeId.trim().toUpperCase().slice(0, 4);
     return (routeLabel ?? routeId).trim().toUpperCase().slice(0, 4);
   },

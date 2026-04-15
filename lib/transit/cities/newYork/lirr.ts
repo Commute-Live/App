@@ -1,16 +1,41 @@
-import type {DirectionVariant, TransitRouteRecord, UiDirection} from '../../frontendTypes';
+import type {DirectionVariant, UiDirection} from '../../frontendTypes';
 
 export const getNewYorkLirrModeLabel = () => 'LIRR';
+
+const MTA_LIRR_LINE_LABELS: Record<string, string> = {
+  '1': 'Babylon Branch',
+  '2': 'Hempstead Branch',
+  '3': 'Oyster Bay Branch',
+  '4': 'Ronkonkoma Branch',
+  '5': 'Montauk Branch',
+  '6': 'Long Beach Branch',
+  '7': 'Far Rockaway Branch',
+  '8': 'West Hempstead Branch',
+  '9': 'Port Washington Branch',
+  '10': 'Port Jefferson Branch',
+  '12': 'City Terminal Zone',
+  '13': 'Greenport Service',
+};
+
+const normalizeToken = (value: string | null | undefined) => value?.trim().toUpperCase() ?? '';
+
+const resolveNewYorkLirrLabel = (routeId: string, routeLabel: string) => {
+  const trimmedLabel = routeLabel.trim();
+  if (trimmedLabel.length > 0 && normalizeToken(trimmedLabel) !== normalizeToken(routeId)) {
+    return trimmedLabel;
+  }
+  return MTA_LIRR_LINE_LABELS[normalizeToken(routeId)] ?? trimmedLabel ?? routeId.trim();
+};
 
 export const formatNewYorkLirrRoutePickerLabel = (
   routeId: string,
   routeLabel: string,
-) => routeLabel.trim() || routeId.trim();
+) => resolveNewYorkLirrLabel(routeId, routeLabel);
 
 export const getNewYorkLirrLineLabel = (
-  _routeId: string,
+  routeId: string,
   routeLabel: string,
-) => routeLabel.replace(/\s+Branch$/i, '').trim();
+) => resolveNewYorkLirrLabel(routeId, routeLabel).replace(/\s+Branch$/i, '').trim();
 
 type LirrRouteRef =
   | string
