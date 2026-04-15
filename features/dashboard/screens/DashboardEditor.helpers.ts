@@ -30,6 +30,7 @@ type LinePick = {
   stationId: string;
   routeId: string;
   direction: Direction;
+  patternId?: string;
   scrolling: boolean;
   label: string;
   secondaryLabel: string;
@@ -167,17 +168,19 @@ export function stopLookupKey(mode: ModeId, routeId: string, direction = '') {
 }
 
 export function resolveSelectedStationForLine(
-  line: Pick<LinePick, 'mode' | 'routeId' | 'stationId' | 'direction'>,
+  line: Pick<LinePick, 'mode' | 'routeId' | 'stationId' | 'direction' | 'patternId'>,
   city: CityId,
   stationsByMode: StationsByMode,
   stationsByLine: Partial<Record<string, Station[]>>,
 ) {
   const mode = normalizeMode(city, line.mode);
   const genericKey = line.routeId ? stopLookupKey(mode, line.routeId) : '';
+  const patternKey = line.routeId && line.patternId ? stopLookupKey(mode, line.routeId, line.patternId) : '';
   const directionKey = line.routeId
     ? stopLookupKey(mode, line.routeId, getLocalDirectionRequestId(city, mode, line.direction) ?? '')
     : '';
   const lineStations = [
+    ...(patternKey ? (stationsByLine[patternKey] ?? []) : []),
     ...(directionKey ? (stationsByLine[directionKey] ?? []) : []),
     ...(genericKey ? (stationsByLine[genericKey] ?? []) : []),
   ];
@@ -196,6 +199,7 @@ export function areSameLinePicks(left: LinePick[], right: LinePick[]) {
       && line.stationId === other.stationId
       && line.routeId === other.routeId
       && line.direction === other.direction
+      && (line.patternId ?? '') === (other.patternId ?? '')
       && line.scrolling === other.scrolling
       && line.label === other.label
       && line.secondaryLabel === other.secondaryLabel
@@ -298,8 +302,9 @@ export async function loadStopsForLine(
   mode: ModeId,
   lineId: string,
   direction?: string,
+  pattern?: string,
 ): Promise<Station[]> {
-  const response = await getTransitStopsForLine(city, toTransitUiMode(mode), lineId, {direction});
+  const response = await getTransitStopsForLine(city, toTransitUiMode(mode), lineId, {direction, pattern});
   return response.stations.map(station => ({
     id: station.id,
     name: station.name,
@@ -394,6 +399,7 @@ export async function loadRoutesForStation(city: CityId, mode: ModeId, stopId: s
     headsign0: line.headsign0,
     headsign1: line.headsign1,
     directions: line.directions,
+    patterns: line.patterns,
     })),
   };
 }
@@ -410,6 +416,7 @@ export async function loadGlobalLinesForCityMode(city: CityId, mode: ModeId): Pr
     headsign0: line.headsign0,
     headsign1: line.headsign1,
     directions: line.directions,
+    patterns: line.patterns,
   }));
 }
 
@@ -575,6 +582,7 @@ function newLine(
   const firstStation = stations[0];
   const routes = firstStation ? routesByStation[routeLookupKey(safeMode, firstStation.id)] ?? [] : [];
   const firstRoute = routes[0];
+  const firstPattern = firstRoute?.patterns?.[0];
 
   return normalizeLine(
     city,
@@ -583,7 +591,8 @@ function newLine(
       mode: safeMode,
       stationId: firstStation?.id ?? '',
       routeId: firstRoute?.id ?? '',
-      direction: getDefaultUiDirection(city, safeMode, firstRoute),
+      direction: firstPattern?.uiKey ?? getDefaultUiDirection(city, safeMode, firstRoute),
+      patternId: firstPattern?.id ?? '',
       scrolling: false,
       label: '',
       secondaryLabel: '',
@@ -617,8 +626,12 @@ export function normalizeLine(
   const routeMatch = allowedRoutes.find(item => item.id === line.routeId);
   const resolvedRouteId = routeMatch?.id ?? (routesLoaded ? (allowedRoutes[0]?.id ?? routes[0]?.id ?? line.routeId) : line.routeId);
   const resolvedRoute = routeMatch ?? (routesLoaded ? (allowedRoutes[0] ?? routes[0]) : undefined);
+  const patternOptions = resolvedRoute?.patterns ?? [];
+  const resolvedPattern = patternOptions.length > 0
+    ? patternOptions.find(pattern => pattern.id === line.patternId) ?? patternOptions[0]
+    : undefined;
   const directionOptions = getLocalDirectionOptions(city, safeMode, resolvedRoute);
-  const resolvedDirection = directionOptions.includes(line.direction) ? line.direction : (directionOptions[0] ?? line.direction);
+  const resolvedDirection = resolvedPattern?.uiKey ?? (directionOptions.includes(line.direction) ? line.direction : (directionOptions[0] ?? line.direction));
   const displayFormat = normalizeDisplayFormat(line.displayFormat);
 
   return {
@@ -627,6 +640,7 @@ export function normalizeLine(
     stationId: resolvedStationId,
     routeId: resolvedRouteId,
     direction: resolvedDirection,
+    patternId: patternOptions.length > 0 ? (resolvedPattern?.id ?? '') : (line.patternId ?? ''),
     scrolling: line.scrolling === true,
     label: normalizeCustomLabel(line.label),
     secondaryLabel: normalizeCustomLabel(line.secondaryLabel),

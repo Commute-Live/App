@@ -11,6 +11,7 @@ import type {
   TransitLine,
   TransitLineDirection,
   TransitLineGroup,
+  TransitLinePattern,
   TransitStation,
   TransitStationGroup,
   TransitUiDirection,
@@ -125,14 +126,22 @@ const buildStopsByLineEndpoint = (
   lineId: string,
   options: {
     direction?: string;
+    pattern?: string;
   } = {},
 ) => {
   const path = `/${encodeURIComponent(context.provider)}/stations/${encodeURIComponent(context.mode)}/${encodeURIComponent(lineId)}/stopId`;
-  if (typeof options.direction !== 'string' || options.direction.trim().length === 0) {
+  const query = new URLSearchParams();
+  if (typeof options.direction === 'string' && options.direction.trim().length > 0) {
+    query.set('direction', options.direction.trim());
+  }
+  if (typeof options.pattern === 'string' && options.pattern.trim().length > 0) {
+    query.set('pattern', options.pattern.trim());
+  }
+  const queryString = query.toString();
+  if (!queryString) {
     return path;
   }
-  const query = new URLSearchParams({direction: options.direction.trim()});
-  return `${path}?${query.toString()}`;
+  return `${path}?${queryString}`;
 };
 
 const buildArrivalsEndpoint = (
@@ -210,6 +219,31 @@ const terminalFromDirectionLabel = (label: string | null) => {
   return terminal.length > 0 && terminal !== label ? terminal : null;
 };
 
+const normalizeTransitLinePattern = (value: unknown, context?: TransitContext): TransitLinePattern | null => {
+  if (!isRecord(value)) return null;
+  const id = readFirstString(value, ['id', 'patternId', 'pattern_id']);
+  const label = readFirstString(value, ['label', 'name']);
+  const direction = readFirstString(value, ['direction']);
+  const rawUiKey = readFirstString(value, ['uiKey', 'ui_key']);
+  const uiKey = rawUiKey && isUiDirection(rawUiKey) ? rawUiKey : inferDirectionUiKey(direction, context);
+  if (!id || !label || !uiKey) return null;
+
+  return {
+    id,
+    label,
+    direction,
+    uiKey,
+    terminal: readFirstString(value, ['terminal']),
+    firstStopId: readFirstString(value, ['firstStopId', 'first_stop_id']),
+    firstStopName: readFirstString(value, ['firstStopName', 'first_stop_name']),
+    lastStopId: readFirstString(value, ['lastStopId', 'last_stop_id']),
+    lastStopName: readFirstString(value, ['lastStopName', 'last_stop_name']),
+    stopCount: readFirstNumber(value, ['stopCount', 'stop_count']),
+    tripCount: readFirstNumber(value, ['tripCount', 'trip_count']),
+    isPrimary: value.isPrimary === true || value.is_primary === true,
+  };
+};
+
 export const normalizeTransitStation = (value: unknown): TransitStation | null => {
   if (!isRecord(value)) return null;
 
@@ -256,6 +290,7 @@ export const normalizeTransitLine = (value: unknown, context?: TransitContext): 
       headsign0: null,
       headsign1: null,
       directions: [],
+      patterns: [],
     };
   }
 
@@ -297,6 +332,11 @@ export const normalizeTransitLine = (value: unknown, context?: TransitContext): 
     })
     .filter((entry): entry is TransitLineDirection => entry !== null);
 
+  const rawPatterns = Array.isArray(value.patterns) ? value.patterns : [];
+  const patterns = rawPatterns
+    .map(entry => normalizeTransitLinePattern(entry, context))
+    .filter((entry): entry is TransitLinePattern => entry !== null);
+
   return {
     id,
     shortName,
@@ -307,6 +347,7 @@ export const normalizeTransitLine = (value: unknown, context?: TransitContext): 
     headsign0: readFirstString(value, ['headsign0', 'headsign_0']) ?? null,
     headsign1: readFirstString(value, ['headsign1', 'headsign_1']) ?? null,
     directions,
+    patterns,
   };
 };
 
@@ -452,6 +493,7 @@ export const getTransitStopsForLine = async (
   lineId: string,
   options: {
     direction?: string;
+    pattern?: string;
   } = {},
 ): Promise<TransitStationGroup> => {
   const normalizedLineId = normalizeString(lineId);

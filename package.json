@@ -4,6 +4,7 @@
   "version": "1.0.0",
   "scripts": {
     "start": "expo start --go",
+    "audit:cta-l-api": "node scripts/audit-cta-l-api-combinations.mjs",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "android": "expo run:android",

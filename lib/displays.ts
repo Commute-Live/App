@@ -20,6 +20,8 @@ export type LineConfig = {
   stop?: string;
   stopName?: string;
   direction?: string;
+  patternId?: string;
+  patternLabel?: string;
   headsign0?: string;
   headsign1?: string;
   directions?: TransitLineDirection[];
@@ -622,7 +624,7 @@ export const toPreviewSlots = (
           ? liveSubLine || buildPreviewEtaList(extractMinutesFromPreviewTime(liveTime), Math.max(0, requestedTimes - 1))
           : undefined;
     const badgeShape: PreviewSlot['badgeShape'] =
-      line.provider === 'mta-subway' ? 'circle' : line.provider === 'cta-subway' ? 'train' : 'pill';
+      line.provider === 'mta-subway' ? 'circle' : line.provider === 'cta-l' || line.provider === 'cta-subway' ? 'train' : 'pill';
 
     return {
       id: `${display.displayId}-${index}`,

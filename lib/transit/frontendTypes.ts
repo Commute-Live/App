@@ -1,4 +1,4 @@
-import type {TransitLineDirection, TransitUiDirection, TransitUiMode} from '../../types/transit';
+import type {TransitLineDirection, TransitLinePattern, TransitUiDirection, TransitUiMode} from '../../types/transit';
 
 export type ModeId = TransitUiMode;
 export type UiDirection = TransitUiDirection;
@@ -35,6 +35,7 @@ export type TransitRouteRecord = {
   headsign0: string | null;
   headsign1: string | null;
   directions: TransitLineDirection[];
+  patterns?: TransitLinePattern[];
 };
 
 export type TransitRoutePickerItem = {

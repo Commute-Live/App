@@ -16,7 +16,7 @@ export const chicagoTransitModule: TransitCityModule = {
   city: 'chicago',
   modeOrder: ['train', 'bus'],
   backendProvidersByMode: {
-    train: 'cta-subway',
+    train: 'cta-l',
     bus: 'cta-bus',
   },
   getModeLabel: mode => (isChicagoMode(mode) ? getChicagoModeLabel(mode) : null),

@@ -27,6 +27,7 @@ import type {
 } from '../../../lib/transit/frontendTypes';
 import {
   deserializeUiDirection,
+  getDefaultUiDirection,
   getDirectionTerminalDisplayLabel,
   getLocalDirectionRequestId,
   getLocalDirectionLabel,
@@ -94,6 +95,7 @@ type LinePick = {
   stationId: string;
   routeId: string;
   direction: Direction;
+  patternId?: string;
   scrolling: boolean;
   label: string;
   secondaryLabel: string;
@@ -170,6 +172,7 @@ const getBlankLine = (
         stationId: '',
         routeId: '',
         direction: 'uptown' as Direction,
+        patternId: '',
         scrolling: false,
         label: '',
         secondaryLabel: '',
@@ -182,6 +185,7 @@ const getBlankLine = (
       id: lineSlotId(index),
       routeId: '',
       stationId: '',
+      patternId: '',
       scrolling: false,
       label: '',
       secondaryLabel: '',
@@ -204,6 +208,21 @@ const resolveRouteForLine = (
     ?? (linesByMode[mode] ?? []).find(route => route.id === line.routeId);
 };
 
+const getDefaultPatternForRoute = (route: Route | undefined) => route?.patterns?.[0];
+
+const getSelectedPatternForLine = (route: Route | undefined, line: Pick<LinePick, 'patternId'>) =>
+  route?.patterns?.find(pattern => pattern.id === line.patternId) ?? getDefaultPatternForRoute(route);
+
+const stopLookupTokenForLine = (
+  city: CityId,
+  mode: ModeId,
+  line: Pick<LinePick, 'direction' | 'patternId'>,
+  route?: Route | string,
+) => {
+  const selectedPattern = route && typeof route !== 'string' ? getSelectedPatternForLine(route, line) : undefined;
+  return selectedPattern?.id || line.patternId || getLocalDirectionRequestId(city, mode, line.direction, route) || '';
+};
+
 const DISPLAY_PRESET_OPTIONS = [
   {id: 1, label: 'Your Station', description: 'The selected station on the left, next arrival on the right.'},
   {id: 2, label: 'Direction', description: 'Uptown or Downtown on the left, next arrival on the right.'},
@@ -218,7 +237,7 @@ const isNewYorkRailDestinationOnlyMode = (city: CityId, mode: ModeId) =>
   city === 'new-york' && (mode === 'lirr' || mode === 'mnr');
 
 const getDisplayPresetOptionsForMode = (city: CityId, mode: ModeId) =>
-  isNewYorkRailDestinationOnlyMode(city, mode)
+  (city === 'chicago' || isNewYorkRailDestinationOnlyMode(city, mode))
     ? DISPLAY_PRESET_OPTIONS.filter(option => option.id !== 2 && option.id !== 5)
     : DISPLAY_PRESET_OPTIONS;
 
@@ -635,7 +654,8 @@ export default function DisplayEditorScreen() {
 
   useEffect(() => {
     if (!liveSupported) return;
-    const requestedModes = [...new Set(lines.map(line => normalizeMode(city, line.mode)))];
+    const requestedModes = [...new Set(lines.map(line => normalizeMode(city, line.mode)))]
+      .filter(mode => !(city === 'chicago' && mode === 'train'));
     requestedModes.forEach(mode => {
       const key = `${city}:${mode}`;
       if (stationsRequestedRef.current.has(key)) return;
@@ -691,35 +711,55 @@ export default function DisplayEditorScreen() {
       .flatMap(line => {
         const mode = normalizeMode(city, line.mode);
         const route = resolveRouteForLine(city, line, routesByStation, linesByMode);
-        const directionsToFetch =
-          editorStep === 'stops' && selectedLine?.id === line.id
-            ? getLocalDirectionOptions(city, mode, route).map(direction => ({
+        const selectedPattern = getSelectedPatternForLine(route, line);
+        if (city === 'chicago' && mode === 'train') {
+          if (!selectedPattern) return [];
+          return [{
+            mode,
+            routeId: line.routeId,
+            direction: selectedPattern.direction ?? getLocalDirectionRequestId(city, mode, selectedPattern.uiKey, route),
+            pattern: selectedPattern.id,
+          }];
+        }
+        const stopsToFetch =
+          selectedPattern
+            ? [{
               mode,
               routeId: line.routeId,
-              direction: getLocalDirectionRequestId(city, mode, direction, route),
-            }))
-            : [{
-              mode,
-              routeId: line.routeId,
-              direction: getLocalDirectionRequestId(city, mode, line.direction, route),
-            }];
-        return directionsToFetch;
+              direction: selectedPattern.direction ?? getLocalDirectionRequestId(city, mode, selectedPattern.uiKey, route),
+              pattern: selectedPattern.id,
+            }]
+            : editorStep === 'stops' && selectedLine?.id === line.id
+              ? getLocalDirectionOptions(city, mode, route).map(direction => ({
+                mode,
+                routeId: line.routeId,
+                direction: getLocalDirectionRequestId(city, mode, direction, route),
+                pattern: '',
+              }))
+              : [{
+                mode,
+                routeId: line.routeId,
+                direction: getLocalDirectionRequestId(city, mode, line.direction, route),
+                pattern: '',
+              }];
+        return stopsToFetch;
       })
       .filter(item => item.routeId.length > 0)
       .filter((item, index, items) =>
         items.findIndex(candidate =>
           candidate.mode === item.mode
           && candidate.routeId === item.routeId
-          && candidate.direction === item.direction,
+          && candidate.direction === item.direction
+          && candidate.pattern === item.pattern,
         ) === index,
       );
 
     pending.forEach(item => {
-      const lookupKey = stopLookupKey(item.mode, item.routeId, item.direction);
+      const lookupKey = stopLookupKey(item.mode, item.routeId, item.pattern || item.direction);
       setStationsLoadingByLine(prev => ({...prev, [lookupKey]: true}));
       void queryClient.fetchQuery({
-        queryKey: queryKeys.transitStopsForLine(city, item.mode, item.routeId, item.direction ?? ''),
-        queryFn: () => loadStopsForLine(city, item.mode, item.routeId, item.direction),
+        queryKey: queryKeys.transitStopsForLine(city, item.mode, item.routeId, item.pattern || item.direction || ''),
+        queryFn: () => loadStopsForLine(city, item.mode, item.routeId, item.direction, item.pattern),
       })
         .then(stations => setStationsByLine(prev => ({
           ...prev,
@@ -880,6 +920,7 @@ export default function DisplayEditorScreen() {
               stationId: normalizeSavedStationId(saved.provider, normalizedSavedStop),
               routeId: isSavedNjtRail ? savedLine || savedShortName : savedShortName || savedLine,
               direction: dir,
+              patternId: typeof saved.patternId === 'string' ? saved.patternId.trim() : '',
               scrolling: saved.scrolling === true || (saved.scrolling === undefined && sourceDisplay.config?.scrolling === true),
               label: typeof saved.label === 'string' ? saved.label : typeof saved.topText === 'string' ? saved.topText : '',
               secondaryLabel:
@@ -964,7 +1005,7 @@ export default function DisplayEditorScreen() {
   const activeSelectionKey = useMemo(
     () =>
       activeLiveSelections
-        .map(line => `${line.id}:${line.mode}:${line.stationId}:${line.routeId}:${line.direction}`)
+        .map(line => `${line.id}:${line.mode}:${line.stationId}:${line.routeId}:${line.direction}:${line.patternId ?? ''}`)
         .join('|'),
     [activeLiveSelections],
   );
@@ -1105,9 +1146,11 @@ export default function DisplayEditorScreen() {
           city === 'new-jersey' && normalizedMode === 'train'
             ? route?.shortName?.trim() || line.routeId
             : line.routeId;
+        const selectedPattern = getSelectedPatternForLine(route, line);
 
         return {
           ...(direction ? {direction} : {}),
+          ...(selectedPattern ? {patternId: selectedPattern.id, patternLabel: selectedPattern.label} : {}),
           provider,
           providerMode,
           line: persistedRouteId,
@@ -1308,7 +1351,8 @@ export default function DisplayEditorScreen() {
             const route = routes.find(item => item.id === line.routeId);
             const arrival = arrivals.find(item => item.lineId === line.id);
             const stationName = resolveSelectedStationForLine(line, city, stationsByMode, stationsByLine)?.name;
-            const directionDestination = getRouteHeadsign(city, mode, route, line.direction);
+            const selectedPattern = getSelectedPatternForLine(route, line);
+            const directionDestination = selectedPattern?.lastStopName ?? getRouteHeadsign(city, mode, route, line.direction);
             return {
               line: route?.label ?? line.routeId,
               destination: arrival?.destination ?? directionDestination ?? stationName ?? (line.label.trim() || 'Selected stop'),
@@ -1464,7 +1508,7 @@ export default function DisplayEditorScreen() {
 
   const clearLineSelection = (id: string) => {
     animateSectionLayout();
-    updateLine(id, {routeId: '', stationId: '', scrolling: false});
+    updateLine(id, {routeId: '', stationId: '', patternId: '', scrolling: false});
     setSelectedLineId(id);
     setEditorStep('lines');
   };
@@ -1517,6 +1561,7 @@ export default function DisplayEditorScreen() {
           ? lineRoutes.find(item => item.id === line.routeId)
             ?? (linesByMode[safeMode] ?? []).find(item => item.id === line.routeId)
           : undefined;
+        const selectedPattern = getSelectedPatternForLine(route, line);
         const arrival = arrivals.find(item => item.lineId === line.id);
 
         const isSelectedLine = line.id === selectedLineId;
@@ -1537,8 +1582,8 @@ export default function DisplayEditorScreen() {
             ).join(', ')
           : '';
         const routePreviewLabel = route?.label ?? line.routeId ?? '';
-        const directionLabel = getDirectionCueLabel(city, safeMode, line.direction, route ?? line.routeId);
-        const headsignLabel = getHeadsignLabel(city, safeMode, line.direction, route ?? line.routeId, routePreviewLabel);
+        const directionLabel = selectedPattern?.label ?? getDirectionCueLabel(city, safeMode, line.direction, route ?? line.routeId);
+        const headsignLabel = selectedPattern?.lastStopName ?? getHeadsignLabel(city, safeMode, line.direction, route ?? line.routeId, routePreviewLabel);
         const stopName = station?.name ?? (mockEta ? getMockStopName(city, safeMode) : '');
         const primaryPreviewText = resolveDisplayContent(line.primaryContent, stopName, directionLabel, headsignLabel, line.label);
         const secondaryPreviewText = resolveDisplayContent(
@@ -1669,12 +1714,12 @@ export default function DisplayEditorScreen() {
     ? stopLookupKey(
       normalizeMode(city, selectedLine.mode),
       selectedLine.routeId,
-      getLocalDirectionRequestId(
+      stopLookupTokenForLine(
         city,
         normalizeMode(city, selectedLine.mode),
-        selectedLine.direction,
+        selectedLine,
         selectedRouteForEditor,
-      ) ?? '',
+      ),
     )
     : '';
   const fallbackSelectedStopsLookupKey = selectedLine
@@ -1881,10 +1926,21 @@ export default function DisplayEditorScreen() {
               linesByMode={linesByMode}
               linesLoadingByMode={linesLoadingByMode}
               selectedRouteId={activeWizardLine.routeId}
+              selectedPatternId={activeWizardLine.patternId ?? ''}
               hasLinkedDevice={hasLinkedDevice}
               liveSupported={liveSupported}
-              onSelectLine={routeId => {
-                updateLine(activeWizardLine.id, {routeId, stationId: ''});
+              onSelectLine={(routeId, patternId) => {
+                const mode = normalizeMode(city, activeWizardLine.mode);
+                const selectedRoute = (linesByMode[mode] ?? []).find(route => route.id === routeId);
+                const selectedPattern =
+                  selectedRoute?.patterns?.find(pattern => pattern.id === patternId)
+                  ?? getDefaultPatternForRoute(selectedRoute);
+                updateLine(activeWizardLine.id, {
+                  routeId,
+                  stationId: '',
+                  patternId: selectedPattern?.id ?? '',
+                  direction: selectedPattern?.uiKey ?? getDefaultUiDirection(city, mode, selectedRoute),
+                });
                 setEditorStep('stops');
               }}
               onAddDevice={() => router.push('/register-device')}
@@ -3166,6 +3222,7 @@ function LinePickerStep({
   linesByMode,
   linesLoadingByMode,
   selectedRouteId,
+  selectedPatternId,
   hasLinkedDevice,
   liveSupported,
   onSelectLine,
@@ -3176,15 +3233,19 @@ function LinePickerStep({
   linesByMode: Partial<Record<ModeId, Route[]>>;
   linesLoadingByMode: Partial<Record<ModeId, boolean>>;
   selectedRouteId: string;
+  selectedPatternId: string;
   hasLinkedDevice: boolean;
   liveSupported: boolean;
-  onSelectLine: (routeId: string) => void;
+  onSelectLine: (routeId: string, patternId?: string) => void;
   onAddDevice: () => void;
 }) {
   const allRoutes = useMemo(() => linesByMode[selectedMode] ?? [], [linesByMode, selectedMode]);
   const isLoading = !!linesLoadingByMode[selectedMode];
   const [lineSearch, setLineSearch] = useState('');
   const [variantPickerEntry, setVariantPickerEntry] = useState<RoutePickerItem | null>(null);
+  const [expandedPatternRouteId, setExpandedPatternRouteId] = useState<string | null>(
+    selectedRouteId || null,
+  );
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(
     new Set(getDefaultCollapsedLineGroupKeys(city, selectedMode)),
   );
@@ -3233,10 +3294,33 @@ function LinePickerStep({
     setCollapsedGroups(new Set(getDefaultCollapsedLineGroupKeys(city, selectedMode)));
   }, [city, selectedMode]);
 
+  useEffect(() => {
+    if (!isChicagoTrainListMode) {
+      setExpandedPatternRouteId(null);
+      return;
+    }
+    setExpandedPatternRouteId(selectedRouteId || null);
+  }, [isChicagoTrainListMode, selectedRouteId]);
+
   const getPulseAnim = (id: string) => {
     if (!pulseAnims[id]) pulseAnims[id] = new Animated.Value(1);
     return pulseAnims[id];
   };
+
+  const getPatternOptionLabel = (pattern: NonNullable<Route['patterns']>[number]) => {
+    const start = pattern.firstStopName || pattern.terminal || '';
+    const end = pattern.lastStopName || pattern.label || '';
+    if (start && end) {
+      return `${start} → ${end}`;
+    }
+    const destination = end || start || pattern.label;
+    return destination.toLowerCase().startsWith('to ') ? destination : `To ${destination}`;
+  };
+
+  const getPatternEndpointLabels = (pattern: NonNullable<Route['patterns']>[number]) => ({
+    start: pattern.firstStopName || pattern.terminal || '',
+    end: pattern.lastStopName || pattern.label || '',
+  });
 
   const handleSelectLine = (route: RoutePickerItem) => {
     const anim = getPulseAnim(route.id);
@@ -3248,7 +3332,13 @@ function LinePickerStep({
       setVariantPickerEntry(route);
       return;
     }
-    onSelectLine(route.routes[0]?.id ?? route.id);
+    const selectedRoute = route.routes[0];
+    const patterns = selectedRoute?.patterns ?? [];
+    if (isChicagoTrainListMode && patterns.length > 1) {
+      setExpandedPatternRouteId(prev => (prev === route.id ? null : route.id));
+      return;
+    }
+    onSelectLine(selectedRoute?.id ?? route.id, patterns[0]?.id);
   };
 
   return (
@@ -3356,11 +3446,14 @@ function LinePickerStep({
                   <View style={styles.chicagoLineList}>
                     {group.routes.map(route => {
                       const isSelected = route.routes.some(item => item.id === selectedRouteId);
+                      const selectedRoute = route.routes[0];
+                      const patterns = selectedRoute?.patterns ?? [];
+                      const showPatternOptions = patterns.length > 1 && expandedPatternRouteId === route.id;
                       const anim = getPulseAnim(route.id);
                       return (
                         <Animated.View
                           key={route.id}
-                          style={{transform: [{scale: anim}]}}>
+                          style={[styles.chicagoLineOptionGroup, {transform: [{scale: anim}]}]}>
                           <Pressable
                             style={[
                               styles.chicagoLineRow,
@@ -3381,7 +3474,74 @@ function LinePickerStep({
                               minimumFontScale={0.82}>
                               {route.label}
                             </Text>
+                            {patterns.length > 1 ? (
+                              <View
+                                style={[
+                                  styles.chicagoLineDropdownButton,
+                                  {borderColor: route.textColor ?? colors.text},
+                                ]}>
+                                <Text
+                                  style={[
+                                    styles.chicagoLineRowChevron,
+                                    {color: route.textColor ?? colors.text},
+                                  ]}>
+                                  {showPatternOptions ? '⌃' : '⌄'}
+                                </Text>
+                              </View>
+                            ) : null}
                           </Pressable>
+                          {showPatternOptions ? (
+                            <View style={styles.chicagoPatternInlineList}>
+                              {patterns.map(pattern => {
+                                const active = selectedPatternId === pattern.id;
+                                const {start, end} = getPatternEndpointLabels(pattern);
+                                return (
+                                  <Pressable
+                                    key={pattern.id}
+                                    style={[
+                                      styles.chicagoPatternInlineOption,
+                                      active && styles.chicagoPatternInlineOptionActive,
+                                    ]}
+                                    onPress={() => onSelectLine(selectedRoute?.id ?? route.id, pattern.id)}>
+                                    <View style={styles.chicagoPatternOptionInner}>
+                                      {start && end ? (
+                                        <View style={styles.chicagoPatternRouteRow}>
+                                          <Text
+                                            style={styles.chicagoPatternEndpoint}
+                                            numberOfLines={1}
+                                            adjustsFontSizeToFit
+                                            minimumFontScale={0.78}>
+                                            {start}
+                                          </Text>
+                                          <Text style={styles.chicagoPatternArrow}>
+                                            →
+                                          </Text>
+                                          <Text
+                                            style={styles.chicagoPatternEndpoint}
+                                            numberOfLines={1}
+                                            adjustsFontSizeToFit
+                                            minimumFontScale={0.78}>
+                                            {end}
+                                          </Text>
+                                        </View>
+                                      ) : (
+                                        <Text
+                                          style={styles.chicagoPatternInlineText}
+                                          numberOfLines={1}
+                                          adjustsFontSizeToFit
+                                          minimumFontScale={0.84}>
+                                          {getPatternOptionLabel(pattern)}
+                                        </Text>
+                                      )}
+                                      <View style={[styles.chicagoPatternCheck, active && styles.chicagoPatternCheckActive]}>
+                                        {active ? <Text style={styles.chicagoPatternCheckText}>✓</Text> : null}
+                                      </View>
+                                    </View>
+                                  </Pressable>
+                                );
+                              })}
+                            </View>
+                          ) : null}
                         </Animated.View>
                       );
                     })}
@@ -3578,7 +3738,7 @@ function StopPickerStep({
 
   const term = search.trim().toLowerCase();
   const isBusGrouped = city === 'new-york' && selectedMode === 'bus';
-  const hideDirectionToggle = city === 'chicago' && selectedMode === 'bus';
+  const hideDirectionToggle = city === 'chicago' && (selectedMode === 'bus' || selectedMode === 'train');
   const isChicagoTrainMode = city === 'chicago' && selectedMode === 'train';
   const isNycSubwayMode = city === 'new-york' && selectedMode === 'train';
   const isNycLirrMode = city === 'new-york' && selectedMode === 'lirr';
@@ -3806,19 +3966,23 @@ function LedStylePickerStep({
         ? 'destination'
         : 'station';
   const selectedStationLabel = selectedStation?.name?.trim() || 'Selected stop';
-  const selectedDirectionLabel = getDirectionLabel(city, line.mode, line.direction, selectedRoute ?? line.routeId);
+  const selectedPattern = getSelectedPatternForLine(selectedRoute, line);
+  const selectedDirectionLabel = selectedPattern?.label ?? getDirectionLabel(city, line.mode, line.direction, selectedRoute ?? line.routeId);
   const selectedDirectionTerminal =
-    getLocalDirectionTerminal(selectedRoute ?? line.routeId, line.direction)
+    selectedPattern?.terminal
+    ?? getLocalDirectionTerminal(selectedRoute ?? line.routeId, line.direction)
     ?? getDirectionToggleLabel(city, line.mode, line.direction, selectedRoute ?? line.routeId).split(': ')[1]
     ?? '';
   const routeLabel = selectedRoute?.label ?? line.routeId ?? 'Route';
-  const selectedDestinationLabel = getHeadsignLabel(
-    city,
-    line.mode,
-    line.direction,
-    selectedRoute ?? line.routeId,
-    routeLabel,
-  );
+  const selectedDestinationLabel =
+    selectedPattern?.lastStopName ??
+    getHeadsignLabel(
+      city,
+      line.mode,
+      line.direction,
+      selectedRoute ?? line.routeId,
+      routeLabel,
+    );
 
   useEffect(() => {
     setLocalPreset(visibleDisplayType);

@@ -35,6 +35,7 @@ export type TransitBackendProviderId =
   | 'mbta-subway'
   | 'mbta-bus'
   | 'mbta-rail'
+  | 'cta-l'
   | 'cta-subway'
   | 'cta-bus'
   | 'njt-rail';
@@ -74,6 +75,22 @@ export type TransitLine = {
   headsign0: string | null;
   headsign1: string | null;
   directions: TransitLineDirection[];
+  patterns: TransitLinePattern[];
+};
+
+export type TransitLinePattern = {
+  id: string;
+  label: string;
+  direction: string | null;
+  uiKey: TransitUiDirection;
+  terminal: string | null;
+  firstStopId: string | null;
+  firstStopName: string | null;
+  lastStopId: string | null;
+  lastStopName: string | null;
+  stopCount: number | null;
+  tripCount: number | null;
+  isPrimary: boolean;
 };
 
 export type TransitLineDirection = {
