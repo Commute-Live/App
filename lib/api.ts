@@ -1,14 +1,11 @@
 import {logger} from './logger';
 
-const trimTrailingSlash = (value: string) => value.replace(/\/+$/, '');
+const DEFAULT_API_BASE = 'https://staging.commutelive.com';
 
-export const API_BASE = trimTrailingSlash(process.env.EXPO_PUBLIC_SERVER_URL ?? process.env.SERVER_URL ?? '');
+export const API_BASE = DEFAULT_API_BASE;
 
 const resolveUrl = (input: string) => {
   if (/^https?:\/\//i.test(input)) return input;
-  if (!API_BASE) {
-    throw new Error('API base URL is not configured. Set EXPO_PUBLIC_SERVER_URL in .env.');
-  }
   const path = input.startsWith('/') ? input : `/${input}`;
   return `${API_BASE}${path}`;
 };

@@ -468,10 +468,10 @@ function sortRoutesAlphabetically(routes: Route[]): Route[] {
 }
 
 export function prepareRouteEntriesForPicker(city: CityId, mode: ModeId, routes: Route[]) {
-  const deduped = dedupeRoutesForPicker(routes);
   const cityModule = getTransitCityModule(city);
-  const prepared = cityModule?.prepareRouteEntries(mode, deduped);
+  const prepared = cityModule?.prepareRouteEntries(mode, routes);
   if (prepared) return prepared;
+  const deduped = dedupeRoutesForPicker(routes);
   return sortRoutesForPicker(deduped).map(route => routeToPickerItem(route, city, mode));
 }
 

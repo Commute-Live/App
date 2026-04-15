@@ -158,9 +158,8 @@ export const prepareNewYorkRouteEntries = (
   mode: NewYorkMode,
   routes: TransitRouteRecord[],
 ) => {
+  if (mode === 'train') return prepareNewYorkSubwayRouteEntries(routes);
   const deduped = dedupeRoutesForPicker(routes);
-
-  if (mode === 'train') return prepareNewYorkSubwayRouteEntries(deduped);
   if (mode === 'bus') return prepareNewYorkBusRouteEntries(deduped);
   return null;
 };
@@ -199,12 +198,13 @@ export const newYorkTransitModule: TransitCityModule = {
     isNewYorkMode(mode) ? formatNewYorkRoutePickerLabel(mode, routeId, routeLabel) : null,
   getLineLabel: (mode, routeId, routeLabel) =>
     isNewYorkMode(mode) ? getNewYorkLineLabel(mode, routeId, routeLabel) : null,
-  getRouteBadgeLabel: (mode, routeId, routeLabel) => {
+  getRouteBadgeLabel: (mode, routeId, routeLabel, routeShortName) => {
     if (!isNewYorkMode(mode)) return null;
+    if (mode === 'train') return (routeShortName?.trim() || routeId.trim()).toUpperCase();
     if (mode === 'bus') return formatNewYorkBusRoutePickerLabel(routeId, routeLabel ?? routeId);
     if (mode === 'lirr') return getNewYorkLirrLineLabel(routeId, routeLabel ?? routeId).toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 4);
     if (mode === 'mnr') return routeId.trim().toUpperCase().slice(0, 4);
-    return (routeLabel ?? routeId).trim().toUpperCase().slice(0, 4);
+    return (routeShortName?.trim() || routeId.trim() || routeLabel?.trim() || '').toUpperCase().slice(0, 4);
   },
   getDirectionLabel: (mode, direction, routeId, variant) =>
     isNewYorkMode(mode) ? getNewYorkDirectionLabel(mode, direction, routeId ?? undefined, variant) : null,
