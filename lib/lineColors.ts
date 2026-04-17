@@ -230,10 +230,28 @@ const MNR_ROUTE_COLORS: Record<string, {color: string; textColor: string}> = {
   '6': {color: '#EE0034', textColor: '#FFFFFF'}, // Waterbury
 };
 
+const MBTA_RAIL_ROUTE_COLORS: Record<string, {color: string; textColor: string}> = {
+  'CR-GREENBUSH': {color: '#1647B7', textColor: '#FFFFFF'},
+  'CR-LOWELL': {color: '#1647B7', textColor: '#FFFFFF'},
+  CAPEFLYER: {color: '#1647B7', textColor: '#FFFFFF'},
+  'CR-HAVERHILL': {color: '#1BA7E1', textColor: '#FFFFFF'},
+  'CR-NEWBURYPORT': {color: '#1BA7E1', textColor: '#FFFFFF'},
+  'CR-KINGSTON': {color: '#8C2533', textColor: '#FFFFFF'},
+  'CR-NEEDHAM': {color: '#8C2533', textColor: '#FFFFFF'},
+  'CR-PROVIDENCE': {color: '#009E5D', textColor: '#FFFFFF'},
+  'CR-FRANKLIN': {color: '#009E5D', textColor: '#FFFFFF'},
+  'CR-FOXBORO': {color: '#009E5D', textColor: '#FFFFFF'},
+  'CR-FAIRMOUNT': {color: '#D92D20', textColor: '#FFFFFF'},
+  'CR-FITCHBURG': {color: '#ED8B00', textColor: '#FFFFFF'},
+  'CR-WORCESTER': {color: '#7C3AED', textColor: '#FFFFFF'},
+  'CR-NEWBEDFORD': {color: '#C2410C', textColor: '#FFFFFF'},
+};
+
 const SEPTA_BUS_DEFAULT: {color: string; textColor: string} = {color: '#005DAA', textColor: '#FFFFFF'};
 const NJT_RAIL_DEFAULT: {color: string; textColor: string} = {color: '#0039A6', textColor: '#FFFFFF'};
 
 const PROVIDER_COLOR_OVERRIDES: Record<string, Record<string, {color: string; textColor: string}>> = {
+  'mbta-rail': MBTA_RAIL_ROUTE_COLORS,
   'mta-lirr': LIRR_ROUTE_COLORS,
   'mta-mnr': MNR_ROUTE_COLORS,
   'septa-rail': SEPTA_RAIL_COLORS,
@@ -249,6 +267,9 @@ export function resolveProviderLineColor(
   lineId: string,
 ): {color: string; textColor: string} | null {
   // SEPTA bus routes are all uniform SEPTA blue — no per-route color table needed
+  if (provider === 'mbta-rail') {
+    return MBTA_RAIL_ROUTE_COLORS[lineId] ?? MBTA_RAIL_ROUTE_COLORS[lineId.toUpperCase()] ?? null;
+  }
   if (provider === 'septa-bus') return SEPTA_BUS_DEFAULT;
   if (provider === 'njt-rail') return NJT_RAIL_DEFAULT;
 

@@ -89,11 +89,12 @@ import {
 import {styles} from './DisplayEditor.styles';
 
 type Station = {id: string; name: string; area: string; lines: TransitStationLine[]};
-type Arrival = {lineId: string; minutes: number; status: 'GOOD' | 'DELAYS'; destination: string | null};
+type Arrival = {lineId: string; minutes: number | null; status: 'GOOD' | 'DELAYS'; destination: string | null};
 type LinePick = {
   id: string;
   mode: ModeId;
   stationId: string;
+  savedStopName?: string;
   routeId: string;
   direction: Direction;
   patternId?: string;
@@ -914,6 +915,7 @@ export default function DisplayEditorScreen() {
               id: `line-${i + 1}`,
               mode,
               stationId: normalizeSavedStationId(saved.provider, normalizedSavedStop),
+              savedStopName: typeof saved.stopName === 'string' ? saved.stopName.trim() : '',
               routeId: resolveSavedRouteId(saved),
               direction: dir,
               patternId: typeof saved.patternId === 'string' ? saved.patternId.trim() : '',
@@ -994,6 +996,7 @@ export default function DisplayEditorScreen() {
         );
         if (!resolvedStation) return false;
         const stationRoutes = routesByStation[routeLookupKey(normalizedMode, resolvedStation.id)] ?? [];
+        if (stationRoutes.length === 0) return true;
         return stationRoutes.some(route => route.id === line.routeId);
       }),
     [city, lines, routesByStation, stationsByLine, stationsByMode],
@@ -1014,32 +1017,34 @@ export default function DisplayEditorScreen() {
     let cancelled = false;
 
     const pollLiveArrivals = async () => {
-      try {
-        const updates = await Promise.all(
-          activeLiveSelections.map(async line => {
-            const liveArrival = await queryClient.fetchQuery({
-              queryKey: queryKeys.transitArrivalsForSelection(
-                city,
-                line.mode,
-                line.stationId,
-                line.routeId,
-                serializeUiDirection(city, line.mode, line.direction),
-              ),
-              queryFn: () => loadArrivalForSelection(city, line),
-            });
-            if (!liveArrival) return null;
-            return {lineId: line.id, ...liveArrival};
-          }),
-        );
-        if (cancelled) return;
-        const valid = updates.filter((item): item is Arrival => !!item);
-        if (valid.length === 0) return;
+      const updates = await Promise.allSettled(
+        activeLiveSelections.map(async line => {
+          const liveArrival = await queryClient.fetchQuery({
+            queryKey: queryKeys.transitArrivalsForSelection(
+              city,
+              line.mode,
+              line.stationId,
+              line.routeId,
+              serializeUiDirection(city, line.mode, line.direction),
+            ),
+            queryFn: () => loadArrivalForSelection(city, line),
+          });
+          if (!liveArrival) return null;
+          return {lineId: line.id, ...liveArrival};
+        }),
+      );
+      if (cancelled) return;
+      const valid = updates
+        .filter((item): item is PromiseFulfilledResult<Arrival | null> => item.status === 'fulfilled')
+        .map(item => item.value)
+        .filter((item): item is Arrival => !!item);
+      if (valid.length > 0) {
         setArrivals(prev => mergeArrivals(prev, valid, lines));
         setLiveStatusText('');
-      } catch {
-        if (!cancelled) {
-          setLiveStatusText('Unable to refresh arrivals.');
-        }
+        return;
+      }
+      if (updates.some(item => item.status === 'rejected') && !cancelled) {
+        setLiveStatusText('Unable to refresh arrivals.');
       }
     };
 
@@ -1504,14 +1509,14 @@ export default function DisplayEditorScreen() {
 
   const clearLineSelection = (id: string) => {
     animateSectionLayout();
-    updateLine(id, {routeId: '', stationId: '', patternId: '', scrolling: false});
+    updateLine(id, {routeId: '', stationId: '', savedStopName: '', patternId: '', scrolling: false});
     setSelectedLineId(id);
     setEditorStep('lines');
   };
 
   const clearStopSelection = (id: string) => {
     animateSectionLayout();
-    updateLine(id, {stationId: ''});
+    updateLine(id, {stationId: '', savedStopName: ''});
     setSelectedLineId(id);
     setEditorStep('stops');
   };
@@ -1580,7 +1585,7 @@ export default function DisplayEditorScreen() {
         const routePreviewLabel = route?.label ?? line.routeId ?? '';
         const directionLabel = selectedPattern?.label ?? getDirectionCueLabel(city, safeMode, line.direction, route ?? line.routeId);
         const headsignLabel = selectedPattern?.lastStopName ?? getHeadsignLabel(city, safeMode, line.direction, route ?? line.routeId, routePreviewLabel);
-        const stopName = station?.name ?? (mockEta ? getMockStopName(city, safeMode) : '');
+        const stopName = station?.name ?? line.savedStopName ?? (mockEta ? getMockStopName(city, safeMode) : '');
         const primaryPreviewText = resolveDisplayContent(line.primaryContent, stopName, directionLabel, headsignLabel, line.label);
         const secondaryPreviewText = resolveDisplayContent(
           line.secondaryContent,
@@ -1882,7 +1887,7 @@ export default function DisplayEditorScreen() {
               liveSupported={liveSupported}
               onSelectMode={mode => {
                 if (normalizeMode(city, activeWizardLine.mode) !== mode) {
-                  updateLine(activeWizardLine.id, {mode, stationId: '', routeId: ''});
+                  updateLine(activeWizardLine.id, {mode, stationId: '', savedStopName: '', routeId: ''});
                 }
                 setEditorStep('lines');
               }}
@@ -1907,7 +1912,11 @@ export default function DisplayEditorScreen() {
               onSearch={text => setStationSearch(prev => ({...prev, [selectedLine.id]: text}))}
               onSelectDirection={direction => updateLine(selectedLine.id, {direction})}
               onSelectStation={id => {
-                updateLine(selectedLine.id, {stationId: id});
+                const selectedStation = selectedStationsForRoute.find(station => station.id === id);
+                updateLine(selectedLine.id, {
+                  stationId: id,
+                  savedStopName: selectedStation?.name ?? selectedLine.savedStopName ?? '',
+                });
                 setEditorStep(selectedLinePresetConfirmed ? 'done' : 'format');
               }}
             />
@@ -1934,6 +1943,7 @@ export default function DisplayEditorScreen() {
                 updateLine(activeWizardLine.id, {
                   routeId,
                   stationId: '',
+                  savedStopName: '',
                   patternId: selectedPattern?.id ?? '',
                   direction: selectedPattern?.uiKey ?? getDefaultUiDirection(city, mode, selectedRoute),
                 });

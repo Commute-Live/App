@@ -35,7 +35,13 @@ export const bostonTransitModule: TransitCityModule = {
     isBostonMode(mode) ? serializeBostonDirection(direction) : null,
   deserializeDirection: (mode, value) =>
     isBostonMode(mode) ? deserializeBostonDirection(value) : null,
-  normalizeSavedStationId: (_provider, stopId) => stopId.trim().toLowerCase(),
+  normalizeSavedStationId: (_provider, stopId) => {
+    const trimmed = stopId.trim();
+    if (!trimmed) return '';
+    if (/^\d+$/.test(trimmed)) return trimmed;
+    if (/^place-[a-z]+$/i.test(trimmed)) return trimmed.toLowerCase();
+    return trimmed;
+  },
   prepareRouteEntries: (mode, routes) =>
     isBostonMode(mode) ? prepareBostonRouteEntries(mode, routes) : null,
   buildRouteGroups: (mode, routes) =>
