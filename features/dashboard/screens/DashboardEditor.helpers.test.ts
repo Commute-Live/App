@@ -48,4 +48,17 @@ describe('dashboard editor helpers', () => {
 
     expect(routes.map(route => route.label)).toEqual(['Red Line', 'Pink Line']);
   });
+
+  test('prefers persisted route id over short name for saved MBTA bus lines', async () => {
+    const {resolveSavedRouteId} = await import('./DashboardEditor.helpers');
+
+    expect(
+      resolveSavedRouteId({
+        provider: 'mbta-bus',
+        providerMode: 'mbta/bus',
+        line: '741',
+        shortName: 'SL1',
+      }),
+    ).toBe('741');
+  });
 });

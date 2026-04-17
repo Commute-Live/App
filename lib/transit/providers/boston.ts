@@ -40,7 +40,7 @@ const BOSTON_COMMUTER_RAIL_BADGE_LABELS: Record<string, string> = {
 
 const BOSTON_TRAIN_ORDER = ['RED', 'ORANGE', 'BLUE', 'GREEN-B', 'GREEN-C', 'GREEN-D', 'GREEN-E', 'MATTAPAN'];
 const BOSTON_GREEN_BRANCH_IDS = new Set(['GREEN-B', 'GREEN-C', 'GREEN-D', 'GREEN-E']);
-const BOSTON_BUS_APPEARANCE = {color: '#0F4CBA', textColor: '#FFFFFF'};
+const BOSTON_BUS_APPEARANCE = {color: '#CC9900', textColor: '#000000'};
 
 const naturalRouteLabelCompare = (left: string, right: string) =>
   left.localeCompare(right, undefined, {numeric: true, sensitivity: 'base'});

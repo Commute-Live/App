@@ -75,6 +75,7 @@ import {
   normalizeMode,
   normalizePrimaryContent,
   normalizeSavedStationId,
+  resolveSavedRouteId,
   normalizeSecondaryContent,
   prepareRouteEntriesForPicker,
   resolveBackendProvider,
@@ -902,11 +903,6 @@ export default function DisplayEditorScreen() {
             const displayFormat = normalizeDisplayFormat(saved.displayFormat);
             const mapping = cityModeFromSavedLine(saved);
             const mode: ModeId = mapping?.mode ?? 'train';
-            const savedProvider = typeof saved.provider === 'string' ? saved.provider.trim().toLowerCase() : '';
-            const savedProviderMode = typeof saved.providerMode === 'string' ? saved.providerMode.trim().toLowerCase() : '';
-            const isSavedNjtRail = savedProvider === 'njt-rail' || savedProviderMode === 'njt/rail';
-            const savedLine = typeof saved.line === 'string' ? saved.line.trim() : '';
-            const savedShortName = typeof saved.shortName === 'string' ? saved.shortName.trim() : '';
             const normalizedSavedStop = typeof saved.stop === 'string' ? saved.stop.trim().toUpperCase() : '';
             const dir: Direction = deserializeUiDirection(
               city,
@@ -918,7 +914,7 @@ export default function DisplayEditorScreen() {
               id: `line-${i + 1}`,
               mode,
               stationId: normalizeSavedStationId(saved.provider, normalizedSavedStop),
-              routeId: isSavedNjtRail ? savedLine || savedShortName : savedShortName || savedLine,
+              routeId: resolveSavedRouteId(saved),
               direction: dir,
               patternId: typeof saved.patternId === 'string' ? saved.patternId.trim() : '',
               scrolling: saved.scrolling === true || (saved.scrolling === undefined && sourceDisplay.config?.scrolling === true),

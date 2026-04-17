@@ -235,6 +235,23 @@ export function normalizeSavedStationId(provider: string, stopId: string) {
   return stopId.trim().toUpperCase();
 }
 
+export function resolveSavedRouteId(saved: {
+  provider?: string | null;
+  providerMode?: string | null;
+  line?: string | null;
+  shortName?: string | null;
+}) {
+  const savedProvider = typeof saved.provider === 'string' ? saved.provider.trim().toLowerCase() : '';
+  const savedProviderMode = typeof saved.providerMode === 'string' ? saved.providerMode.trim().toLowerCase() : '';
+  const isSavedNjtRail = savedProvider === 'njt-rail' || savedProviderMode === 'njt/rail';
+  const savedLine = typeof saved.line === 'string' ? saved.line.trim() : '';
+  const savedShortName = typeof saved.shortName === 'string' ? saved.shortName.trim() : '';
+
+  // Most providers persist the canonical route id in `line`; prefer that over display-oriented short names.
+  // NJ Transit rail is the exception because older payloads may rely on the route short name as the stable key.
+  return isSavedNjtRail ? savedLine || savedShortName : savedLine || savedShortName;
+}
+
 export function describePresetBehavior(displayPreset: number) {
   switch (displayPreset) {
     case 2:
