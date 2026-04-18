@@ -22,25 +22,25 @@ const BOSTON_SUBWAY_BADGE_LABELS: Record<string, string> = {
 };
 
 const BOSTON_COMMUTER_RAIL_BADGE_LABELS: Record<string, string> = {
-  CAPEFLYER: 'CAPE',
-  'CR-FAIRMOUNT': 'FAIR',
-  'CR-FITCHBURG': 'FITCH',
-  'CR-FOXBORO': 'FOXB',
-  'CR-FRANKLIN': 'FRAN',
-  'CR-GREENBUSH': 'GRNB',
-  'CR-HAVERHILL': 'HAVE',
-  'CR-KINGSTON': 'KING',
-  'CR-LOWELL': 'LOWE',
-  'CR-NEEDHAM': 'NEED',
-  'CR-NEWBEDFORD': 'NBED',
-  'CR-NEWBURYPORT': 'NBPT',
-  'CR-PROVIDENCE': 'PROV',
-  'CR-WORCESTER': 'WORC',
+  CAPEFLYER: 'CAP',
+  'CR-FAIRMOUNT': 'FAI',
+  'CR-FITCHBURG': 'FIT',
+  'CR-FOXBORO': 'FOX',
+  'CR-FRANKLIN': 'FRN',
+  'CR-GREENBUSH': 'GRN',
+  'CR-HAVERHILL': 'HAV',
+  'CR-KINGSTON': 'KNG',
+  'CR-LOWELL': 'LOW',
+  'CR-NEEDHAM': 'NED',
+  'CR-NEWBEDFORD': 'NBD',
+  'CR-NEWBURYPORT': 'NBP',
+  'CR-PROVIDENCE': 'PRV',
+  'CR-WORCESTER': 'WRC',
 };
 
 const BOSTON_TRAIN_ORDER = ['RED', 'ORANGE', 'BLUE', 'GREEN-B', 'GREEN-C', 'GREEN-D', 'GREEN-E', 'MATTAPAN'];
 const BOSTON_GREEN_BRANCH_IDS = new Set(['GREEN-B', 'GREEN-C', 'GREEN-D', 'GREEN-E']);
-const BOSTON_BUS_APPEARANCE = {color: '#0F4CBA', textColor: '#FFFFFF'};
+const BOSTON_BUS_APPEARANCE = {color: '#CC9900', textColor: '#000000'};
 
 const naturalRouteLabelCompare = (left: string, right: string) =>
   left.localeCompare(right, undefined, {numeric: true, sensitivity: 'base'});
@@ -206,7 +206,7 @@ export const getBostonRouteBadgeLabel = (
     return (
       BOSTON_SUBWAY_BADGE_LABELS[normalizedId] ??
       BOSTON_SUBWAY_BADGE_LABELS[normalizeToken(trimLineSuffix(safeLabel))] ??
-      trimLineSuffix(safeLabel).toUpperCase().slice(0, 4)
+      trimLineSuffix(safeLabel).toUpperCase().slice(0, 3)
     );
   }
 
@@ -214,11 +214,11 @@ export const getBostonRouteBadgeLabel = (
     return (
       BOSTON_COMMUTER_RAIL_BADGE_LABELS[normalizedId] ??
       BOSTON_COMMUTER_RAIL_BADGE_LABELS[normalizeToken(stripBostonRoutePrefix(routeId))] ??
-      stripBostonRoutePrefix(routeId).toUpperCase().slice(0, 4)
+      stripBostonRoutePrefix(routeId).toUpperCase().slice(0, 3)
     );
   }
 
-  return safeLabel.toUpperCase().slice(0, 4);
+  return safeLabel.toUpperCase().slice(0, 3);
 };
 
 export const getBostonDirectionLabel = (

@@ -26,11 +26,12 @@ const CTA_BUS_APP_TEXT_COLOR = '#FFFFFF';
 type Station = {id: string; name: string; area: string; lines: TransitStationLine[]};
 type Direction = UiDirection;
 type Route = TransitRouteRecord;
-type Arrival = {lineId: string; minutes: number; status: 'GOOD' | 'DELAYS'; destination: string | null};
+type Arrival = {lineId: string; minutes: number | null; status: 'GOOD' | 'DELAYS'; destination: string | null};
 type LinePick = {
   id: string;
   mode: ModeId;
   stationId: string;
+  savedStopName?: string;
   routeId: string;
   direction: Direction;
   patternId?: string;
@@ -199,6 +200,7 @@ export function areSameLinePicks(left: LinePick[], right: LinePick[]) {
       line.id === other.id
       && line.mode === other.mode
       && line.stationId === other.stationId
+      && (line.savedStopName ?? '') === (other.savedStopName ?? '')
       && line.routeId === other.routeId
       && line.direction === other.direction
       && (line.patternId ?? '') === (other.patternId ?? '')
@@ -235,6 +237,23 @@ export function normalizeSavedStationId(provider: string, stopId: string) {
     if (cityModule) return cityModule.normalizeSavedStationId(provider, stopId);
   }
   return stopId.trim().toUpperCase();
+}
+
+export function resolveSavedRouteId(saved: {
+  provider?: string | null;
+  providerMode?: string | null;
+  line?: string | null;
+  shortName?: string | null;
+}) {
+  const savedProvider = typeof saved.provider === 'string' ? saved.provider.trim().toLowerCase() : '';
+  const savedProviderMode = typeof saved.providerMode === 'string' ? saved.providerMode.trim().toLowerCase() : '';
+  const isSavedNjtRail = savedProvider === 'njt-rail' || savedProviderMode === 'njt/rail';
+  const savedLine = typeof saved.line === 'string' ? saved.line.trim() : '';
+  const savedShortName = typeof saved.shortName === 'string' ? saved.shortName.trim() : '';
+
+  // Most providers persist the canonical route id in `line`; prefer that over display-oriented short names.
+  // NJ Transit rail is the exception because older payloads may rely on the route short name as the stable key.
+  return isSavedNjtRail ? savedLine || savedShortName : savedLine || savedShortName;
 }
 
 export function describePresetBehavior(displayPreset: number) {
@@ -569,7 +588,7 @@ export function mergeArrivals(existing: Arrival[], updates: Arrival[], lines: Li
   const updateMap = new Map<string, Arrival>();
   updates.forEach(update => updateMap.set(update.lineId, update));
   return lines.map(line => {
-    const fallback: Arrival = {lineId: line.id, minutes: 0, status: 'GOOD', destination: null};
+    const fallback: Arrival = {lineId: line.id, minutes: null, status: 'GOOD', destination: null};
     return updateMap.get(line.id) ?? existing.find(item => item.lineId === line.id) ?? fallback;
   });
 }
@@ -594,6 +613,7 @@ function newLine(
       id,
       mode: safeMode,
       stationId: firstStation?.id ?? '',
+      savedStopName: firstStation?.name ?? '',
       routeId: firstRoute?.id ?? '',
       direction: firstPattern?.uiKey ?? getDefaultUiDirection(city, safeMode, firstRoute),
       patternId: firstPattern?.id ?? '',
@@ -628,13 +648,14 @@ export function normalizeLine(
   const allowedRoutes = station && stationLineIds.length > 0 ? routes.filter(route => stationLineIds.includes(route.id)) : routes;
   const routesLoaded = routes.length > 0;
   const routeMatch = allowedRoutes.find(item => item.id === line.routeId);
-  const resolvedRouteId = routeMatch?.id ?? (routesLoaded ? (allowedRoutes[0]?.id ?? routes[0]?.id ?? line.routeId) : line.routeId);
-  const resolvedRoute = routeMatch ?? (routesLoaded ? (allowedRoutes[0] ?? routes[0]) : undefined);
+  const fallbackRoute = !line.routeId && routesLoaded ? (allowedRoutes[0] ?? routes[0]) : undefined;
+  const resolvedRouteId = routeMatch?.id ?? fallbackRoute?.id ?? line.routeId;
+  const resolvedRoute = routeMatch ?? fallbackRoute;
   const patternOptions = resolvedRoute?.patterns ?? [];
   const resolvedPattern = patternOptions.length > 0
     ? patternOptions.find(pattern => pattern.id === line.patternId) ?? patternOptions[0]
     : undefined;
-  const directionOptions = getLocalDirectionOptions(city, safeMode, resolvedRoute);
+  const directionOptions = getLocalDirectionOptions(city, safeMode, resolvedRoute ?? line.routeId);
   const resolvedDirection = resolvedPattern?.uiKey ?? (directionOptions.includes(line.direction) ? line.direction : (directionOptions[0] ?? line.direction));
   const displayFormat = normalizeDisplayFormat(line.displayFormat);
 
@@ -642,6 +663,7 @@ export function normalizeLine(
     ...line,
     mode: safeMode,
     stationId: resolvedStationId,
+    savedStopName: station?.name ?? normalizeCustomLabel(line.savedStopName),
     routeId: resolvedRouteId,
     direction: resolvedDirection,
     patternId: patternOptions.length > 0 ? (resolvedPattern?.id ?? '') : (line.patternId ?? ''),
@@ -698,7 +720,7 @@ export function syncArrivals(existing: Arrival[], lines: LinePick[]): Arrival[] 
     if (found) return found;
     return {
       lineId: line.id,
-      minutes: 0,
+      minutes: null,
       status: 'GOOD',
       destination: null,
     };

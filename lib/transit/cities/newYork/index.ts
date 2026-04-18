@@ -202,9 +202,9 @@ export const newYorkTransitModule: TransitCityModule = {
     if (!isNewYorkMode(mode)) return null;
     if (mode === 'train') return (routeShortName?.trim() || routeId.trim()).toUpperCase();
     if (mode === 'bus') return formatNewYorkBusRoutePickerLabel(routeId, routeLabel ?? routeId);
-    if (mode === 'lirr') return getNewYorkLirrLineLabel(routeId, routeLabel ?? routeId).toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 4);
-    if (mode === 'mnr') return routeId.trim().toUpperCase().slice(0, 4);
-    return (routeShortName?.trim() || routeId.trim() || routeLabel?.trim() || '').toUpperCase().slice(0, 4);
+    if (mode === 'lirr') return getNewYorkLirrLineLabel(routeId, routeLabel ?? routeId).toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 3);
+    if (mode === 'mnr') return routeId.trim().toUpperCase().slice(0, 3);
+    return (routeShortName?.trim() || routeId.trim() || routeLabel?.trim() || '').toUpperCase().slice(0, 3);
   },
   getDirectionLabel: (mode, direction, routeId, variant) =>
     isNewYorkMode(mode) ? getNewYorkDirectionLabel(mode, direction, routeId ?? undefined, variant) : null,
