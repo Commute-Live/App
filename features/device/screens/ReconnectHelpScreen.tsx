@@ -7,7 +7,7 @@ import {ScreenHeader} from '../../../components/ScreenHeader';
 import {colors, layout, radii, spacing, typography} from '../../../theme';
 import {useAppState} from '../../../state/appState';
 import {useAuth} from '../../../state/authProvider';
-import {resetDeviceWifi} from '../../../lib/deviceSetup';
+import {forceReconnectMqtt, resetDeviceWifi} from '../../../lib/deviceSetup';
 import {logger} from '../../../lib/datadog';
 
 const tips = [
@@ -35,6 +35,25 @@ export default function ReconnectHelpScreen() {
   const currentDeviceId = authDeviceId ?? appState.deviceId;
   const [isChangingWifi, setIsChangingWifi] = useState(false);
   const [changeWifiError, setChangeWifiError] = useState('');
+  const [isReconnectingMqtt, setIsReconnectingMqtt] = useState(false);
+  const [mqttReconnectError, setMqttReconnectError] = useState('');
+
+  const handleReconnectMqtt = async () => {
+    if (!currentDeviceId || isReconnectingMqtt) return;
+    setIsReconnectingMqtt(true);
+    setMqttReconnectError('');
+    try {
+      const result = await forceReconnectMqtt(currentDeviceId);
+      if (!result.ok) {
+        logger.error('ReconnectHelp: MQTT reconnect failed', {deviceId: currentDeviceId, error: result.error});
+        setMqttReconnectError(result.error);
+        return;
+      }
+      router.push('/dashboard');
+    } finally {
+      setIsReconnectingMqtt(false);
+    }
+  };
 
   const handleChangeWifi = async () => {
     if (!currentDeviceId || isChangingWifi) return;
@@ -82,6 +101,17 @@ export default function ReconnectHelpScreen() {
 
         {currentDeviceId ? (
           <>
+            <Pressable
+              style={[styles.secondaryButton, isReconnectingMqtt && styles.buttonDisabled]}
+              onPress={() => { void handleReconnectMqtt(); }}
+              disabled={isReconnectingMqtt}>
+              <Text style={styles.secondaryText}>
+                {isReconnectingMqtt ? 'Reconnecting…' : 'Force MQTT reconnect'}
+              </Text>
+            </Pressable>
+            {mqttReconnectError ? (
+              <Text style={styles.errorText}>{mqttReconnectError}</Text>
+            ) : null}
             <Pressable
               style={[styles.secondaryButton, isChangingWifi && styles.buttonDisabled]}
               onPress={() => { void handleChangeWifi(); }}

@@ -25,8 +25,26 @@ const parseDeviceSetupError = async (response: Response) => {
   if (data?.error === 'DEVICE_WIFI_RESET_DISPATCH_FAILED') {
     return 'Could not reset the display right now. Try again when the device is online.';
   }
+  if (data?.error === 'DEVICE_MQTT_RECONNECT_DISPATCH_FAILED') {
+    return 'Could not reach the device. Try again in a moment.';
+  }
   return 'Could not start Wi-Fi setup. Try again.';
 };
+
+export async function forceReconnectMqtt(deviceId: string) {
+  try {
+    const response = await apiFetch(`/user/device/${encodeURIComponent(deviceId)}/reconnect-mqtt`, {
+      method: 'POST',
+    });
+    if (!response.ok) {
+      return {ok: false as const, error: await parseDeviceSetupError(response)};
+    }
+    const data = await response.json().catch(() => ({})) as {deviceOnline?: boolean};
+    return {ok: true as const, deviceOnline: data?.deviceOnline === true};
+  } catch {
+    return {ok: false as const, error: 'Network error'};
+  }
+}
 
 export async function resetDeviceWifi(deviceId: string) {
   try {
