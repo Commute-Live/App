@@ -28,7 +28,7 @@ export default function ReconnectHelpScreen() {
   const router = useRouter();
 
   return (
-    <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
+    <SafeAreaView style={styles.container} edges={['top', 'left', 'right', 'bottom']}>
       <ScrollView contentContainerStyle={styles.content}>
         <ScreenHeader title="Reconnect Help" />
 
@@ -63,7 +63,7 @@ export default function ReconnectHelpScreen() {
 
 const styles = StyleSheet.create({
   container: {flex: 1, backgroundColor: colors.background},
-  content: {padding: layout.screenPadding, gap: spacing.md},
+  content: {padding: layout.screenPadding, paddingBottom: spacing.xxl, gap: spacing.md},
   heading: {color: colors.text, fontSize: typography.titleLg, fontWeight: '800'},
   subheading: {color: colors.textMuted, fontSize: typography.body, lineHeight: 18, marginBottom: spacing.sm},
   card: {

@@ -10,6 +10,14 @@ import {
   State,
   type PanGestureHandlerStateChangeEvent,
 } from 'react-native-gesture-handler';
+import * as _Haptics from 'expo-haptics';
+const Haptics = {
+  selectionAsync: () => _Haptics.selectionAsync().catch(() => {}),
+  impactAsync: (style: _Haptics.ImpactFeedbackStyle) => _Haptics.impactAsync(style).catch(() => {}),
+  notificationAsync: (type: _Haptics.NotificationFeedbackType) => _Haptics.notificationAsync(type).catch(() => {}),
+  NotificationFeedbackType: _Haptics.NotificationFeedbackType,
+  ImpactFeedbackStyle: _Haptics.ImpactFeedbackStyle,
+};
 import {colors} from '../../../theme';
 import DashboardPreviewSection from '../components/DashboardPreviewSection';
 import {useAppState} from '../../../state/appState';
@@ -110,6 +118,28 @@ type RoutesByStation = Record<string, Route[]>;
 type EditorStep = 'city' | 'service' | 'format' | 'lines' | 'stops' | 'done';
 type WizardStepDef = {id: EditorStep; label: string; complete: boolean; reachable: boolean};
 type SelectionSheetOption = {id: string; label: string; description?: string};
+
+const CTA_LINE_IMAGES: Record<string, number> = {
+  red: require('../../../assets/images/cta/red.png'),
+  blue: require('../../../assets/images/cta/blue.png'),
+  brown: require('../../../assets/images/cta/brown.png'),
+  brn: require('../../../assets/images/cta/brown.png'),
+  green: require('../../../assets/images/cta/green.png'),
+  orange: require('../../../assets/images/cta/orange.png'),
+  org: require('../../../assets/images/cta/orange.png'),
+  pink: require('../../../assets/images/cta/pink.png'),
+  purple: require('../../../assets/images/cta/purple.png'),
+  p: require('../../../assets/images/cta/purple.png'),
+  pexp: require('../../../assets/images/cta/purple.png'),
+  yellow: require('../../../assets/images/cta/yellow.png'),
+};
+
+const getCtaLineImage = (routeId: string, routeLabel: string): number | undefined => {
+  const byId = CTA_LINE_IMAGES[routeId.toLowerCase()];
+  if (byId != null) return byId;
+  const firstWord = routeLabel.trim().split(/\s+/)[0].toLowerCase();
+  return CTA_LINE_IMAGES[firstWord];
+};
 
 const DEFAULT_TEXT_COLOR = '#FFFFFF';
 const BOROUGH_ORDER = ['Manhattan', 'Bronx', 'Brooklyn', 'Queens', 'Staten Island'];
@@ -231,7 +261,6 @@ const DISPLAY_PRESET_OPTIONS = [
   {id: 5, label: 'Direction + Upcoming Trains', description: 'Travel direction with upcoming arrivals.'},
   {id: 6, label: 'Destination + Upcoming Trains', description: 'Route destination with upcoming arrivals.'},
 ] as const;
-const Haptics = {selectionAsync: async () => {}, notificationAsync: async (_: any) => {}};
 
 const isNewYorkRailDestinationOnlyMode = (city: CityId, mode: ModeId) =>
   city === 'new-york' && (mode === 'lirr' || mode === 'mnr');
@@ -1363,7 +1392,7 @@ export default function DisplayEditorScreen() {
       );
 
       setSaveDone(true);
-      void Haptics.notificationAsync?.('success');
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       setTimeout(() => {
         setSaveDone(false);
         if (savedDisplayId) {
@@ -1583,7 +1612,10 @@ export default function DisplayEditorScreen() {
           : '';
         const routePreviewLabel = route?.label ?? line.routeId ?? '';
         const directionLabel = selectedPattern?.label ?? getDirectionCueLabel(city, safeMode, line.direction, route ?? line.routeId);
-        const headsignLabel = selectedPattern?.lastStopName ?? getHeadsignLabel(city, safeMode, line.direction, route ?? line.routeId, routePreviewLabel);
+        const headsignLabel =
+          city === 'chicago' && safeMode === 'bus'
+            ? arrival?.destination ?? selectedPattern?.lastStopName ?? getHeadsignLabel(city, safeMode, line.direction, route ?? line.routeId, routePreviewLabel)
+            : selectedPattern?.lastStopName ?? getHeadsignLabel(city, safeMode, line.direction, route ?? line.routeId, routePreviewLabel);
         const stopName = station?.name ?? (mockEta ? getMockStopName(city, safeMode) : '');
         const primaryPreviewText = resolveDisplayContent(line.primaryContent, stopName, directionLabel, headsignLabel, line.label);
         const secondaryPreviewText = resolveDisplayContent(
@@ -1625,6 +1657,11 @@ export default function DisplayEditorScreen() {
                 route?.shortName,
               ),
           badgeShape,
+          imageSource: city === 'chicago' && safeMode === 'train' && line.routeId
+            ? getCtaLineImage(line.routeId, route?.label ?? line.routeId)
+            : city === 'chicago' && safeMode === 'bus'
+              ? require('../../../assets/images/cta/bus.png')
+              : undefined,
           selected: line.id === selectedLineId,
           stopName: previewTitle,
           scrollLabel: line.scrolling,
@@ -1909,7 +1946,7 @@ export default function DisplayEditorScreen() {
               selectedDirection={selectedLine.direction}
               search={stationSearch[selectedLine.id] ?? ''}
               onSearch={text => setStationSearch(prev => ({...prev, [selectedLine.id]: text}))}
-              onSelectDirection={direction => updateLine(selectedLine.id, {direction})}
+              onSelectDirection={direction => updateLine(selectedLine.id, {direction, stationId: ''})}
               onSelectStation={id => {
                 updateLine(selectedLine.id, {stationId: id});
                 setEditorStep(selectedLinePresetConfirmed ? 'done' : 'format');
@@ -2372,14 +2409,14 @@ function TopBar({
           </View>
         </View>
 
-        {editorStep !== 'city' && editorStep !== 'service' && editorStep !== 'lines' ? (
-          <View style={styles.topBarSideRight}>
+        <View style={styles.topBarSideRight}>
+          {editorStep !== 'city' && editorStep !== 'service' && editorStep !== 'lines' ? (
             <Pressable style={styles.layoutPillTopRight} onPress={onLayoutOpen}>
               <Text style={styles.layoutPillTopRightText}>{layoutSlots === 1 ? '1 line' : '2 lines'}</Text>
               <Text style={styles.layoutPillChevron}>⌄</Text>
             </Pressable>
-          </View>
-        ) : null}
+          ) : null}
+        </View>
       </View>
 
       <FadeSection visible={renameOpen}>
@@ -2412,8 +2449,10 @@ function CityPickerStep({
 }) {
   return (
     <View style={styles.cityPickerSection}>
-      <Text style={styles.stepTitle}>Select city</Text>
-      <Text style={styles.stepSubtitle}>Choose the transit system this display should follow.</Text>
+      <View style={styles.stepTitleRow}>
+        <View style={styles.stepTitleRule} />
+        <Text style={styles.stepTitle}>Select city</Text>
+      </View>
       <View style={styles.cityPickerList}>
         {CITY_OPTIONS.map(option => {
           const active = option.id === selectedCity;
@@ -2459,9 +2498,11 @@ function CityPickerStep({
                     </Text>
                   </View>
                 </View>
-                <View style={[styles.choiceRowCheck, active && styles.choiceRowCheckActive]}>
-                  {active ? <Text style={styles.choiceRowCheckText}>✓</Text> : null}
-                </View>
+                {active ? (
+                  <View style={[styles.choiceRowCheck, styles.choiceRowCheckActive]}>
+                    <Text style={styles.choiceRowCheckText}>✓</Text>
+                  </View>
+                ) : null}
               </View>
               <View style={styles.cityPickerCopy}>
                 <Text style={styles.cityPickerDescription} numberOfLines={2}>
@@ -2510,8 +2551,10 @@ function ServicePickerStep({
       ) : null}
 
       <View style={styles.stepSection}>
-        <Text style={styles.stepTitle}>Select service</Text>
-        <Text style={styles.stepSubtitle}>Choose the service for this display.</Text>
+        <View style={styles.stepTitleRow}>
+          <View style={styles.stepTitleRule} />
+          <Text style={styles.stepTitle}>Select service</Text>
+        </View>
       </View>
 
       <View style={styles.servicePickerList}>
@@ -2527,15 +2570,6 @@ function ServicePickerStep({
               <View style={[styles.servicePickerAccent, {backgroundColor: accentColor}]} />
               <View style={styles.servicePickerBody}>
                 <View style={styles.servicePickerIdentity}>
-                  <View
-                    style={[
-                      styles.servicePickerBadge,
-                      {borderColor: accentColor, backgroundColor: withHexAlpha(accentColor, '12')},
-                    ]}>
-                    <Text style={[styles.servicePickerBadgeText, {color: accentColor}]}>
-                      {getModeLabel(city, mode)}
-                    </Text>
-                  </View>
                   <View style={styles.servicePickerCopy}>
                     <Text style={[styles.servicePickerTitle, active && styles.servicePickerTitleActive]}>
                       {getModeLabel(city, mode)}
@@ -2545,9 +2579,11 @@ function ServicePickerStep({
                     </Text>
                   </View>
                 </View>
-                <View style={[styles.choiceRowCheck, active && styles.choiceRowCheckActive]}>
-                  {active ? <Text style={styles.choiceRowCheckText}>✓</Text> : null}
-                </View>
+                {active ? (
+                  <View style={[styles.choiceRowCheck, styles.choiceRowCheckActive]}>
+                    <Text style={styles.choiceRowCheckText}>✓</Text>
+                  </View>
+                ) : null}
               </View>
             </Pressable>
           );
@@ -3149,6 +3185,23 @@ const getLineStepTitle = (city: CityId, mode: ModeId) => {
   return 'Select line';
 };
 
+const getStopStepTitle = (city: CityId, mode: ModeId) => {
+  if (mode === 'lirr' || mode === 'mnr') return 'Select station';
+  if (city === 'new-york' && mode === 'bus') return 'Select stop';
+  if (city === 'philadelphia' && mode === 'train') return 'Select station';
+  if (mode === 'commuter-rail') return 'Select station';
+  return 'Select stop';
+};
+
+const getStopStepSubtitle = (city: CityId, mode: ModeId) => {
+  if (mode === 'lirr') return 'Choose the LIRR station this display should monitor.';
+  if (mode === 'mnr') return 'Choose the Metro-North station this display should monitor.';
+  if (city === 'new-york' && mode === 'train') return 'Choose the subway stop for this display.';
+  if (city === 'new-york' && mode === 'bus') return 'Choose the bus stop for this display.';
+  if (mode === 'commuter-rail') return 'Choose the commuter rail station for this display.';
+  return 'Choose the stop this display should monitor.';
+};
+
 const getLineStepSubtitle = (city: CityId, mode: ModeId) => {
   if (city === 'new-york' && mode === 'train') return 'Pick the subway line this display should follow.';
   if (city === 'new-york' && mode === 'bus') return 'Choose the bus route this display should follow.';
@@ -3255,6 +3308,7 @@ function LinePickerStep({
   const isNycSubwayGrid = city === 'new-york' && selectedMode === 'train';
   const isBostonRouteCardMode =
     city === 'boston' && (selectedMode === 'train' || selectedMode === 'commuter-rail');
+  const isChicagoBusCardMode = city === 'chicago' && selectedMode === 'bus';
   const isChicagoTrainListMode = city === 'chicago' && selectedMode === 'train';
   const isWidePillMode =
     (city === 'new-jersey' && selectedMode === 'train');
@@ -3357,8 +3411,10 @@ function LinePickerStep({
         </View>
       ) : null}
       <View style={styles.stepSection}>
-        <Text style={styles.stepTitle}>{getLineStepTitle(city, selectedMode)}</Text>
-        <Text style={styles.stepSubtitle}>{getLineStepSubtitle(city, selectedMode)}</Text>
+        <View style={styles.stepTitleRow}>
+          <View style={styles.stepTitleRule} />
+          <Text style={styles.stepTitle}>{getLineStepTitle(city, selectedMode)}</Text>
+        </View>
       </View>
       {showSearch && !isLoading ? (
         <TextInput
@@ -3449,49 +3505,40 @@ function LinePickerStep({
                       const selectedRoute = route.routes[0];
                       const patterns = selectedRoute?.patterns ?? [];
                       const showPatternOptions = patterns.length > 1 && expandedPatternRouteId === route.id;
-                      const anim = getPulseAnim(route.id);
                       return (
-                        <Animated.View
+                        <View
                           key={route.id}
-                          style={[styles.chicagoLineOptionGroup, {transform: [{scale: anim}]}]}>
+                          style={styles.chicagoLineOptionGroup}>
                           <Pressable
                             style={[
                               styles.chicagoLineRow,
-                              {
-                                backgroundColor: route.color,
-                                borderColor: isSelected ? colors.text : route.color,
-                              },
+                              isSelected && {borderColor: route.color, backgroundColor: withHexAlpha(route.color, '0D')},
                               isSelected && styles.chicagoLineRowSelected,
                             ]}
                             onPress={() => handleSelectLine(route)}>
-                            <Text
-                              style={[
-                                styles.chicagoLineRowText,
-                                {color: route.textColor ?? colors.text},
-                              ]}
-                              numberOfLines={1}
-                              adjustsFontSizeToFit
-                              minimumFontScale={0.82}>
-                              {route.label}
-                            </Text>
-                            {patterns.length > 1 ? (
-                              <View
+                            <View style={[styles.chicagoLineAccentBar, {backgroundColor: route.color}]} />
+                            <View style={styles.chicagoLineRowBody}>
+                              <Text
                                 style={[
-                                  styles.chicagoLineDropdownButton,
-                                  {borderColor: route.textColor ?? colors.text},
-                                ]}>
-                                <Text
-                                  style={[
-                                    styles.chicagoLineRowChevron,
-                                    {color: route.textColor ?? colors.text},
-                                  ]}>
-                                  {showPatternOptions ? '⌃' : '⌄'}
+                                  styles.chicagoLineRowText,
+                                  isSelected && {color: route.color},
+                                ]}
+                                numberOfLines={1}>
+                                {route.label}
+                              </Text>
+                            </View>
+                            <View style={styles.chicagoLineDropdownButton}>
+                              {isSelected && patterns.length <= 1 ? (
+                                <Text style={[styles.chicagoLineRowChevron, {color: route.color}]}>✓</Text>
+                              ) : (
+                                <Text style={[styles.chicagoLineRowChevron, {color: route.color}]}>
+                                  {patterns.length > 1 ? (showPatternOptions ? '↑' : '↓') : '›'}
                                 </Text>
-                              </View>
-                            ) : null}
+                              )}
+                            </View>
                           </Pressable>
                           {showPatternOptions ? (
-                            <View style={styles.chicagoPatternInlineList}>
+                            <View style={[styles.chicagoPatternInlineList, {borderLeftColor: withHexAlpha(route.color, '60')}]}>
                               {patterns.map(pattern => {
                                 const active = selectedPatternId === pattern.id;
                                 const {start, end} = getPatternEndpointLabels(pattern);
@@ -3507,17 +3554,15 @@ function LinePickerStep({
                                       {start && end ? (
                                         <View style={styles.chicagoPatternRouteRow}>
                                           <Text
-                                            style={styles.chicagoPatternEndpoint}
+                                            style={[styles.chicagoPatternEndpoint, styles.chicagoPatternEndpointStart]}
                                             numberOfLines={1}
                                             adjustsFontSizeToFit
                                             minimumFontScale={0.78}>
                                             {start}
                                           </Text>
-                                          <Text style={styles.chicagoPatternArrow}>
-                                            →
-                                          </Text>
+                                          <Text style={styles.chicagoPatternArrow}>→</Text>
                                           <Text
-                                            style={styles.chicagoPatternEndpoint}
+                                            style={[styles.chicagoPatternEndpoint, styles.chicagoPatternEndpointEnd]}
                                             numberOfLines={1}
                                             adjustsFontSizeToFit
                                             minimumFontScale={0.78}>
@@ -3533,16 +3578,18 @@ function LinePickerStep({
                                           {getPatternOptionLabel(pattern)}
                                         </Text>
                                       )}
-                                      <View style={[styles.chicagoPatternCheck, active && styles.chicagoPatternCheckActive]}>
-                                        {active ? <Text style={styles.chicagoPatternCheckText}>✓</Text> : null}
-                                      </View>
+                                      {active ? (
+                                        <View style={[styles.chicagoPatternCheck, styles.chicagoPatternCheckActive, {backgroundColor: route.color}]}>
+                                          <Text style={styles.chicagoPatternCheckText}>✓</Text>
+                                        </View>
+                                      ) : null}
                                     </View>
                                   </Pressable>
                                 );
                               })}
                             </View>
                           ) : null}
-                        </Animated.View>
+                        </View>
                       );
                     })}
                   </View>
@@ -3603,6 +3650,44 @@ function LinePickerStep({
                       );
                     })}
                   </View>
+                ) : isChicagoBusCardMode ? (
+                  <View style={styles.chicagoBusList}>
+                    {group.routes.map((route, idx) => {
+                      const isSelected = route.routes.some(item => item.id === selectedRouteId);
+                      const routeBadgeLabel = getLocalRouteBadgeLabel(city, selectedMode, route.id, route.label, route.shortName);
+                      const anim = getPulseAnim(route.id);
+                      const accentColor = route.color ?? colors.textTertiary;
+                      return (
+                        <Animated.View key={route.id} style={{transform: [{scale: anim}], width: '100%'}}>
+                          {idx > 0 && <View style={styles.chicagoBusRowDivider} />}
+                          <Pressable
+                            style={[styles.chicagoBusRow, isSelected && styles.chicagoBusRowActive]}
+                            onPress={() => handleSelectLine(route)}>
+                            <View style={[styles.chicagoBusAccentBar, {backgroundColor: accentColor}]} />
+                            <View style={styles.chicagoBusBadgeWrap}>
+                              <View style={[styles.chicagoBusCardBadge, {backgroundColor: accentColor}]}>
+                                <Text
+                                  adjustsFontSizeToFit
+                                  minimumFontScale={0.72}
+                                  numberOfLines={1}
+                                  style={[styles.chicagoBusCardBadgeText, {color: route.textColor ?? '#FFFFFF'}]}>
+                                  {routeBadgeLabel}
+                                </Text>
+                              </View>
+                            </View>
+                            <Text
+                              style={[styles.chicagoBusName, isSelected && styles.chicagoBusNameActive]}
+                              numberOfLines={1}>
+                              {route.label}
+                            </Text>
+                            <View style={[styles.chicagoBusCheck, isSelected && styles.chicagoBusCheckActive]}>
+                              {isSelected ? <Text style={styles.chicagoBusCheckText}>✓</Text> : null}
+                            </View>
+                          </Pressable>
+                        </Animated.View>
+                      );
+                    })}
+                  </View>
                 ) : (
                 <View
                   style={[
@@ -3614,13 +3699,14 @@ function LinePickerStep({
                   {group.routes.map(route => {
                       const isSelected = route.routes.some(item => item.id === selectedRouteId);
                       const isBusBadge = isNycBusBadge(city, selectedMode);
+                      const isChicagoBusBadge = city === 'chicago' && selectedMode === 'bus';
                       const isChicagoTrainBadge = city === 'chicago' && selectedMode === 'train';
                       const isBostonWideBadge = city === 'boston' && selectedMode === 'train';
                       const isCommuterRailBadge = false;
                       const routeBadgeLabel = getLocalRouteBadgeLabel(city, selectedMode, route.id, route.label, route.shortName);
-                      const isExpress = !isBusBadge && isExpressRouteBadge(city, selectedMode, route);
-                      const useCompactBadgeText = isBusBadge && routeBadgeLabel.length >= 5;
-                      const shouldAutoFitBadgeText = isBusBadge || isChicagoTrainBadge || isBostonWideBadge || isCommuterRailBadge || isExpress;
+                      const isExpress = !isBusBadge && !isChicagoBusBadge && isExpressRouteBadge(city, selectedMode, route);
+                      const useCompactBadgeText = (isBusBadge || isChicagoBusBadge) && routeBadgeLabel.length >= 5;
+                      const shouldAutoFitBadgeText = isBusBadge || isChicagoBusBadge || isChicagoTrainBadge || isBostonWideBadge || isCommuterRailBadge || isExpress;
                       const anim = getPulseAnim(route.id);
                     return (
                       <Animated.View
@@ -3632,7 +3718,7 @@ function LinePickerStep({
                         <Pressable
                           style={[
                             styles.lineBadgeTile,
-                            isBusBadge && styles.lineBadgeTileBus,
+                            (isBusBadge || isChicagoBusBadge) && styles.lineBadgeTileBus,
                             isNycSubwayGrid && styles.lineBadgeTileSubway,
                             isWidePillMode && styles.lineBadgeTileChicagoTrain,
                             isSelected && styles.lineBadgeTileActive,
@@ -3641,7 +3727,7 @@ function LinePickerStep({
                             <View
                               style={[
                                 styles.lineBadgeCircle,
-                                isBusBadge && styles.lineBadgeBusPill,
+                                (isBusBadge || isChicagoBusBadge) && styles.lineBadgeBusPill,
                                 (isChicagoTrainBadge || isBostonWideBadge) && styles.lineBadgeChicagoTrainPill,
                                 isCommuterRailBadge && styles.lineBadgeCommuterRail,
                                 {backgroundColor: route.color},
@@ -3653,7 +3739,7 @@ function LinePickerStep({
                                 numberOfLines={isCommuterRailBadge ? 3 : 1}
                                 style={[
                                   styles.lineBadgeText,
-                                  isBusBadge && styles.lineBadgeBusText,
+                                  (isBusBadge || isChicagoBusBadge) && styles.lineBadgeBusText,
                                   (isChicagoTrainBadge || isBostonWideBadge) && styles.lineBadgeChicagoTrainText,
                                   isCommuterRailBadge && styles.lineBadgeCommuterRailText,
                                   useCompactBadgeText && styles.lineBadgeTextCompact,
@@ -3738,7 +3824,7 @@ function StopPickerStep({
 
   const term = search.trim().toLowerCase();
   const isBusGrouped = city === 'new-york' && selectedMode === 'bus';
-  const hideDirectionToggle = city === 'chicago' && (selectedMode === 'bus' || selectedMode === 'train');
+  const hideDirectionToggle = city === 'chicago' && selectedMode === 'train';
   const isChicagoTrainMode = city === 'chicago' && selectedMode === 'train';
   const isNycSubwayMode = city === 'new-york' && selectedMode === 'train';
   const isNycLirrMode = city === 'new-york' && selectedMode === 'lirr';
@@ -3755,6 +3841,7 @@ function StopPickerStep({
     (selectedMode === 'train' || selectedMode === 'bus' || selectedMode === 'commuter-rail');
   const useWideDirectionToggle =
     isChicagoTrainMode ||
+    (city === 'chicago' && selectedMode === 'bus') ||
     isNycSubwayMode ||
     isNycLirrMode ||
     isNycBusMode ||
@@ -3789,8 +3876,14 @@ function StopPickerStep({
 
   return (
     <View style={[styles.stepContainer, styles.stopPickerStepFull]}>
-      <View style={styles.stopPickerHeader}>
-        {!hideDirectionToggle ? (
+      <View style={styles.stepSection}>
+        <View style={styles.stepTitleRow}>
+          <View style={styles.stepTitleRule} />
+          <Text style={styles.stepTitle}>{getStopStepTitle(city, selectedMode)}</Text>
+        </View>
+      </View>
+      {!hideDirectionToggle ? (
+        <View style={styles.stopPickerHeader}>
           <View style={[styles.stopPickerDirRow, useWideDirectionToggle && styles.stopPickerDirRowChicagoTrain]}>
             {directionOptions.map(dir => {
               const active = selectedDirection === dir;
@@ -3836,8 +3929,8 @@ function StopPickerStep({
               );
             })}
           </View>
-        ) : null}
-      </View>
+        </View>
+      ) : null}
 
       <View style={styles.stepSearchField}>
         <Ionicons name="search-outline" size={18} color={colors.textTertiary} style={styles.stepSearchIcon} />
@@ -4088,6 +4181,39 @@ function LedStylePickerStep({
           })}
         </View>
       </View>
+
+      {/* Custom label */}
+      <View style={styles.inlineCountPicker}>
+        <Text style={styles.inlineCountLabel}>Custom label (optional)</Text>
+        <TextInput
+          value={line.label}
+          onChangeText={text =>
+            onChangeLine({
+              label: text,
+              primaryContent: text.trim().length > 0 ? 'custom' : getPresetBehavior(localPreset).primaryContent,
+            })
+          }
+          placeholder="Top line — leave blank for default"
+          placeholderTextColor={colors.textTertiary}
+          style={styles.inlineLabelInput}
+          returnKeyType="done"
+        />
+        {getPresetBehavior(localPreset).supportsBottomCustom ? (
+          <TextInput
+            value={line.secondaryLabel}
+            onChangeText={text =>
+              onChangeLine({
+                secondaryLabel: text,
+                secondaryContent: text.trim().length > 0 ? 'custom' : getPresetBehavior(localPreset).secondaryContent,
+              })
+            }
+            placeholder="Bottom line — leave blank for default"
+            placeholderTextColor={colors.textTertiary}
+            style={styles.inlineLabelInput}
+            returnKeyType="done"
+          />
+        ) : null}
+      </View>
     </View>
   );
 }
@@ -4132,50 +4258,6 @@ function WizardReviewStep({
     <View style={styles.wizardReviewContainer}>
 
 
-
-      {/* Custom text */}
-      <View style={styles.wizardSection}>
-        <Text style={styles.wizardSectionLabel}>Custom Label Text (Optional)</Text>
-        <View style={styles.wizardCard}>
-          <View style={styles.wizardCardPadded}>
-            <Text style={styles.wizardFieldLabel}>Top Line</Text>
-            <TextInput
-              value={line.label}
-              onChangeText={text =>
-                onChangeLine({
-                  label: text,
-                  primaryContent: text.trim().length > 0 ? 'custom' : activePresetBehavior.primaryContent,
-                })
-              }
-              placeholder="Leave blank for default"
-              placeholderTextColor={colors.textMuted}
-              style={styles.wizardFieldInput}
-              returnKeyType="done"
-            />
-          </View>
-          {activePresetBehavior.supportsBottomCustom ? (
-            <>
-              <View style={styles.wizardCardDivider} />
-              <View style={styles.wizardCardPadded}>
-                <Text style={styles.wizardFieldLabel}>Bottom Line</Text>
-                <TextInput
-                  value={line.secondaryLabel}
-                  onChangeText={text =>
-                    onChangeLine({
-                      secondaryLabel: text,
-                      secondaryContent: text.trim().length > 0 ? 'custom' : activePresetBehavior.secondaryContent,
-                    })
-                  }
-                  placeholder="Leave blank for default"
-                  placeholderTextColor={colors.textMuted}
-                  style={styles.wizardFieldInput}
-                  returnKeyType="done"
-                />
-              </View>
-            </>
-          ) : null}
-        </View>
-      </View>
 
       {/* Settings */}
       <View style={styles.wizardSection}>

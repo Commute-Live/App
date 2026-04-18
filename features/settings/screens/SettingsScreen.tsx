@@ -116,8 +116,9 @@ export default function SettingsScreen() {
         setDeviceNotice({kind: 'error', text: result.error});
         return;
       }
-      logger.info('Device Wi-Fi change started', {userId: user?.id, deviceId: targetDeviceId});
-      router.push(`/ble-provision?deviceId=${encodeURIComponent(targetDeviceId)}&mode=change-wifi`);
+      logger.info('Device Wi-Fi change started', {userId: user?.id, deviceId: targetDeviceId, deviceOnline: result.deviceOnline});
+      const offlineParam = result.deviceOnline ? '' : '&offline=true';
+      router.push(`/ble-provision?deviceId=${encodeURIComponent(targetDeviceId)}&mode=change-wifi${offlineParam}`);
     } finally {
       setIsChangingWifi(false);
     }

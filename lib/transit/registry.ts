@@ -43,7 +43,6 @@ const BACKEND_PROVIDER_CONTEXT: Record<TransitBackendProviderId, BackendContext>
   'mbta-bus': {provider: 'mbta', mode: 'bus'},
   'mbta-rail': {provider: 'mbta', mode: 'rail'},
   'cta-l': {provider: 'cta', mode: 'l'},
-  'cta-subway': {provider: 'cta', mode: 'l'},
   'cta-bus': {provider: 'cta', mode: 'bus'},
   'njt-rail': {provider: 'njt', mode: 'rail'},
 };
@@ -61,7 +60,6 @@ const BACKEND_PROVIDER_CITY_MODE: Record<TransitBackendProviderId, {city: Suppor
   'mbta-bus': {city: 'boston', mode: 'bus'},
   'mbta-rail': {city: 'boston', mode: 'commuter-rail'},
   'cta-l': {city: 'chicago', mode: 'train'},
-  'cta-subway': {city: 'chicago', mode: 'train'},
   'cta-bus': {city: 'chicago', mode: 'bus'},
   'njt-rail': {city: 'new-jersey', mode: 'train'},
 };

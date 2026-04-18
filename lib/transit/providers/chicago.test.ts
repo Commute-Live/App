@@ -18,11 +18,14 @@ describe("Chicago transit provider helpers", () => {
     expect(deserializeChicagoDirection("train", "S")).toBe("dir1");
   });
 
-  test("keeps CTA bus direction internal and leaves train copy API-driven", () => {
-    expect(serializeChicagoDirection("bus", "dir0")).toBe("");
+  test("serializes CTA bus directions with GTFS direction ids and leaves copy API-driven", () => {
+    expect(serializeChicagoDirection("bus", "dir0")).toBe("0");
+    expect(serializeChicagoDirection("bus", "dir1")).toBe("1");
     expect(deserializeChicagoDirection("bus", null)).toBe("dir0");
+    expect(deserializeChicagoDirection("bus", "0")).toBe("dir0");
+    expect(deserializeChicagoDirection("bus", "1")).toBe("dir1");
     expect(getChicagoDirectionLabel("train", "dir0", "BLUE", "bound")).toBeNull();
-    expect(getChicagoDirectionLabel("bus", "dir0", "22", "toggle")).toBe("To destination");
+    expect(getChicagoDirectionLabel("bus", "dir0", "22", "toggle")).toBeNull();
   });
 
   test("expands CTA L route ids to full line names for the picker", () => {

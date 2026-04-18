@@ -93,7 +93,7 @@ export default function PairedOnlineScreen() {
   }, [clearAuth, deviceId, linkDeviceMutation, linkStatus, router, userId]);
 
   return (
-    <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
+    <SafeAreaView style={styles.container} edges={['top', 'left', 'right', 'bottom']}>
       <ScrollView contentContainerStyle={styles.content}>
         <View style={styles.topSpacer} />
 
@@ -161,7 +161,7 @@ export default function PairedOnlineScreen() {
 
 const styles = StyleSheet.create({
   container: {flex: 1, backgroundColor: colors.background},
-  content: {padding: layout.screenPadding, paddingBottom: layout.bottomInset, gap: spacing.md},
+  content: {padding: layout.screenPadding, paddingBottom: spacing.xxl, gap: spacing.md},
   dropdown: {
     backgroundColor: colors.card,
     borderColor: colors.border,

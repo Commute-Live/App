@@ -20,6 +20,9 @@ import {formatLocalRoutePickerLabel, getDefaultUiDirection, getLocalDirectionOpt
 import {colors} from '../../../theme';
 import type {DisplayContent, DisplayFormat, TransitArrival, TransitStationLine, TransitUiMode} from '../../../types/transit';
 
+const CTA_BUS_APP_COLOR = '#C97A46';
+const CTA_BUS_APP_TEXT_COLOR = '#FFFFFF';
+
 type Station = {id: string; name: string; area: string; lines: TransitStationLine[]};
 type Direction = UiDirection;
 type Route = TransitRouteRecord;
@@ -64,7 +67,6 @@ const PROVIDER_MODE_TO_CITY_MODE: Record<string, {city: CityId; mode: ModeId}> =
   'mbta/bus': {city: 'boston', mode: 'bus'},
   'mbta/rail': {city: 'boston', mode: 'commuter-rail'},
   'cta/l': {city: 'chicago', mode: 'train'},
-  'cta/subway': {city: 'chicago', mode: 'train'},
   'cta/bus': {city: 'chicago', mode: 'bus'},
   'njt/rail': {city: 'new-jersey', mode: 'train'},
 };
@@ -350,10 +352,11 @@ function resolveRouteColor(city: CityId, mode: ModeId, lineId: string, label: st
   const appearance = cityModule?.resolveRouteAppearance?.(mode, lineId, label);
   if (appearance) return appearance.color;
 
-  if (city === 'chicago' && apiColor) return apiColor;
-  if (providerAppearance) return providerAppearance.color;
+  if (city === 'chicago' && mode === 'bus') return CTA_BUS_APP_COLOR;
   const mapped = resolveMappedRouteAppearance(city, mode, lineId, label);
   if (mapped) return mapped.color;
+  if (city === 'chicago' && apiColor) return apiColor;
+  if (providerAppearance) return providerAppearance.color;
   if (apiColor) return apiColor;
   return lineColorFor(lineId);
 }
@@ -369,10 +372,11 @@ function resolveRouteTextColor(city: CityId, mode: ModeId, lineId: string, label
   const appearance = cityModule?.resolveRouteAppearance?.(mode, lineId, label);
   if (appearance) return appearance.textColor;
 
-  if (city === 'chicago' && apiTextColor) return apiTextColor;
-  if (providerAppearance) return providerAppearance.textColor;
+  if (city === 'chicago' && mode === 'bus') return CTA_BUS_APP_TEXT_COLOR;
   const mapped = resolveMappedRouteAppearance(city, mode, lineId, label);
   if (mapped) return mapped.textColor;
+  if (city === 'chicago' && apiTextColor) return apiTextColor;
+  if (providerAppearance) return providerAppearance.textColor;
   if (apiTextColor) return apiTextColor;
   return colors.text;
 }

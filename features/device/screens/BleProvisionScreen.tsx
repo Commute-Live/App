@@ -425,11 +425,12 @@ function PasswordModal({
 // ── Main screen ──────────────────────────────────────────────────────────────
 export default function BleProvisionScreen() {
   const router = useRouter();
-  const params = useLocalSearchParams<{deviceId?: string; mode?: string}>();
+  const params = useLocalSearchParams<{deviceId?: string; mode?: string; offline?: string}>();
   const {setDeviceId, setDeviceStatus} = useAppState();
   const {hydrate} = useAuth();
   const targetDeviceId = typeof params.deviceId === 'string' ? params.deviceId : null;
   const isChangeWifiFlow = params.mode === 'change-wifi';
+  const isDeviceOffline = isChangeWifiFlow && params.offline === 'true';
 
   const {state, startScan, selectFoundDevice, connectToDevice, sendCredentials, requestWifiScan, clearError, reset} =
     useBleProvision({targetDeviceId});
@@ -628,6 +629,11 @@ export default function BleProvisionScreen() {
                 {bluetoothMessage ? 'Turn on Bluetooth to continue' : 'Find my CommuteLive display'}
               </Text>
             </Pressable>
+            {isDeviceOffline && state.phase !== 'error' && (
+              <Text style={styles.scanHint}>
+                Your display isn{"'"}t connected to Wi-Fi. It will appear here automatically once it enters setup mode — this can take up to 2 minutes.
+              </Text>
+            )}
             {state.phase === 'error' && (
               <Pressable style={styles.secondaryButton} onPress={reset}>
                 <Text style={styles.secondaryText}>Start over</Text>
@@ -642,7 +648,11 @@ export default function BleProvisionScreen() {
             <View style={styles.scanCard}>
               <ActivityIndicator size="large" color={colors.accent} />
               <Text style={styles.scanText}>Scanning for CommuteLive displays nearby...</Text>
-              <Text style={styles.scanHint}>Make sure the device is powered on.</Text>
+              <Text style={styles.scanHint}>
+                {isDeviceOffline
+                  ? 'Waiting for display to enter setup mode. Keep this screen open.'
+                  : 'Make sure the device is powered on.'}
+              </Text>
             </View>
           </Animated.View>
         )}
@@ -716,7 +726,7 @@ export default function BleProvisionScreen() {
               </Text>
             </View>
 
-            <Text style={styles.sectionTitle}>Choose a Wi-Fi network</Text>
+            <Text style={styles.sectionTitle}>Choose a Wi‑Fi network</Text>
 
             {state.isScanning && (
               <View style={styles.wifiScanCard}>
@@ -756,7 +766,7 @@ export default function BleProvisionScreen() {
 
             {!state.isScanning && !isBusy && state.wifiNetworks.length > 0 && (
               <Pressable style={styles.rescanRow} onPress={requestWifiScan}>
-                <Text style={styles.rescanText}>Rescan</Text>
+                <Text style={styles.rescanText}>↺  Rescan for networks</Text>
               </Pressable>
             )}
           </Animated.View>
@@ -765,12 +775,20 @@ export default function BleProvisionScreen() {
         {/* Phase: done */}
         {state.phase === 'done' && (
           <Animated.View entering={FadeIn.duration(300)} style={styles.section}>
-            <Text style={styles.successText}>Display is online! Redirecting...</Text>
+            <View style={styles.successCard}>
+              <View style={styles.successIconWrap}>
+                <Text style={styles.successIconText}>✓</Text>
+              </View>
+              <View style={styles.successCopy}>
+                <Text style={styles.successTitle}>Display is online!</Text>
+                <Text style={styles.successSubtitle}>Redirecting you to the dashboard...</Text>
+              </View>
+            </View>
           </Animated.View>
         )}
 
         <Pressable style={styles.skipLink} onPress={() => router.push('/dashboard')}>
-          <Text style={styles.skipText}>Skip for now</Text>
+          <Text style={styles.skipText}>I'll set this up later</Text>
         </Pressable>
       </ScrollView>
 
@@ -815,15 +833,15 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   section: {gap: spacing.md},
-  sectionTitle: {color: colors.text, fontSize: typography.label, fontWeight: '700', marginBottom: spacing.sm},
+  sectionTitle: {color: colors.text, fontSize: typography.body, fontWeight: '700', marginBottom: spacing.sm},
   errorCard: {
-    backgroundColor: colors.surface,
-    borderColor: colors.warning,
+    backgroundColor: colors.dangerSurface,
+    borderColor: colors.dangerBorder,
     borderWidth: 1,
     borderRadius: radii.md,
     padding: spacing.md,
   },
-  errorText: {color: colors.warning, fontSize: typography.body},
+  errorText: {color: colors.dangerText, fontSize: typography.body, lineHeight: 20},
   scanCard: {
     backgroundColor: colors.card,
     borderColor: colors.border,
@@ -897,9 +915,16 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.xs,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    borderRadius: radii.md,
+    backgroundColor: colors.successSurface,
+    borderWidth: 1,
+    borderColor: colors.successBorder,
+    alignSelf: 'flex-start',
     marginBottom: spacing.md,
   },
-  connectedText: {color: colors.success, fontWeight: '700', fontSize: typography.body},
+  connectedText: {color: colors.successText, fontWeight: '700', fontSize: typography.body},
   wifiScanCard: {
     backgroundColor: colors.card,
     borderColor: colors.border,
@@ -945,15 +970,26 @@ const styles = StyleSheet.create({
   lockIcon: {fontSize: typography.label},
   chevron: {color: colors.textMuted, fontSize: 18, fontWeight: '300'},
   enterpriseBadge: {
-    backgroundColor: colors.surface,
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.border,
     borderRadius: radii.sm,
-    paddingHorizontal: spacing.xxs,
-    paddingVertical: 1,
+    paddingHorizontal: spacing.xs,
+    paddingVertical: 2,
   },
-  enterpriseText: {color: colors.textMuted, fontSize: 9, fontWeight: '800'},
+  enterpriseText: {color: colors.textSecondary, fontSize: 11, fontWeight: '700', letterSpacing: 0.3},
   manualEntryText: {flex: 1, color: colors.accent, fontSize: typography.bodyLg, fontWeight: '600'},
-  rescanRow: {alignSelf: 'center', marginTop: spacing.sm, paddingVertical: spacing.xs},
-  rescanText: {color: colors.accent, fontSize: typography.body, fontWeight: '600'},
+  rescanRow: {
+    alignSelf: 'center',
+    marginTop: spacing.sm,
+    paddingVertical: spacing.xs,
+    paddingHorizontal: spacing.md,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+  },
+  rescanText: {color: colors.accent, fontSize: typography.body, fontWeight: '700'},
   dot: {width: 8, height: 8, borderRadius: 4},
   dotActive: {backgroundColor: colors.success},
   primaryButton: {
@@ -976,7 +1012,29 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   secondaryText: {color: colors.textMuted, fontWeight: '700', fontSize: typography.bodyLg},
-  successText: {color: colors.success, fontWeight: '700', textAlign: 'center', fontSize: 15},
+  successCard: {
+    backgroundColor: colors.successSurface,
+    borderColor: colors.successBorder,
+    borderWidth: 1,
+    borderRadius: radii.lg,
+    padding: layout.cardPaddingLg,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+  },
+  successIconWrap: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: colors.success,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  successIconText: {color: '#fff', fontSize: 18, fontWeight: '800'},
+  successCopy: {flex: 1, gap: spacing.xxs},
+  successTitle: {color: colors.successText, fontSize: typography.bodyLg, fontWeight: '800'},
+  successSubtitle: {color: colors.successTextSoft, fontSize: typography.body},
   skipLink: {
     alignItems: 'center',
     justifyContent: 'center',
@@ -984,9 +1042,8 @@ const styles = StyleSheet.create({
     borderRadius: radii.md,
     borderWidth: 1,
     borderColor: colors.border,
-    backgroundColor: colors.surface,
   },
-  skipText: {color: colors.textMuted, fontWeight: '700', fontSize: typography.body},
+  skipText: {color: colors.textSecondary, fontWeight: '600', fontSize: typography.body},
   unsupportedWrap: {
     flex: 1,
     justifyContent: 'center',
@@ -1170,8 +1227,9 @@ const modal = StyleSheet.create({
     lineHeight: 18,
   },
   errorText: {
-    color: colors.warning,
+    color: colors.dangerText,
     fontSize: typography.body,
     textAlign: 'center',
+    lineHeight: 20,
   },
 });

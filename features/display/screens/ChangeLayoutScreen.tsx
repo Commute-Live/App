@@ -26,7 +26,7 @@ export default function ChangeLayoutScreen() {
   const {state, setTheme, setBehavior, setDensity} = useAppState();
 
   return (
-    <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
+    <SafeAreaView style={styles.container} edges={['top', 'left', 'right', 'bottom']}>
       <ScrollView contentContainerStyle={styles.content}>
         <ScreenHeader title="Change Layout" />
 
@@ -101,7 +101,7 @@ const Selectable = ({
 
 const styles = StyleSheet.create({
   container: {flex: 1, backgroundColor: colors.background},
-  content: {padding: layout.screenPadding, gap: spacing.sm},
+  content: {padding: layout.screenPadding, paddingBottom: spacing.xxl, gap: spacing.sm},
   section: {marginBottom: layout.screenGap},
   sectionTitle: {color: colors.text, fontSize: typography.bodyLg, fontWeight: '700', marginBottom: spacing.sm},
   grid: {flexDirection: 'row', gap: spacing.md, flexWrap: 'wrap'},

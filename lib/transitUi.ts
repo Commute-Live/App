@@ -53,7 +53,6 @@ const PROVIDER_MODE_TO_UI_MODE: Partial<Record<string, LocalMode>> = {
   'mbta/bus': 'bus',
   'mbta/rail': 'commuter-rail',
   'cta/l': 'train',
-  'cta/subway': 'train',
   'cta/bus': 'bus',
   'njt/rail': 'train',
 };
@@ -153,6 +152,7 @@ export const getLocalDirectionOptions = (
   }
 
   if (city === 'chicago') {
+    if (mode === 'bus') return ['dir0', 'dir1'];
     return [];
   }
 

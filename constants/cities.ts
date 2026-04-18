@@ -24,7 +24,7 @@ export const CITY_OPTIONS: CityOption[] = [
     shortLabel: 'Philly',
     agencyCode: 'SEPTA',
     agencyName: 'SEPTA',
-    description: 'SEPTA Regional Rail, Market-Frankford, Broad Street, trolley, and bus',
+    description: 'SEPTA rail, subway, trolley, and bus routes',
   },
   {
     id: 'boston',

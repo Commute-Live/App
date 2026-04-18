@@ -36,7 +36,8 @@ export async function resetDeviceWifi(deviceId: string) {
     if (!response.ok) {
       return {ok: false as const, error: await parseDeviceSetupError(response)};
     }
-    return {ok: true as const};
+    const data = await response.json().catch(() => ({})) as {deviceOnline?: boolean};
+    return {ok: true as const, deviceOnline: data?.deviceOnline === true};
   } catch {
     return {ok: false as const, error: 'Network error'};
   }

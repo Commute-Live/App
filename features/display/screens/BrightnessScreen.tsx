@@ -11,7 +11,7 @@ export default function BrightnessScreen() {
   const adjust = (delta: number) => setBrightness(state.brightness + delta);
 
   return (
-    <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
+    <SafeAreaView style={styles.container} edges={['top', 'left', 'right', 'bottom']}>
       <ScrollView contentContainerStyle={styles.content}>
         <ScreenHeader title="Brightness" />
 
@@ -47,7 +47,7 @@ export default function BrightnessScreen() {
 
 const styles = StyleSheet.create({
   container: {flex: 1, backgroundColor: colors.background},
-  content: {padding: layout.screenPadding, gap: spacing.md},
+  content: {padding: layout.screenPadding, paddingBottom: spacing.xxl, gap: spacing.md},
   card: {
     backgroundColor: colors.card,
     borderColor: colors.border,

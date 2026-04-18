@@ -100,7 +100,7 @@ export const getChicagoRouteBadgeLabel = (
 ) => {
   const normalizedId = normalizeToken(routeId);
   const safeLabel = (routeLabel ?? routeId).trim();
-  if (mode !== 'train') return safeLabel.toUpperCase().slice(0, 4);
+  if (mode !== 'train') return normalizedId.slice(0, 5) || safeLabel.toUpperCase().slice(0, 5);
   return normalizedId.slice(0, 4) || trimLineSuffix(safeLabel).toUpperCase().slice(0, 4);
 };
 
@@ -110,7 +110,7 @@ export const getChicagoDirectionLabel = (
   _routeId?: string | null,
   _variant: DirectionVariant = 'bound',
 ) => {
-  if (mode === 'bus') return 'To destination';
+  if (mode === 'bus') return null;
   return null;
 };
 
@@ -118,7 +118,7 @@ export const serializeChicagoDirection = (
   mode: ChicagoMode,
   direction: UiDirection,
 ) => {
-  if (mode === 'bus') return '';
+  if (mode === 'bus') return direction === 'dir1' ? '1' : '0';
   if (direction === 'dir1') return '5';
   return '1';
 };
@@ -127,7 +127,11 @@ export const deserializeChicagoDirection = (
   mode: ChicagoMode,
   value: string | null | undefined,
 ): UiDirection | null => {
-  if (mode === 'bus') return 'dir0';
+  if (mode === 'bus') {
+    const normalized = normalizeToken(value);
+    if (normalized === '1' || normalized === 'DIR1') return 'dir1';
+    return 'dir0';
+  }
 
   const normalized = normalizeToken(value);
   if (normalized === '5' || normalized === 'S' || normalized === 'DIR1') return 'dir1';

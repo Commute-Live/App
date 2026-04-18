@@ -525,7 +525,6 @@ const KNOWN_PROVIDER_MODES = new Set([
   'mbta/bus',
   'mbta/rail',
   'cta/l',
-  'cta/subway',
   'cta/bus',
   'njt/rail',
 ]);

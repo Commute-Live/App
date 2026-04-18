@@ -55,7 +55,7 @@ export default function EditStationsScreen() {
   );
 
   return (
-    <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
+    <SafeAreaView style={styles.container} edges={['top', 'left', 'right', 'bottom']}>
       <ScrollView contentContainerStyle={styles.content}>
         <ScreenHeader title="Edit Stations" />
 

@@ -69,8 +69,8 @@ export const styles = StyleSheet.create({
     color: colors.text,
     fontSize: typography.pageTitle,
     fontWeight: '800',
-    letterSpacing: -0.8,
-    lineHeight: 33,
+    letterSpacing: -1.2,
+    lineHeight: 38,
   },
   pageHeaderMeta: {
     color: colors.textSecondary,

@@ -1,6 +1,12 @@
 import React, {useEffect, useRef, useState} from 'react';
-import {Animated, Pressable, StyleSheet, Text, View, type GestureResponderEvent} from 'react-native';
+import {Animated, Image, Pressable, StyleSheet, Text, View, type GestureResponderEvent} from 'react-native';
 import type {StyleProp, TextStyle} from 'react-native';
+import * as _Haptics from 'expo-haptics';
+const Haptics = {
+  selectionAsync: () => _Haptics.selectionAsync().catch(() => {}),
+  impactAsync: (style: _Haptics.ImpactFeedbackStyle) => _Haptics.impactAsync(style).catch(() => {}),
+  ImpactFeedbackStyle: _Haptics.ImpactFeedbackStyle,
+};
 import Svg, {Circle, Path, Rect} from 'react-native-svg';
 import {colors, radii, spacing} from '../../../theme';
 
@@ -10,6 +16,7 @@ export type Display3DSlot = {
   textColor: string;
   routeLabel: string;
   badgeShape?: 'circle' | 'pill' | 'rail' | 'bar' | 'train';
+  imageSource?: number;
   selected: boolean;
   stopName: string;
   scrollLabel?: boolean;
@@ -209,6 +216,7 @@ export default function Display3DPreview({
     setDragOffsetY(0);
     lastSwapAtRef.current = 0;
     onDragStateChange?.(true);
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
   };
 
   const handleTouchMove = (id: string, pageY: number) => {
@@ -222,6 +230,7 @@ export default function Display3DPreview({
     const swapCooldownElapsed = now - lastSwapAtRef.current > 220;
     if (!crossedSwapThreshold || !swapCooldownElapsed) return;
 
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     onReorderSlot(id);
     lastSwapAtRef.current = now;
     dragOriginYRef.current = pageY;
@@ -242,6 +251,19 @@ export default function Display3DPreview({
         <View style={[styles.screen, compact && styles.screenCompact, mini && styles.screenMini]}>
           {emptyMessage ? (
             <View style={styles.emptyState}>
+              <Svg width={32} height={26} viewBox="0 0 42 34" style={styles.emptyStateIcon}>
+                <Path
+                  d="M8 3.5C8 1.8 9.4 1 11.1 1h19.8C32.6 1 34 1.8 34 3.5l2.5 18.2c.2 1.5-.9 2.8-2.4 2.8H7.9c-1.5 0-2.6-1.3-2.4-2.8L8 3.5Z"
+                  fill={colors.displayPlaceholder}
+                />
+                <Rect x="11" y="6" width="8" height="9" rx="1.2" fill={colors.editorMockSurface} />
+                <Rect x="23" y="6" width="8" height="9" rx="1.2" fill={colors.editorMockSurface} />
+                <Rect x="16" y="19" width="10" height="2.4" rx="0.8" fill={colors.editorMockSurface} />
+                <Circle cx="12.5" cy="20.5" r="2.2" fill={colors.editorMockSurface} />
+                <Circle cx="29.5" cy="20.5" r="2.2" fill={colors.editorMockSurface} />
+                <Path d="M14 24.5h14v5H14z" fill={colors.displayPlaceholder} />
+                <Path d="M10 29.5h22M7 33h28" stroke={colors.displayPlaceholder} strokeWidth="2.4" strokeLinecap="round" />
+              </Svg>
               <Text style={styles.emptyStateText}>{emptyMessage}</Text>
             </View>
           ) : (
@@ -256,14 +278,22 @@ export default function Display3DPreview({
                     draggingId === slot.id && styles.slotDragging,
                     draggingId === slot.id && {transform: [{translateY: dragOffsetY}]},
                   ]}
-                  onPress={() => onSelectSlot(slot.id)}
+                  onPress={() => { void Haptics.selectionAsync(); onSelectSlot(slot.id); }}
                   onPressIn={event => handlePressIn(slot.id, event.nativeEvent.pageY)}
                   onLongPress={() => handleLongPress(slot.id)}
                   onTouchMove={(event: GestureResponderEvent) => handleTouchMove(slot.id, event.nativeEvent.pageY)}
                   onPressOut={endDrag}
                   delayLongPress={260}>
                   <View style={[styles.slotLead, compact && styles.slotLeadCompact]}>
-                    {slot.badgeShape === 'bar' ? (
+                    {slot.imageSource != null ? (
+                      <View style={[styles.routeBadgeTrainWrap, compact && styles.routeBadgeTrainWrapCompact]}>
+                        <Image
+                          source={slot.imageSource}
+                          style={[styles.routeBadgeImage, compact && styles.routeBadgeImageCompact]}
+                          resizeMode="contain"
+                        />
+                      </View>
+                    ) : slot.badgeShape === 'bar' ? (
                       <View style={[styles.routeBadgeBarWrap, compact && styles.routeBadgeBarWrapCompact]}>
                         <View style={[styles.routeBadgeBar, compact && styles.routeBadgeBarCompact, {backgroundColor: slot.color}]} />
                       </View>
@@ -422,10 +452,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: spacing.lg,
+    gap: spacing.xs,
   },
+  emptyStateIcon: {opacity: 0.5},
   emptyStateText: {
     color: colors.displayPlaceholder,
-    fontSize: 15,
+    fontSize: 13,
     fontWeight: '600',
     textAlign: 'center',
   },
@@ -490,12 +522,14 @@ const styles = StyleSheet.create({
   routeBadgePillCompact: {width: undefined, minWidth: 44, height: 26, borderRadius: 8, paddingHorizontal: 6},
   routeBadgeRail: {width: 40, height: 30, borderRadius: 8, paddingHorizontal: 3},
   routeBadgeRailCompact: {width: 40, height: 30, borderRadius: 8, paddingHorizontal: 3},
+  routeBadgeImage: {width: 42, height: 34},
+  routeBadgeImageCompact: {width: 36, height: 29},
   routeBadgeBarWrap: {width: 30, height: 30, alignItems: 'center', justifyContent: 'center'},
   routeBadgeBarWrapCompact: {width: 30, height: 30},
   routeBadgeBar: {width: 10, height: 28, borderRadius: 3},
   routeBadgeBarCompact: {width: 10, height: 28, borderRadius: 3},
-  routeBadgeTrainWrap: {width: 42, height: 34, alignItems: 'center', justifyContent: 'center'},
-  routeBadgeTrainWrapCompact: {width: 38, height: 30},
+  routeBadgeTrainWrap: {width: 44, height: 44, alignItems: 'center', justifyContent: 'center'},
+  routeBadgeTrainWrapCompact: {width: 38, height: 38, alignItems: 'center', justifyContent: 'center'},
   routeBadgeText: {fontSize: 13, fontWeight: '900'},
   routeBadgeTextPill: {fontSize: 11, lineHeight: 13, textAlign: 'center', includeFontPadding: false},
   routeBadgeTextCompact: {fontSize: 13},

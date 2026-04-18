@@ -61,12 +61,35 @@ export type PreviewSlotOptions = {
   maxSlots?: number;
 };
 
+const CTA_LINE_IMAGES: Record<string, number> = {
+  red: require('../assets/images/cta/red.png'),
+  blue: require('../assets/images/cta/blue.png'),
+  brown: require('../assets/images/cta/brown.png'),
+  brn: require('../assets/images/cta/brown.png'),
+  green: require('../assets/images/cta/green.png'),
+  orange: require('../assets/images/cta/orange.png'),
+  org: require('../assets/images/cta/orange.png'),
+  pink: require('../assets/images/cta/pink.png'),
+  purple: require('../assets/images/cta/purple.png'),
+  p: require('../assets/images/cta/purple.png'),
+  pexp: require('../assets/images/cta/purple.png'),
+  yellow: require('../assets/images/cta/yellow.png'),
+};
+
+const getCtaLineImage = (lineId: string, label: string): number | undefined => {
+  const byId = CTA_LINE_IMAGES[lineId.toLowerCase()];
+  if (byId != null) return byId;
+  const firstWord = label.trim().split(/\s+/)[0].toLowerCase();
+  return CTA_LINE_IMAGES[firstWord];
+};
+
 type PreviewSlot = {
   id: string;
   color: string;
   textColor: string;
   routeLabel: string;
   badgeShape?: 'circle' | 'pill' | 'rail' | 'bar' | 'train';
+  imageSource?: number;
   selected: boolean;
   stopName: string;
   subLine?: string;
@@ -131,7 +154,6 @@ const KNOWN_PROVIDER_MODES = new Set([
   'mbta/bus',
   'mbta/rail',
   'cta/l',
-  'cta/subway',
   'cta/bus',
   'njt/rail',
 ]);
@@ -623,8 +645,15 @@ export const toPreviewSlots = (
         : displayType === 4 || displayType === 5
           ? liveSubLine || buildPreviewEtaList(extractMinutesFromPreviewTime(liveTime), Math.max(0, requestedTimes - 1))
           : undefined;
+    const isCtaLine = line.provider === 'cta-l';
+    const isCtaBus = line.provider === 'cta-bus';
     const badgeShape: PreviewSlot['badgeShape'] =
-      line.provider === 'mta-subway' ? 'circle' : line.provider === 'cta-l' || line.provider === 'cta-subway' ? 'train' : 'pill';
+      line.provider === 'mta-subway' ? 'circle' : isCtaLine ? 'train' : 'pill';
+    const imageSource = isCtaLine && line.line
+      ? getCtaLineImage(line.line, line.line)
+      : isCtaBus
+        ? require('../assets/images/cta/bus.png')
+        : undefined;
 
     return {
       id: `${display.displayId}-${index}`,
@@ -632,6 +661,7 @@ export const toPreviewSlots = (
       textColor: badgeShape === 'circle' ? '#FFFFFF' : line.textColor || lineTextColor,
       routeLabel: resolvePreviewRouteLabel(line),
       badgeShape,
+      imageSource,
       selected: false,
       stopName: previewTitle,
       scrollLabel: line.scrolling === true || (line.scrolling === undefined && display.config.scrolling === true),

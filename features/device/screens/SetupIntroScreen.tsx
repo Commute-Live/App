@@ -3,6 +3,7 @@ import {Pressable, ScrollView, StyleSheet, Text, TextInput, View, ActivityIndica
 import {SafeAreaView} from 'react-native-safe-area-context';
 import {Ionicons} from '@expo/vector-icons';
 import {useRouter} from 'expo-router';
+import {ScreenHeader} from '../../../components/ScreenHeader';
 import {useMutation, useQuery} from '@tanstack/react-query';
 import {colors, layout, radii, spacing, typography} from '../../../theme';
 import {useAppState} from '../../../state/appState';
@@ -24,7 +25,6 @@ export default function SetupIntroScreen() {
   const canConnect = ssid.length > 0 && wifiPassword.trim().length > 0;
   const [connectStatus, setConnectStatus] = useState<'idle' | 'connecting' | 'success' | 'error'>('idle');
   const [errorMsg, setErrorMsg] = useState('');
-  const [apiResponse, setApiResponse] = useState<string | null>(null);
   const [pendingLinkDeviceId, setPendingLinkDeviceId] = useState<string | null>(null);
   const [needsHomeWifiForLink, setNeedsHomeWifiForLink] = useState(false);
   const [isLinking, setIsLinking] = useState(false);
@@ -148,7 +148,6 @@ export default function SetupIntroScreen() {
   const handleConnect = async () => {
     setConnectStatus('connecting');
     setErrorMsg('');
-    setApiResponse(null);
     setNeedsHomeWifiForLink(false);
     setPendingLinkDeviceId(null);
 
@@ -159,7 +158,6 @@ export default function SetupIntroScreen() {
         wifiUsername,
         currentDeviceId: state.deviceId,
       });
-      setApiResponse(result.text);
       if (!result.responseOk || result.data.error) {
         setConnectStatus('error');
         const rawError = String(result.data.error || 'Unknown error');
@@ -212,16 +210,15 @@ export default function SetupIntroScreen() {
   if (!supportsLocalDeviceSetup) {
     return (
       <SafeAreaView style={styles.container} edges={['top', 'left', 'right', 'bottom']}>
-        <View style={styles.body}>
-          <View style={styles.unsupportedWrap}>
-            <View style={styles.unsupportedCard}>
-              <Text style={styles.unsupportedTitle}>Use the mobile app for setup</Text>
-              <Text style={styles.unsupportedText}>{unsupportedDeviceSetupMessage}</Text>
-            </View>
-            <Pressable style={styles.primaryButton} onPress={() => router.replace('/dashboard')}>
-              <Text style={styles.primaryText}>Open dashboard</Text>
-            </Pressable>
+        <ScreenHeader title="Register device" />
+        <View style={styles.unsupportedWrap}>
+          <View style={styles.unsupportedCard}>
+            <Text style={styles.unsupportedTitle}>Use the mobile app for setup</Text>
+            <Text style={styles.unsupportedText}>{unsupportedDeviceSetupMessage}</Text>
           </View>
+          <Pressable style={styles.primaryButton} onPress={() => router.replace('/dashboard')}>
+            <Text style={styles.primaryText}>Open dashboard</Text>
+          </Pressable>
         </View>
       </SafeAreaView>
     );
@@ -229,40 +226,48 @@ export default function SetupIntroScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={['top', 'left', 'right', 'bottom']}>
+      <ScreenHeader title="Register device" />
       <View style={styles.body}>
         {isConnecting ? (
           <View style={styles.loadingOverlay} pointerEvents="auto">
             <View style={styles.loadingCard}>
               <ActivityIndicator size="large" color={colors.accent} />
-              <Text style={styles.loadingText}>Connecting to Wi-Fi...</Text>
+              <Text style={styles.loadingText}>Connecting to Wi‑Fi...</Text>
             </View>
           </View>
         ) : null}
+
         <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-          <Text style={styles.heading}>Register your device</Text>
-          <Text style={styles.subheading}>Complete registration below.</Text>
-          <View style={styles.section}>
-            <View style={styles.deviceIdCard}>
+          <View style={styles.deviceIdCard}>
+            <View style={styles.deviceIdRow}>
               <Text style={styles.deviceIdLabel}>Display</Text>
               <Text style={styles.deviceIdValue}>My Device</Text>
+            </View>
+            <View style={styles.deviceIdDivider} />
+            <View style={styles.deviceIdRow}>
               <Text style={styles.deviceIdLabel}>Account</Text>
               <Text style={styles.deviceIdValue}>{state.userId ? 'Signed in' : 'Sign in required'}</Text>
             </View>
-            <Text style={styles.sectionTitle}>Wi‑Fi credentials</Text>
+          </View>
+
+          <View style={styles.fieldGroup}>
+            <Text style={styles.fieldGroupTitle}>Wi‑Fi credentials</Text>
             <TextInput
               value={ssid}
               onChangeText={setSsid}
-              placeholder="Wi-Fi SSID"
+              placeholder="Network name (SSID)"
               placeholderTextColor={colors.textMuted}
               autoCapitalize="none"
+              autoCorrect={false}
               style={styles.input}
             />
             <TextInput
               value={wifiUsername}
               onChangeText={setWifiUsername}
-              placeholder="Username (optional)"
+              placeholder="Username (enterprise only)"
               placeholderTextColor={colors.textMuted}
               autoCapitalize="none"
+              autoCorrect={false}
               style={styles.input}
             />
             <TextInput
@@ -273,55 +278,57 @@ export default function SetupIntroScreen() {
               secureTextEntry
               style={styles.input}
             />
-            <Pressable
-              style={[styles.primaryButton, !canConnect && styles.primaryButtonDisabled]}
-              disabled={!canConnect || isConnecting}
-              onPress={handleConnect}
-            >
-              {isConnecting ? (
-                <ActivityIndicator color={colors.background} />
-              ) : (
-                <Text style={[styles.primaryText, !canConnect && styles.primaryTextDisabled]}>
-                  Connect to Wi‑Fi
-                </Text>
-              )}
-            </Pressable>
-            {connectStatus === 'error' && <Text style={[styles.statusMessage, styles.statusMessageError]}>{errorMsg}</Text>}
-            {connectStatus === 'success' && (
-              <Text style={[styles.statusMessage, styles.statusMessageSuccess]}>
-                {needsHomeWifiForLink ? 'Connected to device Wi-Fi.' : 'Connected!'}
-              </Text>
-            )}
-            {needsHomeWifiForLink && pendingLinkDeviceId ? (
-              <View style={styles.pauseCard}>
-                <Text style={styles.pauseTitle}>Pause: Switch Phone Network</Text>
-                <Text style={styles.pauseText}>
-                  Connect your phone to home Wi-Fi (or cellular), then continue.
-                </Text>
-                <Pressable
-                  style={[styles.secondaryButton, styles.pauseActionButton]}
-                  disabled={isLinking}
-                  onPress={handleRetryLink}>
-                  <Text style={styles.secondaryText}>
-                    {isLinking ? 'Registering + Linking...' : 'I have done it'}
-                  </Text>
-                </Pressable>
-              </View>
-            ) : null}
-            {apiResponse && (
-              <Text style={styles.apiResponseText} selectable>
-                API Response: {apiResponse}
-              </Text>
-            )}
           </View>
+
+          {connectStatus === 'error' && errorMsg.length > 0 && (
+            <View style={styles.errorCard}>
+              <Ionicons name="alert-circle-outline" size={16} color={colors.dangerText} />
+              <Text style={styles.errorText}>{errorMsg}</Text>
+            </View>
+          )}
+
+          {needsHomeWifiForLink && pendingLinkDeviceId ? (
+            <View style={styles.pauseCard}>
+              <View style={styles.pauseHeaderRow}>
+                <Ionicons name="swap-horizontal-outline" size={18} color={colors.accent} />
+                <Text style={styles.pauseTitle}>Switch your phone's Wi‑Fi</Text>
+              </View>
+              <Text style={styles.pauseText}>
+                The display connected. Now switch your phone to home Wi‑Fi or cellular so we can finish linking it to your account.
+              </Text>
+              <Pressable
+                style={[styles.primaryButton, isLinking && styles.primaryButtonDisabled]}
+                disabled={isLinking}
+                onPress={handleRetryLink}>
+                {isLinking ? (
+                  <ActivityIndicator color={colors.onAccent} />
+                ) : (
+                  <Text style={styles.primaryText}>I've switched — continue</Text>
+                )}
+              </Pressable>
+            </View>
+          ) : null}
+
+          <Pressable
+            style={[styles.primaryButton, !canConnect && styles.primaryButtonDisabled]}
+            disabled={!canConnect || isConnecting || (needsHomeWifiForLink && !!pendingLinkDeviceId)}
+            onPress={handleConnect}>
+            {isConnecting ? (
+              <ActivityIndicator color={colors.onAccent} />
+            ) : (
+              <Text style={[styles.primaryText, !canConnect && styles.primaryTextDisabled]}>
+                Connect to Wi‑Fi
+              </Text>
+            )}
+          </Pressable>
         </ScrollView>
+
         <View style={styles.footer}>
           <Pressable
-            style={styles.finishLink}
+            style={styles.skipButton}
             disabled={isConnecting || isLinking || needsHomeWifiForLink}
-            onPress={() => router.push(postPairingRoute)}
-          >
-            <Text style={styles.finishText}>Choose preset</Text>
+            onPress={() => router.push(postPairingRoute)}>
+            <Text style={styles.skipText}>Skip for now</Text>
           </Pressable>
         </View>
       </View>
@@ -332,147 +339,70 @@ export default function SetupIntroScreen() {
 const styles = StyleSheet.create({
   container: {flex: 1, backgroundColor: colors.background},
   body: {flex: 1},
-  content: {padding: layout.screenPadding, paddingBottom: spacing.xxl, gap: spacing.md},
-  heading: {
-    color: colors.text,
-    fontSize: typography.titleLg,
-    fontWeight: '800',
-    textAlign: 'center',
+  content: {
+    paddingHorizontal: layout.screenPadding,
+    paddingTop: layout.screenGap,
+    paddingBottom: spacing.xxl,
+    gap: layout.screenGap,
   },
-  subheading: {
+  deviceIdCard: {
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderWidth: 1,
+    borderRadius: radii.lg,
+    overflow: 'hidden',
+  },
+  deviceIdRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    minHeight: layout.buttonHeight,
+  },
+  deviceIdDivider: {height: StyleSheet.hairlineWidth, backgroundColor: colors.border},
+  deviceIdLabel: {color: colors.textMuted, fontSize: typography.body, fontWeight: '600'},
+  deviceIdValue: {color: colors.text, fontWeight: '700', fontSize: typography.body},
+  fieldGroup: {gap: spacing.sm},
+  fieldGroupTitle: {
     color: colors.textMuted,
-    fontSize: typography.body,
-    lineHeight: 19,
-    textAlign: 'center',
-  },
-  card: {
-    backgroundColor: colors.card,
-    borderColor: colors.border,
-    borderWidth: 1,
-    borderRadius: radii.lg,
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.md,
-    gap: spacing.sm,
-  },
-  row: {flexDirection: 'row', alignItems: 'center', gap: spacing.sm},
-  textWrap: {flex: 1},
-  cardTitle: {color: colors.text, fontSize: 14, fontWeight: '700'},
-  cardSuccess: {borderColor: colors.success},
-  cardError: {borderColor: colors.warning},
-  statusIcon: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  statusIconSuccess: {backgroundColor: colors.success},
-  statusIconWarning: {backgroundColor: colors.warning},
-  statusIconError: {backgroundColor: colors.warning},
-  divider: {
-    height: 1,
-    backgroundColor: colors.border,
-    marginVertical: spacing.sm,
-  },
-  portalWrap: {
-    backgroundColor: colors.surface,
-    borderColor: colors.border,
-    borderWidth: 1,
-    borderRadius: radii.lg,
-    marginTop: spacing.md,
-    overflow: 'hidden',
-  },
-  portalHeader: {
-    padding: spacing.md,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  portalTitle: {color: colors.text, fontSize: 14, fontWeight: '700'},
-  portalUrl: {color: colors.textMuted, fontSize: 12, marginTop: 2},
-  webView: {height: 380, backgroundColor: colors.surface},
-  portalError: {color: colors.warning, fontSize: 12, padding: spacing.md},
-  section: {marginTop: spacing.md, gap: spacing.sm},
-  sectionHeaderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: spacing.sm,
-  },
-  sectionHeader: {color: colors.text, fontSize: 14, fontWeight: '700'},
-  sectionTitle: {color: colors.text, fontSize: typography.body, fontWeight: '700', marginBottom: spacing.sm},
-  scanButton: {
-    borderColor: colors.border,
-    borderWidth: 1,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
-    borderRadius: radii.md,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  scanText: {color: colors.textMuted, fontSize: 12, fontWeight: '700'},
-  networkList: {
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radii.lg,
-    overflow: 'hidden',
-  },
-  networkScroll: {maxHeight: 220},
-  listHeader: {
-    backgroundColor: colors.surface,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  listHeaderText: {color: colors.textMuted, fontSize: 12, fontWeight: '700'},
-  networkRow: {
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.md,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-    backgroundColor: colors.card,
-  },
-  networkRowSelected: {backgroundColor: colors.selectionSurface},
-  networkLeft: {flexDirection: 'row', alignItems: 'center', gap: spacing.sm, flex: 1},
-  checkPlaceholder: {width: 16, height: 16},
-  networkName: {color: colors.text, fontWeight: '600'},
-  networkRight: {flexDirection: 'row', alignItems: 'center', gap: 8},
-  selectedRow: {
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radii.md,
-    padding: spacing.md,
-    backgroundColor: colors.card,
-    gap: spacing.xxs,
-    marginBottom: spacing.md,
-  },
-  selectedLabel: {color: colors.textMuted, fontSize: typography.label},
-  selectedValue: {color: colors.text, fontWeight: '700', marginTop: 4},
+    fontSize: typography.label,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  } as any,
   input: {
     minHeight: layout.inputHeight,
     borderRadius: radii.md,
-    backgroundColor: colors.card,
+    backgroundColor: colors.surface,
     borderWidth: 1,
     borderColor: colors.border,
-    padding: spacing.md,
+    paddingHorizontal: spacing.md,
     color: colors.text,
-    marginBottom: spacing.sm,
+    fontSize: typography.body,
   },
-  deviceIdCard: {
+  errorCard: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.xs,
+    backgroundColor: colors.dangerSurface,
+    borderColor: colors.dangerBorder,
     borderWidth: 1,
-    borderColor: colors.border,
     borderRadius: radii.md,
     padding: spacing.md,
-    backgroundColor: colors.card,
-    gap: spacing.xs,
-    marginBottom: spacing.md,
   },
-  deviceIdLabel: {color: colors.textMuted, fontSize: typography.label, fontWeight: '700'},
-  deviceIdValue: {color: colors.text, fontWeight: '800', marginTop: 4},
+  errorText: {flex: 1, color: colors.dangerText, fontSize: typography.body, lineHeight: 20},
+  pauseCard: {
+    backgroundColor: colors.accentSurface,
+    borderColor: colors.accent,
+    borderWidth: 1,
+    borderRadius: radii.lg,
+    padding: layout.cardPaddingLg,
+    gap: spacing.md,
+  },
+  pauseHeaderRow: {flexDirection: 'row', alignItems: 'center', gap: spacing.xs},
+  pauseTitle: {color: colors.text, fontSize: typography.bodyLg, fontWeight: '800'},
+  pauseText: {color: colors.textSecondary, fontSize: typography.body, lineHeight: 21},
   primaryButton: {
     backgroundColor: colors.accent,
     minHeight: layout.buttonHeight,
@@ -483,57 +413,38 @@ const styles = StyleSheet.create({
   primaryButtonDisabled: {backgroundColor: colors.border},
   primaryText: {color: colors.onAccent, fontWeight: '800', fontSize: typography.bodyLg},
   primaryTextDisabled: {color: colors.textMuted},
-  secondaryButton: {
-    borderColor: colors.border,
-    borderWidth: 1,
-    minHeight: layout.buttonHeight,
-    borderRadius: radii.md,
-    alignItems: 'center',
-    justifyContent: 'center',
-    width: '100%',
-  },
-  secondaryText: {color: colors.textMuted, fontWeight: '700', fontSize: typography.bodyLg},
-  pauseCard: {
-    borderColor: colors.border,
-    borderWidth: 1,
-    borderRadius: radii.md,
-    backgroundColor: colors.surface,
-    padding: spacing.md,
-    marginTop: spacing.sm,
-    gap: spacing.xs,
-  },
-  pauseTitle: {color: colors.text, fontSize: typography.body, fontWeight: '800'},
-  pauseText: {color: colors.textMuted, fontSize: typography.label, lineHeight: 18},
-  pauseActionButton: {marginTop: spacing.xs},
-  statusMessage: {fontSize: typography.label, marginTop: spacing.xs},
-  statusMessageError: {color: colors.dangerText},
-  statusMessageSuccess: {color: colors.success},
-  apiResponseText: {color: colors.textMuted, marginTop: spacing.xs, fontSize: typography.label},
-  pressed: {opacity: 0.85},
   footer: {
     paddingHorizontal: layout.screenPadding,
     paddingBottom: spacing.md,
+    paddingTop: spacing.sm,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.border,
   },
-  finishLink: {alignItems: 'center', marginTop: spacing.md},
-  finishText: {color: colors.textMuted, fontWeight: '700', fontSize: typography.body},
+  skipButton: {
+    minHeight: layout.buttonHeight,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  skipText: {color: colors.textMuted, fontWeight: '700', fontSize: typography.body},
   loadingOverlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: colors.overlay,
+    backgroundColor: colors.overlayStrong,
     justifyContent: 'center',
     alignItems: 'center',
     zIndex: 10,
   },
   loadingCard: {
-    backgroundColor: colors.card,
+    backgroundColor: colors.surface,
     borderColor: colors.border,
     borderWidth: 1,
     borderRadius: radii.lg,
     paddingVertical: layout.cardPaddingLg,
-    paddingHorizontal: spacing.xl,
+    paddingHorizontal: spacing.xxl,
     alignItems: 'center',
-    gap: spacing.sm,
+    gap: spacing.md,
+    minWidth: 220,
   },
-  loadingText: {color: colors.text, fontWeight: '700'},
+  loadingText: {color: colors.text, fontWeight: '700', fontSize: typography.body},
   unsupportedWrap: {
     flex: 1,
     justifyContent: 'center',
@@ -541,11 +452,11 @@ const styles = StyleSheet.create({
     gap: spacing.md,
   },
   unsupportedCard: {
-    borderWidth: 1,
+    backgroundColor: colors.surface,
     borderColor: colors.border,
+    borderWidth: 1,
     borderRadius: radii.lg,
     padding: layout.cardPaddingLg,
-    backgroundColor: colors.card,
     gap: spacing.sm,
   },
   unsupportedTitle: {

@@ -36,7 +36,7 @@ export default function SwitchPresetScreen() {
   const {state, applyPreset} = useAppState();
 
   return (
-    <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
+    <SafeAreaView style={styles.container} edges={['top', 'left', 'right', 'bottom']}>
       <ScrollView contentContainerStyle={styles.content}>
         <ScreenHeader title="Switch Preset" />
         {PRESETS.map(preset => (
@@ -58,7 +58,7 @@ export default function SwitchPresetScreen() {
 
 const styles = StyleSheet.create({
   container: {flex: 1, backgroundColor: colors.background},
-  content: {padding: layout.screenPadding, gap: spacing.md},
+  content: {padding: layout.screenPadding, paddingBottom: spacing.xxl, gap: spacing.md},
   card: {
     backgroundColor: colors.card,
     borderColor: colors.border,

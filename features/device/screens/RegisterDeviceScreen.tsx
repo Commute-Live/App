@@ -70,12 +70,12 @@ export default function RegisterDeviceScreen() {
 
   if (!supportsLocalDeviceSetup) {
     return (
-      <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
+      <SafeAreaView style={styles.container} edges={['top', 'left', 'right', 'bottom']}>
         <ScreenHeader title="Connect your device" />
         <View style={styles.unsupportedWrap}>
           <View style={styles.unsupportedCard}>
-            <Text style={styles.title}>Use the mobile app for setup</Text>
-            <Text style={styles.subtitle}>{unsupportedDeviceSetupMessage}</Text>
+            <Text style={styles.unsupportedTitle}>Use the mobile app for setup</Text>
+            <Text style={styles.unsupportedText}>{unsupportedDeviceSetupMessage}</Text>
           </View>
           <Pressable style={styles.secondaryButton} onPress={() => router.back()}>
             <Text style={styles.secondaryText}>Back</Text>
@@ -85,90 +85,61 @@ export default function RegisterDeviceScreen() {
     );
   }
 
+  const isConnected = status === 'connected';
+  const isChecking = status === 'checking';
+
   return (
-    <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
+    <SafeAreaView style={styles.container} edges={['top', 'left', 'right', 'bottom']}>
       <ScreenHeader title="Connect your device" />
+
       <View style={styles.content}>
         <View style={styles.heroSection}>
           <Image source={require('../../../assets/images/logo.png')} style={styles.logo} resizeMode="contain" />
           <View style={styles.heroCopy}>
             <Text style={styles.title}>Connect your device</Text>
             <Text style={styles.subtitle}>
-              Power on the device, connect to its Wi‑Fi, then register it below.
+              Power on the display, join its Wi‑Fi, then register below.
             </Text>
           </View>
         </View>
 
         <View style={styles.card}>
-          <View style={styles.stepRow}>
-            <View style={styles.stepIndex}>
-              <Text style={styles.stepIndexText}>1</Text>
-            </View>
-            <View style={styles.stepTextWrap}>
-              <Text style={styles.stepTitle}>Power on the display</Text>
-              <Text style={styles.stepSubtitle}>Plug it in and wait for the setup Wi‑Fi.</Text>
-            </View>
-          </View>
-          <View style={styles.stepRow}>
-            <View style={styles.stepIndex}>
-              <Text style={styles.stepIndexText}>2</Text>
-            </View>
-            <View style={styles.stepTextWrap}>
-              <Text style={styles.stepTitle}>Connect in Settings</Text>
-              <Text style={styles.stepSubtitle}>
-                Go to your phone settings and connect to the Wi‑Fi that starts with CommuteLive.
-              </Text>
-            </View>
-          </View>
+          <StepRow index={1} title="Power on the display" subtitle="Plug it in and wait for the setup Wi‑Fi to appear." />
+          <View style={styles.stepDivider} />
+          <StepRow index={2} title="Connect in Settings" subtitle="Go to your phone Settings → Wi‑Fi and connect to the network starting with CommuteLive." />
         </View>
 
-        <View style={[styles.statusCard, status === 'connected' && styles.statusCardConnected]}>
+        <View style={[styles.statusCard, isConnected && styles.statusCardConnected]}>
           <View style={styles.statusHeader}>
             <View style={styles.statusTitleRow}>
-              <View
-                style={[
-                  styles.statusDot,
-                  status === 'connected'
-                    ? styles.statusDotConnected
-                    : status === 'disconnected'
-                      ? styles.statusDotDisconnected
-                      : styles.statusDotChecking,
-                ]}
-              />
-              <Text style={styles.statusLabel}>Connection status</Text>
+              <View style={[
+                styles.statusDot,
+                isConnected ? styles.statusDotConnected : isChecking ? styles.statusDotChecking : styles.statusDotDisconnected,
+              ]} />
+              <Text style={styles.statusLabel}>Wi‑Fi connection</Text>
             </View>
-            <Pressable onPress={checkConnection}>
+            <Pressable onPress={checkConnection} hitSlop={8}>
               <Text style={styles.statusAction}>Check again</Text>
             </Pressable>
           </View>
-          <Text style={styles.statusText}>
-            {status === 'checking'
+          <Text style={[styles.statusText, isConnected && styles.statusTextConnected]}>
+            {isChecking
               ? 'Checking for CommuteLive Wi‑Fi...'
-              : status === 'connected'
+              : isConnected
                 ? 'Connected to CommuteLive Wi‑Fi'
-                : 'Not connected to CommuteLive Wi‑Fi'}
+                : 'Not connected — check your Wi‑Fi settings'}
           </Text>
         </View>
 
         <View style={styles.actionGroup}>
           <Pressable
-            style={[
-              styles.primaryButton,
-              status !== 'connected' && styles.primaryButtonDisabled,
-            ]}
-            disabled={status !== 'connected'}
-            onPress={() => router.push('/setup-intro')}
-          >
-            <Text
-              style={[
-                styles.primaryText,
-                status !== 'connected' && styles.primaryTextDisabled,
-              ]}
-            >
+            style={[styles.primaryButton, !isConnected && styles.primaryButtonDisabled]}
+            disabled={!isConnected}
+            onPress={() => router.push('/setup-intro')}>
+            <Text style={[styles.primaryText, !isConnected && styles.primaryTextDisabled]}>
               Register your device
             </Text>
           </Pressable>
-
           <Pressable style={styles.secondaryButton} onPress={() => router.back()}>
             <Text style={styles.secondaryText}>Back</Text>
           </Pressable>
@@ -178,31 +149,70 @@ export default function RegisterDeviceScreen() {
   );
 }
 
+function StepRow({index, title, subtitle}: {index: number; title: string; subtitle: string}) {
+  return (
+    <View style={styles.stepRow}>
+      <View style={styles.stepIndex}>
+        <Text style={styles.stepIndexText}>{index}</Text>
+      </View>
+      <View style={styles.stepTextWrap}>
+        <Text style={styles.stepTitle}>{title}</Text>
+        <Text style={styles.stepSubtitle}>{subtitle}</Text>
+      </View>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   container: {flex: 1, backgroundColor: colors.background},
-  content: {flex: 1, padding: layout.screenPadding, alignItems: 'stretch', gap: layout.screenGap},
-  heroSection: {alignItems: 'center', gap: spacing.sm},
+  content: {
+    flex: 1,
+    paddingHorizontal: layout.screenPadding,
+    paddingBottom: spacing.xxl,
+    gap: layout.screenGap,
+  },
+  heroSection: {alignItems: 'center', gap: spacing.md},
   heroCopy: {alignItems: 'center', gap: spacing.xs},
-  logo: {width: 176, height: 176, marginTop: spacing.xs},
-  title: {color: colors.text, fontSize: typography.titleLg, fontWeight: '800', textAlign: 'center'},
+  logo: {width: 140, height: 140},
+  title: {
+    color: colors.text,
+    fontSize: typography.titleLg,
+    fontWeight: '800',
+    textAlign: 'center',
+    letterSpacing: -0.3,
+  },
   subtitle: {
     color: colors.textMuted,
     fontSize: typography.body,
     textAlign: 'center',
-    lineHeight: 19,
+    lineHeight: 20,
     maxWidth: 280,
   },
   card: {
-    width: '100%',
-    backgroundColor: colors.card,
+    backgroundColor: colors.surface,
     borderColor: colors.border,
     borderWidth: 1,
     borderRadius: radii.lg,
     padding: layout.cardPaddingLg,
     gap: spacing.md,
   },
+  stepDivider: {height: StyleSheet.hairlineWidth, backgroundColor: colors.border},
+  stepRow: {flexDirection: 'row', gap: spacing.md, alignItems: 'flex-start'},
+  stepIndex: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: colors.accent,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 1,
+    flexShrink: 0,
+  },
+  stepIndexText: {color: colors.onAccent, fontWeight: '800', fontSize: typography.label},
+  stepTextWrap: {flex: 1, gap: spacing.xxs},
+  stepTitle: {color: colors.text, fontWeight: '700', fontSize: typography.body},
+  stepSubtitle: {color: colors.textMuted, fontSize: typography.label, lineHeight: 18},
   statusCard: {
-    width: '100%',
     backgroundColor: colors.surface,
     borderColor: colors.border,
     borderWidth: 1,
@@ -210,45 +220,30 @@ const styles = StyleSheet.create({
     padding: layout.cardPaddingLg,
     gap: spacing.sm,
   },
-  statusCardConnected: {borderColor: colors.accent},
+  statusCardConnected: {
+    backgroundColor: colors.successSurface,
+    borderColor: colors.successBorder,
+  },
   statusHeader: {flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center'},
   statusTitleRow: {flexDirection: 'row', alignItems: 'center', gap: spacing.xs},
-  statusLabel: {color: colors.textMuted, fontSize: typography.label},
+  statusLabel: {color: colors.textMuted, fontSize: typography.label, fontWeight: '600'},
   statusAction: {color: colors.accent, fontSize: typography.label, fontWeight: '700'},
-  statusText: {color: colors.text, fontWeight: '700', marginTop: spacing.xs, textAlign: 'center'},
   statusDot: {width: 10, height: 10, borderRadius: 5},
   statusDotConnected: {backgroundColor: colors.success},
-  statusDotDisconnected: {backgroundColor: colors.warning},
+  statusDotDisconnected: {backgroundColor: colors.dangerText},
   statusDotChecking: {backgroundColor: colors.textMuted},
-  stepRow: {
-    flexDirection: 'row',
-    gap: spacing.md,
-    alignItems: 'flex-start',
-  },
-  stepIndex: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: colors.accentMuted,
-    alignItems: 'center',
-    justifyContent: 'center',
-    alignSelf: 'center',
-  },
-  stepIndexText: {color: colors.text, fontWeight: '700', fontSize: typography.label},
-  stepTextWrap: {flex: 1, alignItems: 'flex-start', gap: spacing.xxs},
-  stepTitle: {color: colors.text, fontWeight: '700'},
-  stepSubtitle: {color: colors.textMuted, fontSize: typography.label, lineHeight: 18},
-  actionGroup: {gap: spacing.sm},
+  statusText: {color: colors.text, fontWeight: '600', fontSize: typography.body, lineHeight: 20},
+  statusTextConnected: {color: colors.successText},
+  actionGroup: {gap: spacing.sm, marginTop: 'auto'},
   primaryButton: {
     backgroundColor: colors.accent,
     minHeight: layout.buttonHeight,
     borderRadius: radii.md,
     alignItems: 'center',
     justifyContent: 'center',
-    width: '100%',
   },
-  primaryText: {color: colors.onAccent, fontWeight: '800', fontSize: typography.bodyLg},
   primaryButtonDisabled: {backgroundColor: colors.border},
+  primaryText: {color: colors.onAccent, fontWeight: '800', fontSize: typography.bodyLg},
   primaryTextDisabled: {color: colors.textMuted},
   secondaryButton: {
     borderColor: colors.border,
@@ -257,7 +252,6 @@ const styles = StyleSheet.create({
     borderRadius: radii.md,
     alignItems: 'center',
     justifyContent: 'center',
-    width: '100%',
   },
   secondaryText: {color: colors.textMuted, fontWeight: '700', fontSize: typography.bodyLg},
   unsupportedWrap: {
@@ -267,12 +261,23 @@ const styles = StyleSheet.create({
     gap: spacing.md,
   },
   unsupportedCard: {
-    width: '100%',
-    backgroundColor: colors.card,
+    backgroundColor: colors.surface,
     borderColor: colors.border,
     borderWidth: 1,
     borderRadius: radii.lg,
     padding: layout.cardPaddingLg,
     gap: spacing.sm,
+  },
+  unsupportedTitle: {
+    color: colors.text,
+    fontSize: typography.title,
+    fontWeight: '800',
+    textAlign: 'center',
+  },
+  unsupportedText: {
+    color: colors.textMuted,
+    fontSize: typography.body,
+    lineHeight: 20,
+    textAlign: 'center',
   },
 });

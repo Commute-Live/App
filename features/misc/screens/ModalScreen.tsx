@@ -8,7 +8,7 @@ import {colors, layout, spacing, typography} from '../../../theme';
 
 export default function ModalScreen() {
   return (
-    <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
+    <SafeAreaView style={styles.container} edges={['top', 'left', 'right', 'bottom']}>
       <Text style={styles.title}>Modal</Text>
       <View style={styles.separator} />
       <EditScreenInfo path="features/misc/screens/ModalScreen.tsx" />
