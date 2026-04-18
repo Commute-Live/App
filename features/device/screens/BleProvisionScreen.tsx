@@ -486,6 +486,17 @@ export default function BleProvisionScreen() {
     }
   }, [state.phase, requestWifiScan]);
 
+  // In offline change-wifi mode: auto-retry the scan every 20s after failure.
+  // The device takes up to 2 minutes to start BLE advertising after WiFi drops.
+  useEffect(() => {
+    if (!isDeviceOffline || state.phase !== 'error') return;
+    const timer = setTimeout(() => {
+      reset();
+      // reset() sets phase back to 'idle', which triggers the existing auto-scan effect above
+    }, 20_000);
+    return () => clearTimeout(timer);
+  }, [isDeviceOffline, state.phase, reset]);
+
   const fetchPairingToken = async () => {
     try {
       const res = await apiFetch('/device/pairing-token', {method: 'POST'});
@@ -634,7 +645,12 @@ export default function BleProvisionScreen() {
                 Your display isn{"'"}t connected to Wi-Fi. It will appear here automatically once it enters setup mode — this can take up to 2 minutes.
               </Text>
             )}
-            {state.phase === 'error' && (
+            {isDeviceOffline && state.phase === 'error' && (
+              <Text style={styles.scanHint}>
+                Display not found yet — retrying automatically every 20 seconds. Keep this screen open.
+              </Text>
+            )}
+            {!isDeviceOffline && state.phase === 'error' && (
               <Pressable style={styles.secondaryButton} onPress={reset}>
                 <Text style={styles.secondaryText}>Start over</Text>
               </Pressable>

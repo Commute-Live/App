@@ -38,6 +38,7 @@ export default function SettingsScreen() {
   const [scrollViewportHeight, setScrollViewportHeight] = useState(0);
   const [scrollContentHeight, setScrollContentHeight] = useState(0);
   const currentDeviceId = deviceId ?? appState.deviceId;
+  const isDeviceOnline = appState.deviceStatus === 'pairedOnline';
   const showDeviceDebug = params.debug === 'device';
   const scrollEnabled = scrollContentHeight > scrollViewportHeight + 1;
   const displayCountLabel = `${displayCount} ${displayCount === 1 ? 'display' : 'displays'}`;
@@ -126,14 +127,13 @@ export default function SettingsScreen() {
 
   const confirmChangeWifiNetwork = () => {
     if (!currentDeviceId || isChangingWifi || isDisconnecting) return;
-    Alert.alert(
-      'Change Wi-Fi network?',
-      'The display will enter setup mode so you can choose a new network.',
-      [
-        {text: 'Cancel', style: 'cancel'},
-        {text: 'Continue', onPress: () => { void runChangeWifiNetwork(currentDeviceId); }},
-      ],
-    );
+    const message = isDeviceOnline
+      ? 'The display will enter setup mode so you can choose a new network.'
+      : 'Your display is offline. It will enter setup mode automatically within 2 minutes so you can connect it to a new network.';
+    Alert.alert('Change Wi-Fi network?', message, [
+      {text: 'Cancel', style: 'cancel'},
+      {text: 'Continue', onPress: () => { void runChangeWifiNetwork(currentDeviceId); }},
+    ]);
   };
 
   const confirmUnpairDevice = () => {
@@ -245,7 +245,12 @@ export default function SettingsScreen() {
                         </View>
                         <View style={styles.detailRow}>
                           <Text style={styles.detailLabel}>Status</Text>
-                          <Text style={styles.detailValue}>{currentDeviceId ? 'Paired' : 'No device paired'}</Text>
+                          <View style={styles.statusValue}>
+                            {currentDeviceId ? (
+                              <View style={[styles.statusDot, {backgroundColor: isDeviceOnline ? colors.success : colors.dangerText}]} />
+                            ) : null}
+                            <Text style={styles.detailValue}>{currentDeviceId ? (isDeviceOnline ? 'Online' : 'Offline') : 'No device paired'}</Text>
+                          </View>
                         </View>
                         {showDeviceDebug ? (
                           <View style={styles.debugSection}>
@@ -267,7 +272,7 @@ export default function SettingsScreen() {
                             onPress={confirmChangeWifiNetwork}
                             disabled={isChangingWifi || isDisconnecting}>
                             <Text style={styles.secondaryActionButtonText}>
-                              {isChangingWifi ? 'Starting setup…' : 'Change Wi-Fi network'}
+                              {isChangingWifi ? 'Starting setup…' : isDeviceOnline ? 'Change Wi-Fi network' : 'Display offline — reconnect Wi-Fi'}
                             </Text>
                           </Pressable>
                         ) : null}
@@ -428,6 +433,8 @@ const styles = StyleSheet.create({
   },
   detailLabel: {color: colors.textMuted, fontSize: 13},
   detailValue: {color: colors.text, fontSize: 13, fontWeight: '600', flexShrink: 1, textAlign: 'right'},
+  statusValue: {flexDirection: 'row', alignItems: 'center', gap: 6},
+  statusDot: {width: 8, height: 8, borderRadius: 4},
   debugSection: {
     gap: spacing.xs,
   },

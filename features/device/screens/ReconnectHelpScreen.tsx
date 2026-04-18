@@ -1,10 +1,14 @@
-import React from 'react';
+import React, {useState} from 'react';
 import {Pressable, ScrollView, StyleSheet, Text, View} from 'react-native';
 import {SafeAreaView} from 'react-native-safe-area-context';
 import {Ionicons} from '@expo/vector-icons';
 import {useRouter} from 'expo-router';
 import {ScreenHeader} from '../../../components/ScreenHeader';
 import {colors, layout, radii, spacing, typography} from '../../../theme';
+import {useAppState} from '../../../state/appState';
+import {useAuth} from '../../../state/authProvider';
+import {resetDeviceWifi} from '../../../lib/deviceSetup';
+import {logger} from '../../../lib/datadog';
 
 const tips = [
   {
@@ -26,6 +30,29 @@ const tips = [
 
 export default function ReconnectHelpScreen() {
   const router = useRouter();
+  const {deviceId: authDeviceId} = useAuth();
+  const {state: appState} = useAppState();
+  const currentDeviceId = authDeviceId ?? appState.deviceId;
+  const [isChangingWifi, setIsChangingWifi] = useState(false);
+  const [changeWifiError, setChangeWifiError] = useState('');
+
+  const handleChangeWifi = async () => {
+    if (!currentDeviceId || isChangingWifi) return;
+    setIsChangingWifi(true);
+    setChangeWifiError('');
+    try {
+      const result = await resetDeviceWifi(currentDeviceId);
+      if (!result.ok) {
+        logger.error('ReconnectHelp: Wi-Fi reset failed', {deviceId: currentDeviceId, error: result.error});
+        setChangeWifiError(result.error);
+        return;
+      }
+      const offlineParam = result.deviceOnline ? '' : '&offline=true';
+      router.push(`/ble-provision?deviceId=${encodeURIComponent(currentDeviceId)}&mode=change-wifi${offlineParam}`);
+    } finally {
+      setIsChangingWifi(false);
+    }
+  };
 
   return (
     <SafeAreaView style={styles.container} edges={['top', 'left', 'right', 'bottom']}>
@@ -34,7 +61,7 @@ export default function ReconnectHelpScreen() {
 
         <Text style={styles.heading}>Paired, but offline</Text>
         <Text style={styles.subheading}>
-          Let’s get your display back online with a few quick checks.
+          Let's get your display back online with a few quick checks.
         </Text>
 
         {tips.map(tip => (
@@ -53,8 +80,24 @@ export default function ReconnectHelpScreen() {
           <Text style={styles.primaryText}>I'm back online</Text>
         </Pressable>
 
-        <Pressable style={styles.secondaryButton} onPress={() => router.back()}>
-          <Text style={styles.secondaryText}>Back to status</Text>
+        {currentDeviceId ? (
+          <>
+            <Pressable
+              style={[styles.secondaryButton, isChangingWifi && styles.buttonDisabled]}
+              onPress={() => { void handleChangeWifi(); }}
+              disabled={isChangingWifi}>
+              <Text style={styles.secondaryText}>
+                {isChangingWifi ? 'Starting setup…' : 'Change Wi-Fi network'}
+              </Text>
+            </Pressable>
+            {changeWifiError ? (
+              <Text style={styles.errorText}>{changeWifiError}</Text>
+            ) : null}
+          </>
+        ) : null}
+
+        <Pressable style={styles.ghostButton} onPress={() => router.back()}>
+          <Text style={styles.ghostText}>Back to status</Text>
         </Pressable>
       </ScrollView>
     </SafeAreaView>
@@ -93,5 +136,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  secondaryText: {color: colors.textMuted, fontWeight: '700', fontSize: typography.body},
+  secondaryText: {color: colors.text, fontWeight: '700', fontSize: typography.body},
+  buttonDisabled: {opacity: 0.5},
+  ghostButton: {
+    minHeight: layout.buttonHeight,
+    borderRadius: radii.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  ghostText: {color: colors.textMuted, fontWeight: '700', fontSize: typography.body},
+  errorText: {color: colors.dangerText, fontSize: typography.label, textAlign: 'center'},
 });
