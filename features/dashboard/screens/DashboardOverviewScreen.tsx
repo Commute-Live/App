@@ -500,21 +500,19 @@ export default function DashboardOverviewScreen() {
                   ios_backgroundColor={colors.border}
                   style={styles.quietHeaderSwitch}
                 />
-                {quietHoursEnabled ? (
-                  <Pressable
-                    style={styles.quietExpandBtn}
-                    onPress={() => setQuietHoursExpanded(prev => !prev)}>
-                    <Ionicons
-                      name={quietHoursExpanded ? 'chevron-up' : 'chevron-down'}
-                      size={16}
-                      color={colors.textMuted}
-                    />
-                  </Pressable>
-                ) : null}
+                <Pressable
+                  style={styles.quietExpandBtn}
+                  onPress={() => setQuietHoursExpanded(prev => !prev)}>
+                  <Ionicons
+                    name={quietHoursExpanded ? 'chevron-up' : 'chevron-down'}
+                    size={16}
+                    color={colors.textMuted}
+                  />
+                </Pressable>
               </View>
             </View>
 
-            {quietHoursEnabled && quietHoursExpanded ? (
+            {quietHoursExpanded ? (
               <>
                 <View style={styles.quietDaysWrap}>
                   <View style={[styles.quietDaysRow, quietHoursInputsDisabled && styles.quietDaysRowDisabled]}>
