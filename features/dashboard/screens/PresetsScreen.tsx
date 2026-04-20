@@ -51,6 +51,14 @@ const MIN_BRIGHTNESS = 10;
 const MAX_BRIGHTNESS = 100;
 const BRIGHTNESS_COMMIT_DELAY_MS = 1000;
 const REORDER_ROW_HEIGHT = 76;
+const MOCK_ACCOUNT_PRESET_LIMIT = 3;
+const MOCK_LINKED_DISPLAY_NAMES = ['Kitchen Display', 'Office Display', 'Lobby Display'];
+
+type ManagedDisplayTarget = {
+  id: string;
+  name: string;
+  isMock?: boolean;
+};
 
 const buildDisplayPayload = (
   display: DeviceDisplay,
@@ -111,8 +119,6 @@ const isReorderLineBus = (display: DeviceDisplay, label: string) => {
 
 const sortDisplaysForCarousel = (items: DeviceDisplay[], activeDisplayId: string | null) =>
   [...items].sort((a, b) => {
-    if (a.displayId === activeDisplayId) return -1;
-    if (b.displayId === activeDisplayId) return 1;
     if (a.sortOrder !== b.sortOrder) return a.sortOrder - b.sortOrder;
     return a.name.localeCompare(b.name);
   });
@@ -131,7 +137,7 @@ export default function DisplayManagementSection({
   const router = useRouter();
   const params = useLocalSearchParams<{focusDisplayId?: string}>();
   const {state: appState} = useAppState();
-  const {deviceId, status} = useAuth();
+  const {deviceId, deviceIds, status} = useAuth();
   const selectedDevice = useSelectedDevice();
   const selectedCity = appState.selectedCity;
   const isScreenFocused = useTabRouteIsActive('/dashboard');
@@ -140,8 +146,11 @@ export default function DisplayManagementSection({
   const [brightnessOverrides, setBrightnessOverrides] = useState<Record<string, number>>({});
   const [expandedBrightnessControls, setExpandedBrightnessControls] = useState<Record<string, boolean>>({});
   const [reorderVisible, setReorderVisible] = useState(false);
+  const [accountSelectorVisible, setAccountSelectorVisible] = useState(false);
   const [isDisplayGestureRegionActive, setIsDisplayGestureRegionActive] = useState(false);
   const [carouselDirection, setCarouselDirection] = useState<1 | -1>(1);
+  const [mockSelectedTargetIdsByAccount, setMockSelectedTargetIdsByAccount] = useState<Record<string, string[]>>({});
+  const [mockActiveDisplayIdsByTarget, setMockActiveDisplayIdsByTarget] = useState<Record<string, string>>({});
   const [pendingFocusDisplayId, setPendingFocusDisplayId] = useState<string | null>(
     typeof params.focusDisplayId === 'string' ? params.focusDisplayId : null,
   );
@@ -155,6 +164,7 @@ export default function DisplayManagementSection({
   const previewTrackAnim = useRef(new Animated.Value(1)).current;
   const previousDisplayIdRef = useRef<string | null>(null);
   const previousDisplayRef = useRef<DeviceDisplay | null>(null);
+  const skipNextPreviewTransitionRef = useRef(false);
   const ledScale = useRef(new Animated.Value(1)).current;
 
   const handleLedPressIn = useCallback(() => {
@@ -196,6 +206,26 @@ export default function DisplayManagementSection({
   const activeDisplayId = displaysQuery.data?.activeDisplayId ?? null;
   const loading = displaysQuery.isPending;
   const errorText = displaysQuery.error instanceof Error ? displaysQuery.error.message : '';
+  const accountSelectionKey = selectedDevice.id || deviceId || 'default';
+  const accountDisplayTargets = useMemo((): ManagedDisplayTarget[] => {
+    const realIds = Array.from(new Set([...(deviceIds ?? []), selectedDevice.id].filter(Boolean)));
+    const targets: ManagedDisplayTarget[] = realIds.map((id, index) => ({
+      id,
+      name: id === selectedDevice.id ? 'My Device' : `Linked Display ${index + 1}`,
+    }));
+
+    let mockIndex = 0;
+    while (targets.length < MOCK_ACCOUNT_PRESET_LIMIT) {
+      targets.push({
+        id: `mock-display-${mockIndex + 1}`,
+        name: MOCK_LINKED_DISPLAY_NAMES[mockIndex] ?? `Linked Display ${targets.length + 1}`,
+        isMock: true,
+      });
+      mockIndex += 1;
+    }
+
+    return targets;
+  }, [deviceIds, selectedDevice.id]);
 
   const lastCommandQuery = useQuery({
     queryKey: queryKeys.lastCommand(deviceId || 'none'),
@@ -250,40 +280,6 @@ export default function DisplayManagementSection({
     Object.assign(stopNameCache, next);
     return next;
   }, [stopNameQueries, stopPairs]);
-
-  const activateDisplayMutation = useMutation({
-    mutationFn: async (display: DeviceDisplay) => {
-      if (!deviceId) return;
-      const maxPriority = Math.max(0, ...displays.map(d => d.priority));
-      await updateDisplay(deviceId, display.displayId, {
-        name: display.name,
-        paused: display.paused,
-        priority: maxPriority + 1,
-        sortOrder: display.sortOrder,
-        scheduleStart: display.scheduleStart,
-        scheduleEnd: display.scheduleEnd,
-        scheduleDays: display.scheduleDays,
-        config: display.config,
-      });
-      await apiFetch(`/refresh/device/${deviceId}`, {method: 'POST'});
-    },
-    onSuccess: (_data, display) => {
-      if (!deviceId) return;
-      queryClient.setQueryData(
-        queryKeys.displays(deviceId),
-        (current: {displays: DeviceDisplay[]; activeDisplayId: string | null} | undefined) =>
-          current
-            ? {
-                ...current,
-                activeDisplayId: display.displayId,
-              }
-            : current,
-      );
-      setCarouselIndex(0);
-      void queryClient.invalidateQueries({queryKey: queryKeys.displays(deviceId)});
-      void queryClient.invalidateQueries({queryKey: queryKeys.lastCommand(deviceId)});
-    },
-  });
 
   const deleteDisplayMutation = useMutation({
     mutationFn: async (display: DeviceDisplay) => {
@@ -389,11 +385,23 @@ export default function DisplayManagementSection({
     void queryClient.invalidateQueries({queryKey: queryKeys.lastCommand(deviceId)});
   }, [deviceId, isScreenFocused, queryClient, status]);
 
-  const visibleDisplays = useMemo(
-    () => sortDisplaysForCarousel(displays, activeDisplayId),
-    [activeDisplayId, displays],
+  const effectiveActiveDisplayId = mockActiveDisplayIdsByTarget[selectedDevice.id] ?? activeDisplayId;
+  const sortedDisplays = useMemo(
+    () => sortDisplaysForCarousel(displays, effectiveActiveDisplayId),
+    [displays, effectiveActiveDisplayId],
   );
-  const displayCountLabel = selectedDevice.name;
+  const selectedTargetIds = useMemo(() => {
+    const storedSelection = mockSelectedTargetIdsByAccount[accountSelectionKey];
+    if (storedSelection && storedSelection.length > 0) {
+      return storedSelection.filter(targetId => accountDisplayTargets.some(target => target.id === targetId));
+    }
+    return accountDisplayTargets.slice(0, 1).map(target => target.id);
+  }, [accountDisplayTargets, accountSelectionKey, mockSelectedTargetIdsByAccount]);
+  const selectedTargets = useMemo(
+    () => accountDisplayTargets.filter(target => selectedTargetIds.includes(target.id)),
+    [accountDisplayTargets, selectedTargetIds],
+  );
+  const visibleDisplays = sortedDisplays;
   const safeIndex = visibleDisplays.length > 0 ? Math.min(carouselIndex, visibleDisplays.length - 1) : 0;
   const currentDisplay = visibleDisplays[safeIndex] ?? null;
   const currentDisplayCity = providerToCity(currentDisplay?.config.lines?.[0]?.provider ?? null) ?? selectedCity;
@@ -402,9 +410,40 @@ export default function DisplayManagementSection({
     : 60;
   const currentDisplayHiddenLineCount = getHiddenDisplayLineCount(currentDisplay);
   const isBrightnessControlExpanded = currentDisplay ? !!expandedBrightnessControls[currentDisplay.displayId] : false;
-  const showSetActiveButton = !!currentDisplay && currentDisplay.displayId !== activeDisplayId;
   const effectivePreviewWidth = previewStageWidth > 0 ? previewStageWidth : 320;
   const previewTravelDistance = Math.max(windowWidth, effectivePreviewWidth) + 24;
+  const activeSelectedTargetCount = currentDisplay
+    ? selectedTargets.filter(target => mockActiveDisplayIdsByTarget[target.id] === currentDisplay.displayId).length
+    : 0;
+  const areAllSelectedTargetsActive =
+    !!currentDisplay &&
+    selectedTargets.length > 0 &&
+    activeSelectedTargetCount === selectedTargets.length;
+  const selectorTitle = useMemo(() => {
+    if (selectedTargets.length === 0) return selectedDevice.name || 'This Display';
+    if (selectedTargets.length === 1) return selectedTargets[0].name;
+    return `${selectedTargets[0].name} +${selectedTargets.length - 1}`;
+  }, [selectedDevice.name, selectedTargets]);
+
+  useEffect(() => {
+    if (accountDisplayTargets.length === 0) return;
+    if (mockSelectedTargetIdsByAccount[accountSelectionKey]) return;
+    const initialSelection = accountDisplayTargets.slice(0, 1).map(target => target.id);
+    setMockSelectedTargetIdsByAccount(prev => ({...prev, [accountSelectionKey]: initialSelection}));
+  }, [accountDisplayTargets, accountSelectionKey, mockSelectedTargetIdsByAccount]);
+
+  useEffect(() => {
+    if (sortedDisplays.length === 0 || accountDisplayTargets.length === 0) return;
+    setMockActiveDisplayIdsByTarget(prev => {
+      const next = {...prev};
+      accountDisplayTargets.forEach((target, index) => {
+        if (next[target.id]) return;
+        // TODO(server): hydrate real per-display active preset assignments for linked displays/accounts.
+        next[target.id] = index === 0 ? activeDisplayId ?? sortedDisplays[0].displayId : sortedDisplays[index % sortedDisplays.length].displayId;
+      });
+      return next;
+    });
+  }, [accountDisplayTargets, activeDisplayId, sortedDisplays]);
 
   const renderDisplayPreview = useCallback(
     (display: DeviceDisplay, city: typeof currentDisplayCity) => (
@@ -413,7 +452,7 @@ export default function DisplayManagementSection({
           display,
           CITY_BRANDS[city].accent,
           stopNames,
-          display.displayId === activeDisplayId ? liveArrivalLookup : null,
+          display.displayId === effectiveActiveDisplayId ? liveArrivalLookup : null,
           {showDirectionFallback: false},
         )}
         displayType={display.config.displayType ?? Number(display.config.lines?.[0]?.displayType) ?? 1}
@@ -430,7 +469,7 @@ export default function DisplayManagementSection({
         showGlow={false}
       />
     ),
-    [activeDisplayId, liveArrivalLookup, router, stopNames],
+    [effectiveActiveDisplayId, liveArrivalLookup, router, stopNames],
   );
 
   useLayoutEffect(() => {
@@ -458,6 +497,14 @@ export default function DisplayManagementSection({
     const outgoingDisplay = previousDisplayRef.current;
     previousDisplayIdRef.current = nextDisplayId;
     previousDisplayRef.current = currentDisplay;
+
+    if (skipNextPreviewTransitionRef.current) {
+      skipNextPreviewTransitionRef.current = false;
+      setPreviewTransition(null);
+      previewTrackAnim.stopAnimation();
+      previewTrackAnim.setValue(1);
+      return;
+    }
 
     if (!outgoingDisplay || !currentDisplay) {
       setPreviewTransition(null);
@@ -496,7 +543,7 @@ export default function DisplayManagementSection({
     if (!pendingFocusDisplayId || visibleDisplays.length === 0) return;
     const targetIndex = visibleDisplays.findIndex(display => display.displayId === pendingFocusDisplayId);
     if (targetIndex === -1) return;
-    if (targetIndex !== safeIndex) {
+    if (targetIndex !== safeIndex && !skipNextPreviewTransitionRef.current) {
       setCarouselDirection(targetIndex > safeIndex ? 1 : -1);
     }
     setCarouselIndex(targetIndex);
@@ -627,12 +674,52 @@ export default function DisplayManagementSection({
     async (orderedIds: string[]) => {
       try {
         await reorderDisplaysMutation.mutateAsync(orderedIds);
+        if (selectedDevice.id && orderedIds[0]) {
+          setMockActiveDisplayIdsByTarget(prev => ({...prev, [selectedDevice.id]: orderedIds[0]}));
+        }
         setCarouselIndex(0);
       } catch (err) {
         Alert.alert('Reorder failed', err instanceof Error ? err.message : 'Could not save display order');
       }
     },
-    [reorderDisplaysMutation],
+    [reorderDisplaysMutation, selectedDevice.id],
+  );
+
+  const handleToggleTargetSelection = useCallback(
+    (targetId: string) => {
+      setMockSelectedTargetIdsByAccount(prev => {
+        const currentSelection = prev[accountSelectionKey] ?? selectedTargetIds;
+        const alreadySelected = currentSelection.includes(targetId);
+        const nextSelection = alreadySelected
+          ? currentSelection.length > 1
+            ? currentSelection.filter(id => id !== targetId)
+            : currentSelection
+          : [...currentSelection, targetId].slice(0, MOCK_ACCOUNT_PRESET_LIMIT);
+        return {
+          ...prev,
+          [accountSelectionKey]: nextSelection,
+        };
+      });
+    },
+    [accountSelectionKey, selectedTargetIds],
+  );
+
+  const handleApplyActiveToSelected = useCallback(
+    (display: DeviceDisplay) => {
+      if (selectedTargetIds.length === 0) return;
+      // TODO(server): replace this optimistic frontend map with a bulk assignment API
+      // and include the resulting per-linked-display preset IDs in the displays response.
+      skipNextPreviewTransitionRef.current = true;
+      setPendingFocusDisplayId(display.displayId);
+      setMockActiveDisplayIdsByTarget(prev => {
+        const next = {...prev};
+        selectedTargetIds.forEach(targetId => {
+          next[targetId] = display.displayId;
+        });
+        return next;
+      });
+    },
+    [selectedTargetIds],
   );
 
   useEffect(() => {
@@ -655,21 +742,6 @@ export default function DisplayManagementSection({
       <View style={styles.pageHeader}>
         <View style={styles.pageHeaderRow}>
           <View style={styles.pageHeaderLeft}>
-            <Text style={styles.pageTitle}>Displays</Text>
-            <Text style={styles.pageMeta}>{displayCountLabel}</Text>
-          </View>
-          <View style={styles.pageHeaderRight}>
-            <Pressable
-              style={[
-                styles.statusPill,
-                selectedDevice.status === 'Online' ? styles.statusPillOn : styles.statusPillOff,
-              ]}
-              onPress={() => {
-                if (selectedDevice.status !== 'Online') router.push('/reconnect-help');
-              }}>
-              <View style={[styles.statusDot, selectedDevice.status === 'Online' ? styles.statusDotOn : styles.statusDotOff]} />
-              <Text style={styles.statusPillText}>{selectedDevice.status}</Text>
-            </Pressable>
             <Pressable
               style={styles.addBtn}
               onPress={() => setReorderVisible(true)}
@@ -680,6 +752,36 @@ export default function DisplayManagementSection({
                 color={visibleDisplays.length < 2 ? colors.textMuted : colors.text}
               />
             </Pressable>
+          </View>
+          <Pressable
+            style={styles.displaySelectorBtn}
+            onPress={() => setAccountSelectorVisible(true)}>
+            <View style={styles.displaySelectorTitleRow}>
+              <View style={styles.displaySelectorChevronSpacer} />
+              <View style={styles.displaySelectorTitleWrap}>
+                <Text style={styles.displaySelectorTitle} numberOfLines={1}>
+                  {selectorTitle}
+                </Text>
+              </View>
+              <View pointerEvents="none" style={styles.displaySelectorChevron}>
+                <Ionicons name="chevron-down" size={16} color={colors.textSecondary} />
+              </View>
+            </View>
+            <View style={styles.displaySelectorMetaRow}>
+              <View
+                style={[
+                  styles.displaySelectorMetaDot,
+                  selectedDevice.status === 'Online'
+                    ? styles.displaySelectorMetaDotOnline
+                    : styles.displaySelectorMetaDotOffline,
+                ]}
+              />
+              <Text style={styles.displaySelectorMeta} numberOfLines={1}>
+                {selectedDevice.status}
+              </Text>
+            </View>
+          </Pressable>
+          <View style={styles.pageHeaderRight}>
             <Pressable
               style={styles.addBtn}
               onPress={() =>
@@ -785,26 +887,28 @@ export default function DisplayManagementSection({
                   </Pressable>
                   <View style={styles.navTitleBlock}>
                     <View style={styles.navDisplayNameRow}>
-                      <Text style={styles.navDisplayName} numberOfLines={1}>{currentDisplay.name}</Text>
+                      <View style={styles.navOverflowSpacer} />
+                      <View style={styles.navDisplayNameWrap}>
+                        <Text style={styles.navDisplayName} numberOfLines={1}>{currentDisplay.name}</Text>
+                      </View>
                       {currentDisplayHiddenLineCount > 0 ? (
                         <View style={styles.navOverflowBadge}>
                           <Text style={styles.navOverflowBadgeText}>+{currentDisplayHiddenLineCount}</Text>
                         </View>
-                      ) : null}
+                      ) : (
+                        <View style={styles.navOverflowSpacer} />
+                      )}
                     </View>
-                    {currentDisplay.displayId === activeDisplayId ? (
+                    {areAllSelectedTargetsActive ? (
                       <View style={styles.navActiveLabelCompact}>
                         <View style={styles.navActiveDotCompact} />
                         <Text style={styles.navActiveLabelCompactText}>Active</Text>
                       </View>
                     ) : (
                       <Pressable
-                        style={[styles.setActivePill, activateDisplayMutation.isPending && styles.setActivePillDisabled]}
-                        disabled={activateDisplayMutation.isPending}
-                        onPress={() => activateDisplayMutation.mutate(currentDisplay)}>
-                        <Text style={styles.setActivePillText}>
-                          {activateDisplayMutation.isPending ? 'Activating…' : 'Set as Active'}
-                        </Text>
+                        style={styles.setActivePill}
+                        onPress={() => handleApplyActiveToSelected(currentDisplay)}>
+                        <Text style={styles.setActivePillText}>Set Active</Text>
                       </Pressable>
                     )}
                   </View>
@@ -859,6 +963,14 @@ export default function DisplayManagementSection({
           setReorderVisible(false);
         }}
         onSave={handleSaveReorder}
+      />
+      <PresetSelectionModal
+        visible={accountSelectorVisible}
+        targets={accountDisplayTargets}
+        selectedIds={selectedTargetIds}
+        maxSelection={MOCK_ACCOUNT_PRESET_LIMIT}
+        onClose={() => setAccountSelectorVisible(false)}
+        onToggleSelection={handleToggleTargetSelection}
       />
     </>
   );
@@ -1087,6 +1199,69 @@ function ReorderListRow({
   );
 }
 
+function PresetSelectionModal({
+  visible,
+  targets,
+  selectedIds,
+  maxSelection,
+  onClose,
+  onToggleSelection,
+}: {
+  visible: boolean;
+  targets: ManagedDisplayTarget[];
+  selectedIds: string[];
+  maxSelection: number;
+  onClose: () => void;
+  onToggleSelection: (targetId: string) => void;
+}) {
+  const selectedLookup = useMemo(() => new Set(selectedIds), [selectedIds]);
+
+  return (
+    <Modal transparent animationType="fade" visible={visible} onRequestClose={onClose}>
+      <Pressable style={styles.reorderBackdrop} onPress={onClose}>
+        <Pressable style={styles.selectorModal} onPress={event => event.stopPropagation()}>
+          <View style={styles.reorderHeader}>
+            <View style={styles.reorderHeaderCopy}>
+              <Text style={styles.reorderTitle}>Choose displays</Text>
+              <Text style={styles.reorderBody}>Update multiple devices at once.</Text>
+            </View>
+            <Pressable style={styles.reorderCloseBtn} onPress={onClose}>
+              <Ionicons name="close" size={18} color={colors.text} />
+            </Pressable>
+          </View>
+
+          <View style={styles.selectorList}>
+            {targets.map(target => {
+              const isSelected = selectedLookup.has(target.id);
+              const disabled = !isSelected && selectedIds.length >= maxSelection;
+              return (
+                <Pressable
+                  key={target.id}
+                  style={[
+                    styles.selectorRow,
+                    isSelected && styles.selectorRowSelected,
+                    disabled && styles.selectorRowDisabled,
+                  ]}
+                  disabled={disabled}
+                  onPress={() => onToggleSelection(target.id)}>
+                  <View style={styles.selectorCopy}>
+                    <Text style={styles.selectorName} numberOfLines={1}>
+                      {target.name}
+                    </Text>
+                  </View>
+                  <View style={[styles.selectorCheck, isSelected && styles.selectorCheckSelected]}>
+                    {isSelected ? <Ionicons name="checkmark" size={16} color={colors.onAccent} /> : null}
+                  </View>
+                </Pressable>
+              );
+            })}
+          </View>
+        </Pressable>
+      </Pressable>
+    </Modal>
+  );
+}
+
 const styles = StyleSheet.create({
   // ─── Layout ───────────────────────────────────────────────────────────────
   container: {flex: 1, backgroundColor: colors.background},
@@ -1114,8 +1289,72 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: spacing.sm,
   },
-  pageHeaderLeft: {flex: 1, gap: 4},
-  pageHeaderRight: {flexDirection: 'row', alignItems: 'center', gap: spacing.sm},
+  pageHeaderLeft: {width: layout.iconButton, alignItems: 'flex-start'},
+  pageHeaderRight: {width: layout.iconButton, alignItems: 'flex-end'},
+  displaySelectorBtn: {
+    flex: 1,
+    minWidth: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: spacing.sm,
+    paddingTop: 2,
+    paddingBottom: 0,
+    gap: 0,
+  },
+  displaySelectorTitle: {
+    color: colors.text,
+    fontSize: 25,
+    fontWeight: '800',
+    letterSpacing: -0.7,
+    textAlign: 'center',
+    maxWidth: '100%',
+  },
+  displaySelectorTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '100%',
+  },
+  displaySelectorTitleWrap: {
+    flex: 0,
+    minWidth: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  displaySelectorMeta: {
+    color: colors.textSecondary,
+    fontSize: 12,
+    fontWeight: '700',
+    textAlign: 'center',
+  },
+  displaySelectorMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    marginTop: 3,
+  },
+  displaySelectorMetaDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+  },
+  displaySelectorMetaDotOnline: {
+    backgroundColor: colors.successText,
+  },
+  displaySelectorMetaDotOffline: {
+    backgroundColor: colors.textMuted,
+  },
+  displaySelectorChevronSpacer: {
+    width: 22,
+    height: 16,
+  },
+  displaySelectorChevron: {
+    width: 22,
+    height: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   addBtn: {
     width: layout.iconButton,
     height: layout.iconButton,
@@ -1126,40 +1365,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  pageTitle: {
-    color: colors.text,
-    fontSize: typography.pageTitle,
-    fontWeight: '800',
-    letterSpacing: -0.8,
-    lineHeight: 33,
-  },
-  pageMeta: {
-    color: colors.textSecondary,
-    fontSize: 13,
-    fontWeight: '600',
-  },
 
   // ─── Loading / Error / Empty ───────────────────────────────────────────────
   hintText: {color: colors.textMuted, fontSize: 13},
   errorText: {color: colors.warning, fontSize: 13},
 
   // ─── Status Pill ──────────────────────────────────────────────────────────
-  statusPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs,
-    borderRadius: radii.md,
-    borderWidth: 1,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
-    minHeight: 32,
-  },
-  statusPillOn: {backgroundColor: colors.successSurface, borderColor: colors.successBorder},
-  statusPillOff: {backgroundColor: colors.surface, borderColor: colors.border},
-  statusDot: {width: 7, height: 7, borderRadius: 4},
-  statusDotOn: {backgroundColor: colors.successText},
-  statusDotOff: {backgroundColor: colors.textMuted},
-  statusPillText: {color: colors.text, fontSize: 12, fontWeight: '700'},
   emptyState: {
     paddingVertical: spacing.xl,
     alignItems: 'center',
@@ -1218,7 +1429,7 @@ const styles = StyleSheet.create({
   // LED preview area — extra padding lets the glow breathe
   cardPreviewContainer: {
     paddingHorizontal: spacing.sm,
-    paddingTop: spacing.md,
+    paddingTop: 0,
     paddingBottom: spacing.xs,
     position: 'relative',
   },
@@ -1307,8 +1518,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: spacing.xs,
-    maxWidth: '100%',
+    gap: 6,
+    width: '100%',
+  },
+  navDisplayNameWrap: {
+    flex: 0,
+    minWidth: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   navDisplayName: {
     color: colors.text,
@@ -1317,8 +1534,12 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     maxWidth: '100%',
   },
+  navOverflowSpacer: {
+    width: 30,
+    height: 22,
+  },
   navOverflowBadge: {
-    minWidth: 28,
+    minWidth: 30,
     height: 22,
     borderRadius: radii.sm,
     borderWidth: 1,
@@ -1326,7 +1547,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.card,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: spacing.xs,
+    paddingHorizontal: 6,
     flexShrink: 0,
   },
   navOverflowBadgeText: {
@@ -1342,7 +1563,7 @@ const styles = StyleSheet.create({
     borderColor: colors.successBorder,
     borderRadius: radii.md,
     backgroundColor: colors.successSurface,
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: spacing.lg,
     paddingVertical: 6,
   },
   navActiveDotCompact: {
@@ -1356,13 +1577,16 @@ const styles = StyleSheet.create({
     borderColor: colors.accent,
     borderRadius: radii.md,
     backgroundColor: colors.accentMuted,
-    paddingHorizontal: spacing.md,
-    paddingVertical: 6,
+    minWidth: 0,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 7,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   setActivePillDisabled: {opacity: 0.5},
   setActivePillText: {
-    color: colors.accent,
-    fontSize: 15,
+    color: colors.accentDeep,
+    fontSize: 14,
     fontWeight: '700',
   },
   navActiveLabelCompactText: {
@@ -1592,6 +1816,57 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
     padding: layout.cardPaddingLg,
     gap: spacing.md,
+  },
+  selectorModal: {
+    borderRadius: radii.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    padding: layout.cardPaddingLg,
+    gap: spacing.md,
+  },
+  selectorList: {
+    gap: spacing.sm,
+  },
+  selectorRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.card,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+  },
+  selectorRowSelected: {
+    borderColor: colors.accent,
+    backgroundColor: colors.accentMuted,
+  },
+  selectorRowDisabled: {
+    opacity: 0.45,
+  },
+  selectorCopy: {
+    flex: 1,
+  },
+  selectorName: {
+    color: colors.text,
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  selectorCheck: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  selectorCheckSelected: {
+    borderColor: colors.accent,
+    backgroundColor: colors.accent,
   },
   reorderHeader: {
     flexDirection: 'row',
