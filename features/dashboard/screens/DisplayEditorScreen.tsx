@@ -311,7 +311,7 @@ const getPresetDescriptionForMode = (
 
 const formatSaveErrorMessage = (message: string) => {
   const normalized = message.trim();
-  if (!normalized) return 'Unable to save this display right now. Please try again.';
+  if (!normalized) return 'Unable to save this preset right now. Please try again.';
 
   const lowered = normalized.toLowerCase();
   if (lowered.includes('network') || lowered.includes('fetch') || lowered.includes('failed to fetch')) {
@@ -321,7 +321,7 @@ const formatSaveErrorMessage = (message: string) => {
     return 'Saving took too long. Please try again.';
   }
   if (lowered.includes('401') || lowered.includes('403') || lowered.includes('unauthorized')) {
-    return 'You do not have permission to save this display right now.';
+    return 'You do not have permission to save this preset right now.';
   }
   if (lowered.includes('404')) {
     return 'The selected device or display could not be found.';
@@ -565,7 +565,7 @@ export default function DisplayEditorScreen() {
   const [lines, setLines] = useState<LinePick[]>(() => ensureLineCount([], city, DEFAULT_LAYOUT_SLOTS, {}, {}));
   const [selectedLineId, setSelectedLineId] = useState<string>('');
   const [stationSearch, setStationSearch] = useState<Record<string, string>>({});
-  const [presetName, setPresetName] = useState('Display 1');
+  const [presetName, setPresetName] = useState('Preset 1');
   const [editingDisplayId, setEditingDisplayId] = useState<string | null>(
     typeof params.displayId === 'string' ? params.displayId : null,
   );
@@ -813,8 +813,8 @@ export default function DisplayEditorScreen() {
       .then(({displays}) => {
         const names = new Set(displays.map(d => d.name));
         let n = displays.length + 1;
-        while (names.has(`Display ${n}`)) n++;
-        setPresetName(`Display ${n}`);
+        while (names.has(`Preset ${n}`)) n++;
+        setPresetName(`Preset ${n}`);
       })
       .catch(() => {});
   }, [deviceId, isCreateMode, queryClient]);
@@ -913,7 +913,7 @@ export default function DisplayEditorScreen() {
         const nextLayoutSlots = Math.max(1, Math.min(MAX_LAYOUT_SLOTS, citySavedLines.length || 1));
         let nextLines = ensureLineCount([], city, nextLayoutSlots, {}, {});
 
-        setPresetName(typeof sourceDisplay.name === 'string' && sourceDisplay.name.trim().length > 0 ? sourceDisplay.name : 'Display 1');
+        setPresetName(typeof sourceDisplay.name === 'string' && sourceDisplay.name.trim().length > 0 ? sourceDisplay.name : 'Preset 1');
         setDisplayMetadata({
           paused: sourceDisplay.paused === true,
           priority: Number.isInteger(sourceDisplay.priority) ? sourceDisplay.priority : 0,
@@ -978,7 +978,7 @@ export default function DisplayEditorScreen() {
           const nextPresetName =
             typeof sourceDisplay.name === 'string' && sourceDisplay.name.trim().length > 0
               ? sourceDisplay.name
-              : 'Display 1';
+              : 'Preset 1';
           setLines(nextLines);
           setPresetName(nextPresetName);
           const nextDisplayPresets = nextLines.reduce<Record<string, number>>((acc, line, index) => {
@@ -1203,7 +1203,7 @@ export default function DisplayEditorScreen() {
       });
 
     return {
-      name: presetName.trim() || 'Display 1',
+      name: presetName.trim() || 'Preset 1',
       paused: displayMetadata.paused,
       priority: displayMetadata.priority,
       sortOrder: displayMetadata.sortOrder,
@@ -1367,7 +1367,7 @@ export default function DisplayEditorScreen() {
         scrolling: displayMetadata.scrolling,
         brightness: displayMetadata.brightness,
       };
-      setPreset(presetName.trim() || 'Display 1');
+      setPreset(presetName.trim() || 'Preset 1');
       setSelectedStations(
         lines
           .map(line => resolveSelectedStationForLine(line, city, stationsByMode, stationsByLine)?.name ?? line.label.trim())
@@ -1406,7 +1406,7 @@ export default function DisplayEditorScreen() {
         router.replace('/dashboard');
       }, 1200);
     } catch {
-      setLiveStatusText('We could not save this display right now. Please try again.');
+      setLiveStatusText('We could not save this preset right now. Please try again.');
     } finally {
       setSaving(false);
     }
@@ -1797,7 +1797,7 @@ export default function DisplayEditorScreen() {
     },
     {
       id: 'display',
-      label: 'Display Type',
+      label: 'Preset Type',
       state: selectedLinePresetConfirmed ? 'complete' : editorStep === 'format' ? 'active' : 'upcoming',
       value: selectedLinePresetConfirmed
         ? (() => {
@@ -2388,7 +2388,7 @@ function TopBar({
   }, [presetName]);
 
   const commitName = () => {
-    const next = draftName.trim() || 'Display 1';
+    const next = draftName.trim() || 'Preset 1';
     onPresetNameChange(next);
     setRenameOpen(false);
   };
@@ -2430,7 +2430,7 @@ function TopBar({
           <TextInput
             value={draftName}
             onChangeText={setDraftName}
-            placeholder="Display name"
+            placeholder="Preset name"
             placeholderTextColor={colors.textMuted}
             style={styles.renameInput}
             autoFocus
@@ -2759,7 +2759,7 @@ function LayoutSelectorModal({
     <SelectionSheet
       visible={visible}
       title="Number of Lines"
-      subtitle="Choose how many lines this display should show."
+      subtitle="Choose how many lines this preset should show."
       options={[
         {id: '1', label: 'Single Line', description: 'Keep one destination large and easy to scan.'},
         {id: '2', label: 'Two Lines', description: 'Split the display to show a second line.'},
@@ -3182,7 +3182,7 @@ const getServiceDescription = (city: CityId, mode: ModeId) => {
   if (city === 'new-jersey') {
     if (mode === 'train') return 'NJ Transit rail lines and transfer hubs';
   }
-  return 'Choose the service you want to show on this display.';
+  return 'Choose the service you want to show on this preset.';
 };
 
 const getLineStepTitle = (city: CityId, mode: ModeId) => {
@@ -3200,20 +3200,20 @@ const getStopStepTitle = (city: CityId, mode: ModeId) => {
 };
 
 const getStopStepSubtitle = (city: CityId, mode: ModeId) => {
-  if (mode === 'lirr') return 'Choose the LIRR station this display should monitor.';
-  if (mode === 'mnr') return 'Choose the Metro-North station this display should monitor.';
-  if (city === 'new-york' && mode === 'train') return 'Choose the subway stop for this display.';
-  if (city === 'new-york' && mode === 'bus') return 'Choose the bus stop for this display.';
-  if (mode === 'commuter-rail') return 'Choose the commuter rail station for this display.';
-  return 'Choose the stop this display should monitor.';
+  if (mode === 'lirr') return 'Choose the LIRR station this preset should monitor.';
+  if (mode === 'mnr') return 'Choose the Metro-North station this preset should monitor.';
+  if (city === 'new-york' && mode === 'train') return 'Choose the subway stop for this preset.';
+  if (city === 'new-york' && mode === 'bus') return 'Choose the bus stop for this preset.';
+  if (mode === 'commuter-rail') return 'Choose the commuter rail station for this preset.';
+  return 'Choose the stop this preset should monitor.';
 };
 
 const getLineStepSubtitle = (city: CityId, mode: ModeId) => {
-  if (city === 'new-york' && mode === 'train') return 'Pick the subway line this display should follow.';
-  if (city === 'new-york' && mode === 'bus') return 'Choose the bus route this display should follow.';
-  if (city === 'new-york' && mode === 'lirr') return 'Choose the LIRR branch this display should follow.';
-  if (city === 'new-york' && mode === 'mnr') return 'Choose the Metro-North line this display should follow.';
-  return 'Choose the service line this display should follow.';
+  if (city === 'new-york' && mode === 'train') return 'Pick the subway line this preset should follow.';
+  if (city === 'new-york' && mode === 'bus') return 'Choose the bus route this preset should follow.';
+  if (city === 'new-york' && mode === 'lirr') return 'Choose the LIRR branch this preset should follow.';
+  if (city === 'new-york' && mode === 'mnr') return 'Choose the Metro-North line this preset should follow.';
+  return 'Choose the service line this preset should follow.';
 };
 
 const BOSTON_ROUTE_CARD_TITLES: Record<string, string> = {

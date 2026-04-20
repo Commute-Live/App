@@ -554,7 +554,7 @@ export default function DisplayManagementSection({
   const confirmDelete = useCallback(
     (display: DeviceDisplay) => {
       if (!deviceId) return;
-      Alert.alert('Delete display?', `Delete "${display.name}"? This cannot be undone.`, [
+      Alert.alert('Delete preset?', `Delete "${display.name}"? This cannot be undone.`, [
         {text: 'Cancel', style: 'cancel'},
         {
           text: 'Delete',
@@ -564,7 +564,7 @@ export default function DisplayManagementSection({
               await deleteDisplayMutation.mutateAsync(display);
               setCarouselIndex(prev => Math.max(0, prev - 1));
             } catch (err) {
-              Alert.alert('Delete failed', err instanceof Error ? err.message : 'Failed to delete display');
+              Alert.alert('Delete failed', err instanceof Error ? err.message : 'Failed to delete preset');
             }
           },
         },
@@ -796,7 +796,7 @@ export default function DisplayManagementSection({
         </View>
       </View>
 
-      {loading ? <Text style={styles.hintText}>Loading displays…</Text> : null}
+      {loading ? <Text style={styles.hintText}>Loading presets…</Text> : null}
       {!loading && errorText ? <Text style={styles.errorText}>{errorText}</Text> : null}
 
       {!loading && !errorText ? (
@@ -945,8 +945,8 @@ export default function DisplayManagementSection({
           </>
         ) : (
           <View style={styles.emptyState}>
-            <Text style={styles.emptyTitle}>No displays yet</Text>
-            <Text style={styles.emptyBody}>Tap + to create your first display.</Text>
+            <Text style={styles.emptyTitle}>No presets yet</Text>
+            <Text style={styles.emptyBody}>Tap + to create your first preset.</Text>
           </View>
         )
       ) : null}
@@ -1222,7 +1222,7 @@ function PresetSelectionModal({
         <Pressable style={styles.selectorModal} onPress={event => event.stopPropagation()}>
           <View style={styles.reorderHeader}>
             <View style={styles.reorderHeaderCopy}>
-              <Text style={styles.reorderTitle}>Choose displays</Text>
+              <Text style={styles.reorderTitle}>Choose presets</Text>
               <Text style={styles.reorderBody}>Update multiple devices at once.</Text>
             </View>
             <Pressable style={styles.reorderCloseBtn} onPress={onClose}>
