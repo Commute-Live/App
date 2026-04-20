@@ -50,6 +50,7 @@ type BleStatusPayload = {
   phase: string | null;
   deviceId: string | null;
   reason: string | null;
+  message: string | null;
   wifiStatus: string | null;
   attempt: number | null;
   attempts: number | null;
@@ -116,6 +117,7 @@ const parseBleStatusPayload = (value: string | null | undefined): BleStatusPaylo
       phase?: unknown;
       deviceId?: unknown;
       reason?: unknown;
+      message?: unknown;
       wifiStatus?: unknown;
       attempt?: unknown;
       attempts?: unknown;
@@ -125,6 +127,7 @@ const parseBleStatusPayload = (value: string | null | undefined): BleStatusPaylo
       phase: typeof data.phase === 'string' ? data.phase : null,
       deviceId: typeof data.deviceId === 'string' ? data.deviceId : null,
       reason: typeof data.reason === 'string' ? data.reason : null,
+      message: typeof data.message === 'string' ? data.message : null,
       wifiStatus: typeof data.wifiStatus === 'string' ? data.wifiStatus : null,
       attempt: typeof data.attempt === 'number' ? data.attempt : null,
       attempts: typeof data.attempts === 'number' ? data.attempts : null,
@@ -136,6 +139,7 @@ const parseBleStatusPayload = (value: string | null | undefined): BleStatusPaylo
       phase: null,
       deviceId: null,
       reason: null,
+      message: null,
       wifiStatus: null,
       attempt: null,
       attempts: null,
@@ -145,6 +149,7 @@ const parseBleStatusPayload = (value: string | null | undefined): BleStatusPaylo
 };
 
 const getWifiFailureMessage = (payload: BleStatusPayload): string => {
+  if (payload.message) return payload.message;
   switch (payload.reason) {
     case 'auth_error':
       return 'The display could not join Wi-Fi. Check the password and try again.';

@@ -1,5 +1,7 @@
 # Project notes for Claude
 
+## Do not spend time on writing or changing or adding new test cases
+
 ## Datadog logs via curl
 
 When Nikul says **"curl datadog"** (or "curl dd", "check dd logs", etc.), use this section verbatim — don't re-derive the command or re-ask for service names.

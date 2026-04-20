@@ -497,9 +497,14 @@ export default function BleProvisionScreen() {
     return () => clearTimeout(timer);
   }, [isDeviceOffline, state.phase, reset]);
 
-  const fetchPairingToken = async () => {
+  const fetchPairingToken = async (expectedDeviceId?: string | null) => {
+    pairingTokenRef.current = null;
     try {
-      const res = await apiFetch('/device/pairing-token', {method: 'POST'});
+      const res = await apiFetch('/device/pairing-token', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({expectedDeviceId: expectedDeviceId ?? state.deviceId ?? null}),
+      });
       const data = await res.json().catch(() => null);
       if (res.ok && typeof data?.token === 'string') {
         pairingTokenRef.current = data.token;
@@ -520,7 +525,7 @@ export default function BleProvisionScreen() {
     selectFoundDevice(matchedDevice);
     void connectToDevice(matchedDevice).then(success => {
       if (success) {
-        void fetchPairingToken();
+        void fetchPairingToken(matchedDevice.name);
       }
     });
   }, [connectToDevice, selectFoundDevice, state.foundDevice, state.foundDevices, state.phase, targetDeviceId]);
@@ -614,7 +619,10 @@ export default function BleProvisionScreen() {
     <SafeAreaView style={styles.container} edges={['top', 'left', 'right', 'bottom']}>
       <AppBrandHeader />
 
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        style={styles.scrollView}
+        contentContainerStyle={styles.content}
+        showsVerticalScrollIndicator={false}>
         <View style={styles.heroBlock}>
           <Text style={styles.heading}>{isChangeWifiFlow ? 'Change Wi-Fi network' : 'Set up your device'}</Text>
         </View>
@@ -712,8 +720,10 @@ export default function BleProvisionScreen() {
               style={[styles.primaryButton, !state.foundDevice && styles.primaryButtonDisabled]}
               disabled={!state.foundDevice}
               onPress={async () => {
-                await connectToDevice();
-                fetchPairingToken();
+                const connected = await connectToDevice();
+                if (connected) {
+                  fetchPairingToken(state.foundDevice?.name ?? state.deviceId);
+                }
               }}>
               <Text style={styles.primaryText}>Connect via Bluetooth</Text>
             </Pressable>
@@ -830,6 +840,7 @@ export default function BleProvisionScreen() {
 // ── Styles ───────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
   container: {flex: 1, backgroundColor: colors.background},
+  scrollView: {flex: 1},
   content: {
     paddingHorizontal: layout.screenPadding,
     paddingTop: layout.screenPadding,
