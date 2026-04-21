@@ -39,9 +39,15 @@ export const resolveNewYorkBusAppearance = (
 };
 
 export const formatNewYorkBusRoutePickerLabel = (
-  _routeId: string,
+  routeId: string,
   routeLabel: string,
-) => routeLabel.replace(/-?SBS\b/gi, '+').replace(/\s+/g, '');
+) => {
+  const normalizedRouteId = routeId.trim();
+  if (normalizedRouteId.length > 0) {
+    return normalizedRouteId.replace(/-?SBS\b/gi, '+').replace(/\s+/g, '');
+  }
+  return routeLabel.replace(/-?SBS\b/gi, '+').replace(/\s+/g, '');
+};
 
 type BusRouteRef =
   | string
@@ -86,10 +92,12 @@ export const getNewYorkBusDirectionLabel = (
   return `To ${headsign}`;
 };
 
-const normalizeBusLabel = (route: {label: string}) =>
-  normalizeRoutePickerLabel(route).replace(/\s+/g, '');
+const normalizeBusLabel = (route: {id?: string | null; shortName?: string | null; label: string}) => {
+  const routeCode = route.id?.trim() || route.shortName?.trim() || route.label.trim();
+  return normalizeRoutePickerLabel({label: routeCode}).replace(/\s+/g, '');
+};
 
-const getBusGroupKey = (route: {label: string}) => {
+const getBusGroupKey = (route: {id?: string | null; shortName?: string | null; label: string}) => {
   const label = normalizeBusLabel(route);
   if (label.startsWith('BX')) return 'bronx';
   if (label.startsWith('B')) return 'brooklyn';
@@ -133,7 +141,7 @@ const getBusGroupOrder = (key: string) => {
   }
 };
 
-const getBusRouteSortParts = (route: {label: string}) => {
+const getBusRouteSortParts = (route: {id?: string | null; shortName?: string | null; label: string}) => {
   const label = normalizeBusLabel(route);
   const match = label.match(/^([A-Z]+)(\d+)?([A-Z]*)$/);
   if (!match) {

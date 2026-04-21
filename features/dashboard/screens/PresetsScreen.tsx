@@ -289,10 +289,46 @@ export default function DisplayManagementSection({
     mutationFn: async (display: DevicePreset) => {
       if (!deviceId) return;
       await deletePreset(deviceId, display.presetId);
+      return display;
     },
-    onSuccess: () => {
+    onSuccess: deletedDisplay => {
       if (!deviceId) return;
+      const remainingDisplays = sortDisplaysForCarousel(
+        displays.filter(display => display.presetId !== deletedDisplay?.presetId),
+        null,
+      );
+      const nextActiveDisplayId = remainingDisplays[0]?.presetId ?? null;
+      setMockActiveDisplayIdsByTarget(prev => {
+        const next = {...prev};
+        Object.keys(next).forEach(targetId => {
+          if (next[targetId] === deletedDisplay?.presetId) {
+            if (nextActiveDisplayId) {
+              next[targetId] = nextActiveDisplayId;
+            } else {
+              delete next[targetId];
+            }
+          }
+        });
+        return next;
+      });
+      if (nextActiveDisplayId) {
+        skipNextPreviewTransitionRef.current = true;
+        setPendingFocusDisplayId(nextActiveDisplayId);
+      }
+      queryClient.setQueryData(
+        queryKeys.presets(deviceId),
+        (current: {presets: DevicePreset[]; activePresetId: string | null} | undefined) =>
+          current
+            ? {
+                ...current,
+                activePresetId: nextActiveDisplayId,
+                presets: current.presets.filter(display => display.presetId !== deletedDisplay?.presetId),
+              }
+            : current,
+      );
+      setCarouselIndex(0);
       void queryClient.invalidateQueries({queryKey: queryKeys.presets(deviceId)});
+      void queryClient.invalidateQueries({queryKey: queryKeys.lastCommand(deviceId)});
     },
   });
 
@@ -414,13 +450,31 @@ export default function DisplayManagementSection({
               typeof data?.error === 'string' ? data.error : `Request failed (${response.status})`,
             );
           }
+          const refreshResponse = await apiFetch(`/refresh/device/${targetDeviceId}`, {method: 'POST'});
+          if (!refreshResponse.ok) {
+            logger.error('Set active refresh failed', {
+              deviceId: targetDeviceId,
+              presetId,
+              status: refreshResponse.status,
+            });
+          }
         }),
       );
     },
     onSuccess: (_data, variables) => {
       variables.targetDeviceIds.forEach(targetDeviceId => {
-        void queryClient.invalidateQueries({queryKey: queryKeys.presets(targetDeviceId)});
-        void queryClient.invalidateQueries({queryKey: queryKeys.lastCommand(targetDeviceId)});
+        queryClient.setQueryData(
+          queryKeys.presets(targetDeviceId),
+          (current: {presets: DevicePreset[]; activePresetId: string | null} | undefined) =>
+            current
+              ? {
+                  ...current,
+                  activePresetId: variables.presetId,
+                }
+              : current,
+        );
+        void queryClient.refetchQueries({queryKey: queryKeys.presets(targetDeviceId), type: 'active'});
+        void queryClient.refetchQueries({queryKey: queryKeys.lastCommand(targetDeviceId), type: 'active'});
       });
     },
   });
@@ -616,7 +670,6 @@ export default function DisplayManagementSection({
           onPress: async () => {
             try {
               await deleteDisplayMutation.mutateAsync(display);
-              setCarouselIndex(prev => Math.max(0, prev - 1));
             } catch (err) {
               Alert.alert('Delete failed', err instanceof Error ? err.message : 'Failed to delete preset');
             }
