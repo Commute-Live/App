@@ -361,23 +361,6 @@ export const styles = StyleSheet.create({
 
   // ─── Quiet Hours / Time Fields ────────────────────────────────────────────
   quietMetaText: {color: colors.textTertiary, fontSize: 12, lineHeight: 17},
-  quietDaysWrap: {gap: spacing.xs},
-  quietDaysRow: {flexDirection: 'row', justifyContent: 'center', gap: 10},
-  quietDaysRowDisabled: {opacity: 0.45},
-  quietDayPill: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    borderWidth: 0,
-    backgroundColor: colors.card,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  quietDayPillActive: {
-    backgroundColor: colors.accent,
-  },
-  quietDayPillText: {color: colors.textTertiary, fontSize: 13, fontWeight: '600'},
-  quietDayPillTextActive: {color: '#FFFFFF', fontWeight: '700'},
   quietRangeRow: {flexDirection: 'row', gap: spacing.sm},
   timeField: {
     flex: 1,

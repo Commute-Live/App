@@ -28,6 +28,7 @@ export const routeToPickerItem = (
   displayLabel: string,
 ): TransitRoutePickerItem => ({
   id: route.id,
+  shortName: route.shortName,
   label: route.label,
   displayLabel,
   color: route.color,
