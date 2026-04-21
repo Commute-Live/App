@@ -61,6 +61,23 @@ type ManagedDisplayTarget = {
   online: boolean;
 };
 
+const updateCachedUserDeviceActivePreset = (
+  devices: UserDevice[] | undefined,
+  targetDeviceIds: string[],
+  activePresetId: string | null,
+) => {
+  if (!devices) return devices;
+  const targetIds = new Set(targetDeviceIds);
+  return devices.map(device =>
+    targetIds.has(device.deviceId)
+      ? {
+          ...device,
+          activePresetId,
+        }
+      : device,
+  );
+};
+
 const buildDisplayPayload = (
   display: DevicePreset,
   options: {brightness?: number},
@@ -296,9 +313,15 @@ export default function DisplayManagementSection({
         setPendingFocusDisplayId(nextActiveDisplayId);
       }
       queryClient.setQueryData(queryKeys.presets(deviceId), nextPresets);
+      queryClient.setQueryData(
+        queryKeys.user.devices,
+        (current: UserDevice[] | undefined) =>
+          updateCachedUserDeviceActivePreset(current, [deviceId], nextActiveDisplayId),
+      );
       setCarouselIndex(0);
       void queryClient.invalidateQueries({queryKey: queryKeys.presets(deviceId)});
       void queryClient.invalidateQueries({queryKey: queryKeys.lastCommand(deviceId)});
+      void queryClient.invalidateQueries({queryKey: queryKeys.user.devices});
     },
   });
 
@@ -365,9 +388,15 @@ export default function DisplayManagementSection({
               }
             : current,
       );
+      queryClient.setQueryData(
+        queryKeys.user.devices,
+        (current: UserDevice[] | undefined) =>
+          updateCachedUserDeviceActivePreset(current, [deviceId], nextActiveDisplayId),
+      );
       setCarouselIndex(0);
       void queryClient.invalidateQueries({queryKey: queryKeys.presets(deviceId)});
       void queryClient.invalidateQueries({queryKey: queryKeys.lastCommand(deviceId)});
+      void queryClient.invalidateQueries({queryKey: queryKeys.user.devices});
     },
   });
 
@@ -446,6 +475,12 @@ export default function DisplayManagementSection({
         void queryClient.refetchQueries({queryKey: queryKeys.presets(targetDeviceId), type: 'active'});
         void queryClient.refetchQueries({queryKey: queryKeys.lastCommand(targetDeviceId), type: 'active'});
       });
+      queryClient.setQueryData(
+        queryKeys.user.devices,
+        (current: UserDevice[] | undefined) =>
+          updateCachedUserDeviceActivePreset(current, variables.targetDeviceIds, variables.presetId),
+      );
+      void queryClient.invalidateQueries({queryKey: queryKeys.user.devices});
     },
   });
 

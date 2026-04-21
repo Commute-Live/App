@@ -57,6 +57,7 @@ import {
 } from '../../../lib/displays';
 import {useAuth} from '../../../state/authProvider';
 import {useSelectedDevice} from '../../../hooks/useSelectedDevice';
+import type {UserDevice} from '../../../lib/userDevices';
 import {
   areSameLinePicks,
   buildNextArrivalTimes,
@@ -1296,6 +1297,19 @@ export default function DisplayEditorScreen() {
     },
     onSuccess: (_result, variables) => {
       void queryClient.invalidateQueries({queryKey: queryKeys.presets(variables.nextDeviceId)});
+      queryClient.setQueryData(
+        queryKeys.user.devices,
+        (current: UserDevice[] | undefined) =>
+          current?.map(device =>
+            device.deviceId === variables.nextDeviceId
+              ? {
+                  ...device,
+                  activePresetId: _result?.nextPresetId ?? device.activePresetId,
+                }
+              : device,
+          ),
+      );
+      void queryClient.invalidateQueries({queryKey: queryKeys.user.devices});
       if (variables.nextEditingDisplayId) {
         void queryClient.invalidateQueries({
           queryKey: queryKeys.preset(variables.nextDeviceId, variables.nextEditingDisplayId),
