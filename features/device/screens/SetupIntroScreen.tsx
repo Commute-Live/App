@@ -241,7 +241,7 @@ export default function SetupIntroScreen() {
           <View style={styles.deviceIdCard}>
             <View style={styles.deviceIdRow}>
               <Text style={styles.deviceIdLabel}>Display</Text>
-              <Text style={styles.deviceIdValue}>My Device</Text>
+              <Text style={styles.deviceIdValue}>{state.deviceId ?? 'Not detected yet'}</Text>
             </View>
             <View style={styles.deviceIdDivider} />
             <View style={styles.deviceIdRow}>

@@ -4,6 +4,9 @@ export const queryKeys = {
   auth: {
     me: ['auth', 'me'] as const,
   },
+  user: {
+    devices: ['user', 'devices'] as const,
+  },
   presets: (deviceId: string) => ['device', deviceId, 'presets'] as const,
   preset: (deviceId: string, presetId: string) => ['device', deviceId, 'presets', presetId] as const,
   deviceConfig: (deviceId: string) => ['device', deviceId, 'config'] as const,

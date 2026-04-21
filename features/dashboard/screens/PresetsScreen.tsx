@@ -27,6 +27,7 @@ import {logger} from '../../../lib/logger';
 import DraggableFlatList, {type RenderItemParams} from 'react-native-draggable-flatlist';
 import {useTabRouteIsActive} from '../../../components/TabScreen';
 import {useSelectedDevice} from '../../../hooks/useSelectedDevice';
+import {useUserDevices} from '../../../hooks/useUserDevices';
 import DashboardPreviewSection from '../components/DashboardPreviewSection';
 import {CITY_BRANDS, CITY_LABELS} from '../../../constants/cities';
 import {useAppState} from '../../../state/appState';
@@ -45,19 +46,19 @@ import {
 import {CITY_LINE_COLORS, hashLineColor, resolveProviderLineColor} from '../../../lib/lineColors';
 import {getTransitStationName} from '../../../lib/transitApi';
 import {queryKeys} from '../../../lib/queryKeys';
+import type {UserDevice} from '../../../lib/userDevices';
 
 const stopNameCache: Record<string, string> = {};
 const MIN_BRIGHTNESS = 10;
 const MAX_BRIGHTNESS = 100;
 const BRIGHTNESS_COMMIT_DELAY_MS = 1000;
 const REORDER_ROW_HEIGHT = 76;
-const MOCK_ACCOUNT_PRESET_LIMIT = 3;
-const MOCK_LINKED_DISPLAY_NAMES = ['Kitchen Display', 'Office Display', 'Lobby Display'];
 
 type ManagedDisplayTarget = {
   id: string;
   name: string;
-  isMock?: boolean;
+  activePresetId: string | null;
+  online: boolean;
 };
 
 const buildDisplayPayload = (
@@ -141,6 +142,7 @@ export default function DisplayManagementSection({
   const params = useLocalSearchParams<{focusPresetId?: string}>();
   const {state: appState} = useAppState();
   const {deviceId, deviceIds, status} = useAuth();
+  const {devices: linkedDevices} = useUserDevices();
   const selectedDevice = useSelectedDevice();
   const selectedCity = appState.selectedCity;
   const isScreenFocused = useTabRouteIsActive('/dashboard');
@@ -152,8 +154,8 @@ export default function DisplayManagementSection({
   const [accountSelectorVisible, setAccountSelectorVisible] = useState(false);
   const [isDisplayGestureRegionActive, setIsDisplayGestureRegionActive] = useState(false);
   const [carouselDirection, setCarouselDirection] = useState<1 | -1>(1);
-  const [mockSelectedTargetIdsByAccount, setMockSelectedTargetIdsByAccount] = useState<Record<string, string[]>>({});
-  const [mockActiveDisplayIdsByTarget, setMockActiveDisplayIdsByTarget] = useState<Record<string, string>>({});
+  const [selectedTargetIdsByDevice, setSelectedTargetIdsByDevice] = useState<Record<string, string[]>>({});
+  const [selectionModeByDevice, setSelectionModeByDevice] = useState<Record<string, 'single' | 'multiple'>>({});
   const [pendingFocusDisplayId, setPendingFocusDisplayId] = useState<string | null>(
     typeof params.focusPresetId === 'string' ? params.focusPresetId : null,
   );
@@ -212,24 +214,16 @@ export default function DisplayManagementSection({
   const errorText = displaysQuery.error instanceof Error ? displaysQuery.error.message : '';
   const accountSelectionKey = selectedDevice.id || deviceId || 'default';
   const accountDisplayTargets = useMemo((): ManagedDisplayTarget[] => {
-    const realIds = Array.from(new Set([...(deviceIds ?? []), selectedDevice.id].filter(Boolean)));
-    const targets: ManagedDisplayTarget[] = realIds.map((id, index) => ({
-      id,
-      name: id === selectedDevice.id ? 'My Device' : `Linked Display ${index + 1}`,
-    }));
-
-    let mockIndex = 0;
-    while (targets.length < MOCK_ACCOUNT_PRESET_LIMIT) {
-      targets.push({
-        id: `mock-display-${mockIndex + 1}`,
-        name: MOCK_LINKED_DISPLAY_NAMES[mockIndex] ?? `Linked Display ${targets.length + 1}`,
-        isMock: true,
-      });
-      mockIndex += 1;
-    }
-
-    return targets;
-  }, [deviceIds, selectedDevice.id]);
+    const linkedIds = new Set([...(deviceIds ?? []), selectedDevice.id].filter(Boolean));
+    return linkedDevices
+      .filter((device: UserDevice) => linkedIds.has(device.deviceId))
+      .map((device: UserDevice) => ({
+        id: device.deviceId,
+        name: device.name ?? device.deviceId,
+        activePresetId: device.activePresetId,
+        online: device.online,
+      }));
+  }, [deviceIds, linkedDevices, selectedDevice.id]);
 
   const lastCommandQuery = useQuery({
     queryKey: queryKeys.lastCommand(deviceId || 'none'),
@@ -298,19 +292,6 @@ export default function DisplayManagementSection({
         null,
       );
       const nextActiveDisplayId = remainingDisplays[0]?.presetId ?? null;
-      setMockActiveDisplayIdsByTarget(prev => {
-        const next = {...prev};
-        Object.keys(next).forEach(targetId => {
-          if (next[targetId] === deletedDisplay?.presetId) {
-            if (nextActiveDisplayId) {
-              next[targetId] = nextActiveDisplayId;
-            } else {
-              delete next[targetId];
-            }
-          }
-        });
-        return next;
-      });
       if (nextActiveDisplayId) {
         skipNextPreviewTransitionRef.current = true;
         setPendingFocusDisplayId(nextActiveDisplayId);
@@ -486,18 +467,22 @@ export default function DisplayManagementSection({
     void queryClient.invalidateQueries({queryKey: queryKeys.lastCommand(deviceId)});
   }, [deviceId, isScreenFocused, queryClient, status]);
 
-  const effectiveActiveDisplayId = mockActiveDisplayIdsByTarget[selectedDevice.id] ?? activePresetId;
+  const effectiveActiveDisplayId =
+    accountDisplayTargets.find(target => target.id === selectedDevice.id)?.activePresetId ?? activePresetId;
   const sortedDisplays = useMemo(
     () => sortDisplaysForCarousel(displays, effectiveActiveDisplayId),
     [displays, effectiveActiveDisplayId],
   );
   const selectedTargetIds = useMemo(() => {
-    const storedSelection = mockSelectedTargetIdsByAccount[accountSelectionKey];
+    const storedSelection = selectedTargetIdsByDevice[accountSelectionKey];
     if (storedSelection && storedSelection.length > 0) {
       return storedSelection.filter(targetId => accountDisplayTargets.some(target => target.id === targetId));
     }
     return accountDisplayTargets.slice(0, 1).map(target => target.id);
-  }, [accountDisplayTargets, accountSelectionKey, mockSelectedTargetIdsByAccount]);
+  }, [accountDisplayTargets, accountSelectionKey, selectedTargetIdsByDevice]);
+  const selectionMode =
+    selectionModeByDevice[accountSelectionKey] ??
+    (selectedTargetIds.length > 1 ? 'multiple' : 'single');
   const selectedTargets = useMemo(
     () => accountDisplayTargets.filter(target => selectedTargetIds.includes(target.id)),
     [accountDisplayTargets, selectedTargetIds],
@@ -523,23 +508,14 @@ export default function DisplayManagementSection({
 
   useEffect(() => {
     if (accountDisplayTargets.length === 0) return;
-    if (mockSelectedTargetIdsByAccount[accountSelectionKey]) return;
+    if (selectedTargetIdsByDevice[accountSelectionKey]) return;
     const initialSelection = accountDisplayTargets.slice(0, 1).map(target => target.id);
-    setMockSelectedTargetIdsByAccount(prev => ({...prev, [accountSelectionKey]: initialSelection}));
-  }, [accountDisplayTargets, accountSelectionKey, mockSelectedTargetIdsByAccount]);
-
+    setSelectedTargetIdsByDevice(prev => ({...prev, [accountSelectionKey]: initialSelection}));
+  }, [accountDisplayTargets, accountSelectionKey, selectedTargetIdsByDevice]);
   useEffect(() => {
-    if (sortedDisplays.length === 0 || accountDisplayTargets.length === 0) return;
-    setMockActiveDisplayIdsByTarget(prev => {
-      const next = {...prev};
-      accountDisplayTargets.forEach((target, index) => {
-        if (next[target.id]) return;
-        // TODO(server): hydrate real per-display active preset assignments for linked displays/accounts.
-        next[target.id] = index === 0 ? activePresetId ?? sortedDisplays[0].presetId : sortedDisplays[index % sortedDisplays.length].presetId;
-      });
-      return next;
-    });
-  }, [accountDisplayTargets, activePresetId, sortedDisplays]);
+    if (selectionModeByDevice[accountSelectionKey]) return;
+    setSelectionModeByDevice(prev => ({...prev, [accountSelectionKey]: 'single'}));
+  }, [accountSelectionKey, selectionModeByDevice]);
 
   const renderDisplayPreview = useCallback(
     (display: DevicePreset, city: typeof currentDisplayCity) => (
@@ -781,41 +757,67 @@ export default function DisplayManagementSection({
     async (orderedIds: string[]) => {
       try {
         await reorderDisplaysMutation.mutateAsync(orderedIds);
-        if (selectedDevice.id && orderedIds[0]) {
-          setMockActiveDisplayIdsByTarget(prev => ({...prev, [selectedDevice.id]: orderedIds[0]}));
-        }
         setCarouselIndex(0);
       } catch (err) {
         Alert.alert('Reorder failed', err instanceof Error ? err.message : 'Could not save display order');
       }
     },
-    [reorderDisplaysMutation, selectedDevice.id],
+    [reorderDisplaysMutation],
   );
 
   const handleToggleTargetSelection = useCallback(
     (targetId: string) => {
-      setMockSelectedTargetIdsByAccount(prev => {
+      setSelectedTargetIdsByDevice(prev => {
         const currentSelection = prev[accountSelectionKey] ?? selectedTargetIds;
         const alreadySelected = currentSelection.includes(targetId);
-        const nextSelection = alreadySelected
-          ? currentSelection.length > 1
-            ? currentSelection.filter(id => id !== targetId)
-            : currentSelection
-          : [...currentSelection, targetId].slice(0, MOCK_ACCOUNT_PRESET_LIMIT);
+        const currentMode = selectionModeByDevice[accountSelectionKey] ?? (currentSelection.length > 1 ? 'multiple' : 'single');
+        const nextSelection =
+          currentMode === 'single'
+            ? [targetId]
+            : alreadySelected
+              ? currentSelection.length > 1
+                ? currentSelection.filter(id => id !== targetId)
+                : currentSelection
+              : [...currentSelection, targetId];
         return {
           ...prev,
           [accountSelectionKey]: nextSelection,
         };
       });
     },
-    [accountSelectionKey, selectedTargetIds],
+    [accountSelectionKey, selectedTargetIds, selectionModeByDevice],
   );
+  const handleSelectionModeChange = useCallback(
+    (nextMode: 'single' | 'multiple') => {
+      setSelectionModeByDevice(prev => ({...prev, [accountSelectionKey]: nextMode}));
+      setSelectedTargetIdsByDevice(prev => {
+        const currentSelection = prev[accountSelectionKey] ?? selectedTargetIds;
+        const nextSelection =
+          nextMode === 'single'
+            ? currentSelection.slice(0, 1)
+            : currentSelection.length > 0
+              ? currentSelection
+              : accountDisplayTargets.slice(0, 1).map(target => target.id);
+        return {
+          ...prev,
+          [accountSelectionKey]: nextSelection,
+        };
+      });
+    },
+    [accountDisplayTargets, accountSelectionKey, selectedTargetIds],
+  );
+  const handleSelectAllTargets = useCallback(() => {
+    setSelectionModeByDevice(prev => ({...prev, [accountSelectionKey]: 'multiple'}));
+    setSelectedTargetIdsByDevice(prev => ({
+      ...prev,
+      [accountSelectionKey]: accountDisplayTargets.map(target => target.id),
+    }));
+  }, [accountDisplayTargets, accountSelectionKey]);
 
   const handleApplyActiveToSelected = useCallback(
     async (display: DevicePreset) => {
       if (selectedTargetIds.length === 0) return;
-      const realTargetIds = selectedTargets.filter(target => !target.isMock).map(target => target.id);
-      const mockTargetIds = selectedTargets.filter(target => target.isMock).map(target => target.id);
+      const realTargetIds = selectedTargets.map(target => target.id);
 
       try {
         if (realTargetIds.length > 0) {
@@ -831,13 +833,6 @@ export default function DisplayManagementSection({
 
       skipNextPreviewTransitionRef.current = true;
       setPendingFocusDisplayId(display.presetId);
-      setMockActiveDisplayIdsByTarget(prev => {
-        const next = {...prev};
-        [...realTargetIds, ...mockTargetIds].forEach(targetId => {
-          next[targetId] = display.presetId;
-        });
-        return next;
-      });
     },
     [selectedTargetIds, selectedTargets, setActivePresetMutation],
   );
@@ -1102,8 +1097,10 @@ export default function DisplayManagementSection({
         visible={accountSelectorVisible}
         targets={accountDisplayTargets}
         selectedIds={selectedTargetIds}
-        maxSelection={MOCK_ACCOUNT_PRESET_LIMIT}
+        selectionMode={selectionMode}
         onClose={() => setAccountSelectorVisible(false)}
+        onSelectAll={handleSelectAllTargets}
+        onSelectionModeChange={handleSelectionModeChange}
         onToggleSelection={handleToggleTargetSelection}
       />
     </>
@@ -1337,18 +1334,23 @@ function PresetSelectionModal({
   visible,
   targets,
   selectedIds,
-  maxSelection,
+  selectionMode,
   onClose,
+  onSelectAll,
+  onSelectionModeChange,
   onToggleSelection,
 }: {
   visible: boolean;
   targets: ManagedDisplayTarget[];
   selectedIds: string[];
-  maxSelection: number;
+  selectionMode: 'single' | 'multiple';
   onClose: () => void;
+  onSelectAll: () => void;
+  onSelectionModeChange: (mode: 'single' | 'multiple') => void;
   onToggleSelection: (targetId: string) => void;
 }) {
   const selectedLookup = useMemo(() => new Set(selectedIds), [selectedIds]);
+  const isMultiple = selectionMode === 'multiple';
 
   return (
     <Modal transparent animationType="fade" visible={visible} onRequestClose={onClose}>
@@ -1357,26 +1359,48 @@ function PresetSelectionModal({
           <View style={styles.reorderHeader}>
             <View style={styles.reorderHeaderCopy}>
               <Text style={styles.reorderTitle}>Choose presets</Text>
-              <Text style={styles.reorderBody}>Update multiple devices at once.</Text>
             </View>
             <Pressable style={styles.reorderCloseBtn} onPress={onClose}>
               <Ionicons name="close" size={18} color={colors.text} />
             </Pressable>
           </View>
 
+          <View style={styles.selectorControls}>
+            <View style={styles.selectorModeRow}>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityState={{selected: !isMultiple}}
+                style={[styles.selectorModeButton, !isMultiple && styles.selectorModeButtonActive]}
+                onPress={() => onSelectionModeChange('single')}>
+                <Text style={[styles.selectorModeButtonText, !isMultiple && styles.selectorModeButtonTextActive]}>
+                  Select one
+                </Text>
+              </Pressable>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityState={{selected: isMultiple}}
+                style={[styles.selectorModeButton, isMultiple && styles.selectorModeButtonActive]}
+                onPress={() => onSelectionModeChange('multiple')}>
+                <Text style={[styles.selectorModeButtonText, isMultiple && styles.selectorModeButtonTextActive]}>
+                  Select multiple
+                </Text>
+              </Pressable>
+            </View>
+            <Pressable style={styles.selectorSelectAllButton} onPress={onSelectAll}>
+              <Text style={styles.selectorSelectAllText}>Select all</Text>
+            </Pressable>
+          </View>
+
           <View style={styles.selectorList}>
             {targets.map(target => {
               const isSelected = selectedLookup.has(target.id);
-              const disabled = !isSelected && selectedIds.length >= maxSelection;
               return (
                 <Pressable
                   key={target.id}
                   style={[
                     styles.selectorRow,
                     isSelected && styles.selectorRowSelected,
-                    disabled && styles.selectorRowDisabled,
                   ]}
-                  disabled={disabled}
                   onPress={() => onToggleSelection(target.id)}>
                   <View style={styles.selectorCopy}>
                     <Text style={styles.selectorName} numberOfLines={1}>
@@ -1384,7 +1408,13 @@ function PresetSelectionModal({
                     </Text>
                   </View>
                   <View style={[styles.selectorCheck, isSelected && styles.selectorCheckSelected]}>
-                    {isSelected ? <Ionicons name="checkmark" size={16} color={colors.onAccent} /> : null}
+                    {isSelected ? (
+                      <Ionicons
+                        name={isMultiple ? 'checkmark' : 'radio-button-on'}
+                        size={16}
+                        color={colors.onAccent}
+                      />
+                    ) : null}
                   </View>
                 </Pressable>
               );
@@ -1429,7 +1459,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'flex-start',
   },
-  pageHeaderRight: {width: layout.iconButton, alignItems: 'flex-end'},
+  pageHeaderRight: {width: layout.iconButton * 2 + spacing.xs, alignItems: 'flex-end'},
   headerActionSpacer: {
     marginRight: spacing.xs,
   },
@@ -1970,6 +2000,51 @@ const styles = StyleSheet.create({
     padding: layout.cardPaddingLg,
     gap: spacing.md,
   },
+  selectorControls: {
+    gap: spacing.sm,
+  },
+  selectorModeRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+  },
+  selectorModeButton: {
+    flex: 1,
+    minHeight: 42,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.card,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: spacing.sm,
+  },
+  selectorModeButtonActive: {
+    borderColor: colors.accent,
+    backgroundColor: colors.accentMuted,
+  },
+  selectorModeButtonText: {
+    color: colors.textSecondary,
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  selectorModeButtonTextActive: {
+    color: colors.accentDeep,
+  },
+  selectorSelectAllButton: {
+    minHeight: 40,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.card,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: spacing.md,
+  },
+  selectorSelectAllText: {
+    color: colors.text,
+    fontSize: 13,
+    fontWeight: '700',
+  },
   selectorList: {
     gap: spacing.sm,
   },
@@ -1987,9 +2062,6 @@ const styles = StyleSheet.create({
   selectorRowSelected: {
     borderColor: colors.accent,
     backgroundColor: colors.accentMuted,
-  },
-  selectorRowDisabled: {
-    opacity: 0.45,
   },
   selectorCopy: {
     flex: 1,

@@ -8,6 +8,7 @@ import {
 
 export type DeviceSettings = {
   deviceId: string;
+  name: string | null;
   timezone: string;
   quietHoursStart: string | null;
   quietHoursEnd: string | null;
@@ -24,6 +25,7 @@ const parseError = async (response: Response) => {
 
 const normalizeDeviceSettings = (value: any, deviceId: string): DeviceSettings => ({
   deviceId: typeof value?.deviceId === 'string' && value.deviceId.trim().length > 0 ? value.deviceId : deviceId,
+  name: typeof value?.name === 'string' && value.name.trim().length > 0 ? value.name : null,
   timezone:
     typeof value?.timezone === 'string' && value.timezone.trim().length > 0
       ? value.timezone
