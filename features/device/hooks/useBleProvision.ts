@@ -9,6 +9,7 @@ export const BLE_SERVICE_UUID    = 'a1b2c3d4-0000-4a5b-8c7d-9e0f1a2b3c4d';
 export const BLE_PROVISION_UUID  = 'a1b2c3d4-0001-4a5b-8c7d-9e0f1a2b3c4d';
 export const BLE_STATUS_UUID     = 'a1b2c3d4-0002-4a5b-8c7d-9e0f1a2b3c4d';
 export const BLE_WIFI_SCAN_UUID  = 'a1b2c3d4-0003-4a5b-8c7d-9e0f1a2b3c4d';
+export const BLE_PAIRING_CODE_UUID = 'a1b2c3d4-0004-4a5b-8c7d-9e0f1a2b3c4d';
 
 // The firmware advertises as "esp32-XXXX" (same as its MQTT deviceId).
 const BLE_NAME_PREFIX = 'esp32-';
@@ -37,6 +38,7 @@ export interface BleProvisionState {
   foundDevice: Device | null;
   foundDevices: Device[];
   deviceId: string | null;   // esp32-XXXX — set from BLE device name during scan
+  pairingCode: string | null;
   errorMsg: string | null;
   bluetoothState: string | null;
   bluetoothMessage: string | null;
@@ -51,6 +53,7 @@ type BleStatusPayload = {
   deviceId: string | null;
   reason: string | null;
   message: string | null;
+  pairingCode: string | null;
   wifiStatus: string | null;
   attempt: number | null;
   attempts: number | null;
@@ -68,6 +71,7 @@ type PendingCredentials = {
   username: string;
   token: string;
   serverUrl: string;
+  pairingCode: string;
 };
 
 const WIFI_RESULT_TIMEOUT_MS = 135_000;
@@ -77,6 +81,7 @@ const RECOVERY_SCAN_INTERVAL_MS = 10_000;
 const RECOVERY_SCAN_SLICE_MS = 7_000;
 const RECOVERY_WINDOW_MS = 360_000;
 const EXPECTED_SUCCESS_DISCONNECT_MS = 2_000;
+const WIFI_SCAN_DEBOUNCE_MS = 3_000;
 
 const PHASE_EVENT_NAMES: Partial<Record<BleProvisionPhase, string>> = {
   scanning: 'ble.scan_started',
@@ -104,6 +109,8 @@ const parseBleStatusPayload = (value: string | null | undefined): BleStatusPaylo
       phase: null,
       deviceId: null,
       reason: null,
+      message: null,
+      pairingCode: null,
       wifiStatus: null,
       attempt: null,
       attempts: null,
@@ -118,6 +125,7 @@ const parseBleStatusPayload = (value: string | null | undefined): BleStatusPaylo
       deviceId?: unknown;
       reason?: unknown;
       message?: unknown;
+      pairingCode?: unknown;
       wifiStatus?: unknown;
       attempt?: unknown;
       attempts?: unknown;
@@ -128,6 +136,7 @@ const parseBleStatusPayload = (value: string | null | undefined): BleStatusPaylo
       deviceId: typeof data.deviceId === 'string' ? data.deviceId : null,
       reason: typeof data.reason === 'string' ? data.reason : null,
       message: typeof data.message === 'string' ? data.message : null,
+      pairingCode: typeof data.pairingCode === 'string' ? data.pairingCode : null,
       wifiStatus: typeof data.wifiStatus === 'string' ? data.wifiStatus : null,
       attempt: typeof data.attempt === 'number' ? data.attempt : null,
       attempts: typeof data.attempts === 'number' ? data.attempts : null,
@@ -140,6 +149,7 @@ const parseBleStatusPayload = (value: string | null | undefined): BleStatusPaylo
       deviceId: null,
       reason: null,
       message: null,
+      pairingCode: null,
       wifiStatus: null,
       attempt: null,
       attempts: null,
@@ -155,6 +165,22 @@ const getWifiFailureMessage = (payload: BleStatusPayload): string => {
       return 'The display could not join Wi-Fi. Check the password and try again.';
     case 'provision_error':
       return 'The display joined Wi-Fi but could not finish setup. Try again.';
+    case 'DEVICE_ALREADY_LINKED':
+      return 'This display is already linked to another account. Contact support to unlink it before setting it up here.';
+    case 'rate_limited':
+      return 'Too many setup attempts. Wait a minute and try again.';
+    case 'connection_lost':
+      return 'Wi-Fi signal is too weak. Move the display closer to your router and try again.';
+    case 'disconnected':
+      return 'Wi-Fi dropped during setup. Please try again.';
+    case 'ble_disconnected':
+      return 'Phone disconnected during setup. Please try again.';
+    case 'pairing_code_required':
+    case 'PAIRING_CODE_REQUIRED':
+      return 'Enter the 4-digit code shown on your display before sending Wi-Fi credentials.';
+    case 'pairing_code_mismatch':
+    case 'PAIRING_CODE_MISMATCH':
+      return 'The pairing code did not match. Check the display and try again.';
     case 'timeout':
       return 'Taking longer than expected. Keep the display powered on, then try setup again from your phone.';
     default:
@@ -170,19 +196,24 @@ const getWifiFailureMessage = (payload: BleStatusPayload): string => {
 };
 
 const isRecoverableWifiFailure = (payload: BleStatusPayload): boolean => {
+  // Explicit allowlist: only reasons we know are transient are retried.
+  // Unknown reasons fail fast so a future firmware addition doesn't trap the user in "still working on it…".
   switch (payload.reason) {
-    case 'auth_error':
-    case 'provision_error':
-    case 'timeout':
-      return false;
-    default:
+    case 'connection_lost':
       return true;
+    default:
+      return false;
   }
 };
 
 const isCancelledBleError = (error: BleError | null | undefined) => {
   if (!error) return false;
   return error.message.trim().toLowerCase() === 'operation was cancelled';
+};
+
+const decodeBleString = (value: string | null | undefined): string | null => {
+  if (!value) return null;
+  return Buffer.from(value, 'base64').toString('utf8').trim();
 };
 
 // Singleton BleManager — created once per app session, never recreated.
@@ -223,6 +254,7 @@ export function useBleProvision(options: {targetDeviceId?: string | null} = {}) 
     foundDevice: null,
     foundDevices: [],
     deviceId: null,
+    pairingCode: null,
     errorMsg: null,
     bluetoothState: null,
     bluetoothMessage: null,
@@ -242,6 +274,7 @@ export function useBleProvision(options: {targetDeviceId?: string | null} = {}) 
   const expectedSuccessDisconnectUntilRef = useRef(0);
   const phaseRef = useRef<BleProvisionPhase>('idle');
   const deviceIdRef = useRef<string | null>(targetDeviceId);
+  const pairingCodeRef = useRef<string | null>(null);
   const credsSentAtRef = useRef<number | null>(null);
   const pendingCredentialsRef = useRef<PendingCredentials | null>(null);
   const recoveryIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -252,6 +285,7 @@ export function useBleProvision(options: {targetDeviceId?: string | null} = {}) 
   const handleProvisionStallRef = useRef<(message: string, payload?: BleStatusPayload | null) => void>(() => {});
   const connectRecoveredDeviceRef = useRef<(device: Device) => Promise<void>>(async () => {});
   const scanChunksRef = useRef<Array<{s: string; r: number; e: number}>>([]);
+  const lastWifiScanAtRef = useRef(0);
 
   const trackBleEvent = useCallback((event: string, context?: Record<string, unknown>) => {
     logger.info(event, context ?? {});
@@ -284,7 +318,8 @@ export function useBleProvision(options: {targetDeviceId?: string | null} = {}) 
   useEffect(() => {
     phaseRef.current = state.phase;
     deviceIdRef.current = state.deviceId ?? targetDeviceId;
-  }, [state.phase, state.deviceId, targetDeviceId]);
+    pairingCodeRef.current = state.pairingCode;
+  }, [state.phase, state.deviceId, state.pairingCode, targetDeviceId]);
 
   const cleanup = useCallback(() => {
     if (scanTimeoutRef.current) {
@@ -534,11 +569,13 @@ export function useBleProvision(options: {targetDeviceId?: string | null} = {}) 
   // Firmware advertises as "esp32-XXXX" — device.name IS the deviceId.
   const startScan = useCallback(async () => {
     cleanup();
+    trackBleEvent('ble.setup_started', {targetDeviceId});
     setPhase('requesting_permission', {
       errorMsg: null,
       foundDevice: null,
       foundDevices: [],
       deviceId: targetDeviceId,
+      pairingCode: null,
       statusUpdate: null,
     });
 
@@ -603,6 +640,7 @@ export function useBleProvision(options: {targetDeviceId?: string | null} = {}) 
         foundDevices: visibleDevices,
         foundDevice: null,
         deviceId: targetDeviceId,
+        pairingCode: null,
         errorMsg: null,
         statusUpdate: null,
       });
@@ -636,7 +674,7 @@ export function useBleProvision(options: {targetDeviceId?: string | null} = {}) 
         }
       }
     });
-  }, [cleanup, setPhase, fail, syncBluetoothState, targetDeviceId]);
+  }, [cleanup, setPhase, fail, syncBluetoothState, targetDeviceId, trackBleEvent]);
 
   const selectFoundDevice = useCallback((device: Device) => {
     deviceRef.current = device;
@@ -644,6 +682,7 @@ export function useBleProvision(options: {targetDeviceId?: string | null} = {}) 
       ...prev,
       foundDevice: device,
       deviceId: device.name ?? prev.deviceId,
+      pairingCode: null,
       statusUpdate: null,
     }));
   }, []);
@@ -660,12 +699,32 @@ export function useBleProvision(options: {targetDeviceId?: string | null} = {}) 
       ...prev,
       foundDevice: device,
       deviceId: device.name ?? prev.deviceId,
+      pairingCode: null,
       statusUpdate: null,
     }));
     setPhase('connecting', {errorMsg: null});
+    let connectStage = 'connect';
     try {
+      logger.info('BLE connect starting', {deviceId: device.name ?? device.id});
       const connected = await device.connect();
+      connectStage = 'discover';
+      logger.info('BLE discover starting', {deviceId: device.name ?? device.id});
       await connected.discoverAllServicesAndCharacteristics();
+      connectStage = 'read_pairing_code';
+      logger.info('BLE pairing code read starting', {deviceId: device.name ?? device.id});
+      const pairingCodeCharacteristic = await connected.readCharacteristicForService(
+        BLE_SERVICE_UUID,
+        BLE_PAIRING_CODE_UUID,
+      );
+      const pairingCode = decodeBleString(pairingCodeCharacteristic.value);
+      if (!pairingCode || !/^\d{4}$/.test(pairingCode)) {
+        fail('Could not verify the display pairing code. Restart setup and try again.');
+        return false;
+      }
+      pairingCodeRef.current = pairingCode;
+      trackBleEvent('ble.pairing_code_read', {
+        deviceId: device.name ?? device.id,
+      });
       statusSubscriptionRef.current?.remove();
       statusSubscriptionRef.current = connected.monitorCharacteristicForService(
         BLE_SERVICE_UUID,
@@ -708,6 +767,7 @@ export function useBleProvision(options: {targetDeviceId?: string | null} = {}) 
             ...prev,
             statusUpdate: payload,
             deviceId: nextDeviceId ?? prev.deviceId,
+            pairingCode: payload.pairingCode ?? pairingCode,
           }));
 
           if (payload.status === 'ready') {
@@ -775,11 +835,11 @@ export function useBleProvision(options: {targetDeviceId?: string | null} = {}) 
         },
       );
       deviceRef.current = connected;
-      setPhase('connected', {errorMsg: null});
+      setPhase('connected', {errorMsg: null, pairingCode});
       return true;
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
-      logger.error('BLE device connection failed', {deviceId: device.name ?? device.id, error: msg});
+      logger.error('BLE device connection failed', {deviceId: device.name ?? device.id, stage: connectStage, error: msg});
       if (phaseRef.current === 'waiting_wifi' || recoveryActiveRef.current) {
         handleProvisionStallRef.current(
           'Still working on it. Keep the app open while the display reconnects.',
@@ -801,13 +861,18 @@ export function useBleProvision(options: {targetDeviceId?: string | null} = {}) 
         fail('Device not connected.');
         return null;
       }
+      const pairingCode = pairingCodeRef.current;
+      if (!pairingCode) {
+        fail('Enter the 4-digit code shown on your display before sending Wi-Fi credentials.');
+        return null;
+      }
       setPhase('provisioning', {errorMsg: null, statusUpdate: null});
       terminalProvisionStatusRef.current = false;
       expectedSuccessDisconnectUntilRef.current = 0;
-      pendingCredentialsRef.current = {ssid, password, username, token, serverUrl};
+      pendingCredentialsRef.current = {ssid, password, username, token, serverUrl, pairingCode};
       credsSentAtRef.current = null;
 
-      const payload = JSON.stringify({ssid, password, username, token, server_url: serverUrl});
+      const payload = JSON.stringify({ssid, password, username, token, server_url: serverUrl, pairing_code: pairingCode});
       const encoded = Buffer.from(payload, 'utf8').toString('base64');
 
       try {
@@ -874,6 +939,7 @@ export function useBleProvision(options: {targetDeviceId?: string | null} = {}) 
       username: creds.username,
       token: creds.token,
       server_url: creds.serverUrl,
+      pairing_code: creds.pairingCode,
     });
     const encoded = Buffer.from(payload, 'utf8').toString('base64');
 
@@ -913,6 +979,15 @@ export function useBleProvision(options: {targetDeviceId?: string | null} = {}) 
     const device = deviceRef.current;
     if (!device) return;
 
+    const now = Date.now();
+    if (now - lastWifiScanAtRef.current < WIFI_SCAN_DEBOUNCE_MS) {
+      logger.debug('BLE WiFi scan debounced', {
+        msSinceLast: now - lastWifiScanAtRef.current,
+      });
+      return;
+    }
+    lastWifiScanAtRef.current = now;
+
     setState(prev => ({...prev, isScanning: true, wifiNetworks: []}));
     scanChunksRef.current = [];
 
@@ -942,6 +1017,10 @@ export function useBleProvision(options: {targetDeviceId?: string | null} = {}) 
         .map(n => ({ssid: n.s, rssi: n.r, encryption: n.e as WifiNetwork['encryption']}));
       setState(prev => ({...prev, wifiNetworks: networks, isScanning: false}));
       logger.info('BLE WiFi scan complete', {networkCount: networks.length});
+      trackBleEvent('ble.wifi_scan_complete', {
+        networkCount: networks.length,
+        deviceId: deviceIdRef.current ?? null,
+      });
     };
 
     wifiScanSubscriptionRef.current = device.monitorCharacteristicForService(
@@ -990,7 +1069,7 @@ export function useBleProvision(options: {targetDeviceId?: string | null} = {}) 
       });
       setState(prev => ({...prev, isScanning: false}));
     }
-  }, []);
+  }, [trackBleEvent]);
 
   const clearError = useCallback(() => {
     setState(prev => ({...prev, errorMsg: null}));
@@ -1004,6 +1083,7 @@ export function useBleProvision(options: {targetDeviceId?: string | null} = {}) 
       foundDevice: null,
       foundDevices: [],
       deviceId: targetDeviceId,
+      pairingCode: null,
       errorMsg: null,
       bluetoothState: prev.bluetoothState,
       bluetoothMessage: prev.bluetoothMessage,

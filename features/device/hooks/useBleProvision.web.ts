@@ -4,6 +4,7 @@ export const BLE_SERVICE_UUID = 'a1b2c3d4-0000-4a5b-8c7d-9e0f1a2b3c4d';
 export const BLE_PROVISION_UUID = 'a1b2c3d4-0001-4a5b-8c7d-9e0f1a2b3c4d';
 export const BLE_STATUS_UUID = 'a1b2c3d4-0002-4a5b-8c7d-9e0f1a2b3c4d';
 export const BLE_WIFI_SCAN_UUID = 'a1b2c3d4-0003-4a5b-8c7d-9e0f1a2b3c4d';
+export const BLE_PAIRING_CODE_UUID = 'a1b2c3d4-0004-4a5b-8c7d-9e0f1a2b3c4d';
 
 export type BleProvisionPhase =
   | 'idle'
@@ -34,6 +35,7 @@ export interface BleProvisionState {
   foundDevice: BleDiscoveredDevice | null;
   foundDevices: BleDiscoveredDevice[];
   deviceId: string | null;
+  pairingCode: string | null;
   errorMsg: string | null;
   bluetoothState: string | null;
   bluetoothMessage: string | null;
@@ -44,6 +46,8 @@ export interface BleProvisionState {
     phase: string | null;
     deviceId: string | null;
     reason: string | null;
+    message: string | null;
+    pairingCode: string | null;
     wifiStatus: string | null;
     attempt: number | null;
     attempts: number | null;
@@ -60,6 +64,7 @@ export function useBleProvision() {
     foundDevice: null,
     foundDevices: [],
     deviceId: null,
+    pairingCode: null,
     errorMsg: unsupportedMessage,
     bluetoothState: null,
     bluetoothMessage: unsupportedMessage,
@@ -76,6 +81,7 @@ export function useBleProvision() {
       bluetoothMessage: unsupportedMessage,
       wifiNetworks: [],
       isScanning: false,
+      pairingCode: null,
       statusUpdate: null,
     }));
   }, []);
@@ -86,6 +92,7 @@ export function useBleProvision() {
       phase: 'error',
       errorMsg: unsupportedMessage,
       bluetoothMessage: unsupportedMessage,
+      pairingCode: null,
     }));
   }, []);
 
