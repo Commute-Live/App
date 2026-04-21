@@ -440,6 +440,8 @@ export default function BleProvisionScreen() {
   const [isManualEntry, setIsManualEntry] = useState(false);
   const [linkError, setLinkError] = useState('');
   const [provisionStep, setProvisionStep] = useState<ProvisionStep>('idle');
+  const [pairingCodeInput, setPairingCodeInput] = useState('');
+  const [pairingCodeConfirmed, setPairingCodeConfirmed] = useState(false);
   const pairingTokenRef = useRef<string | null>(null);
   const hasRequestedScanRef = useRef(false);
   const bluetoothMessage = state.bluetoothMessage;
@@ -497,22 +499,36 @@ export default function BleProvisionScreen() {
     return () => clearTimeout(timer);
   }, [isDeviceOffline, state.phase, reset]);
 
-  const fetchPairingToken = async (expectedDeviceId?: string | null) => {
+  const fetchPairingToken = async (expectedDeviceId?: string | null, pairingCode?: string | null) => {
     pairingTokenRef.current = null;
+    const deviceId = expectedDeviceId ?? state.deviceId ?? null;
+    if (!deviceId || !pairingCode) {
+      setLinkError('Enter the 4-digit code shown on your display before choosing Wi-Fi.');
+      return false;
+    }
     try {
       const res = await apiFetch('/device/pairing-token', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({expectedDeviceId: expectedDeviceId ?? state.deviceId ?? null}),
+        body: JSON.stringify({expectedDeviceId: deviceId, pairingCode}),
       });
       const data = await res.json().catch(() => null);
       if (res.ok && typeof data?.token === 'string') {
         pairingTokenRef.current = data.token;
+        return true;
       }
+      setLinkError('Could not get pairing token — check your internet connection and try again.');
     } catch {
-      // non-fatal
+      setLinkError('Could not get pairing token — check your internet connection and try again.');
     }
+    return false;
   };
+
+  useEffect(() => {
+    pairingTokenRef.current = null;
+    setPairingCodeInput('');
+    setPairingCodeConfirmed(false);
+  }, [state.deviceId, state.pairingCode]);
 
   useEffect(() => {
     if (!targetDeviceId || state.phase !== 'device_found' || state.foundDevice) {
@@ -524,11 +540,25 @@ export default function BleProvisionScreen() {
     }
     selectFoundDevice(matchedDevice);
     void connectToDevice(matchedDevice).then(success => {
-      if (success) {
-        void fetchPairingToken(matchedDevice.name);
-      }
+      if (!success) return;
     });
   }, [connectToDevice, selectFoundDevice, state.foundDevice, state.foundDevices, state.phase, targetDeviceId]);
+
+  const handleConfirmPairingCode = async () => {
+    const expected = state.pairingCode;
+    const entered = pairingCodeInput.trim();
+    if (!expected || !state.deviceId) {
+      setLinkError('Could not read the display pairing code. Restart setup and try again.');
+      return;
+    }
+    if (entered !== expected) {
+      setLinkError('That code does not match the display. Check the 4-digit code and try again.');
+      return;
+    }
+    setLinkError('');
+    setPairingCodeConfirmed(true);
+    await fetchPairingToken(state.deviceId, expected);
+  };
 
   const openNetworkModal = (network: WifiNetwork) => {
     clearError();
@@ -557,6 +587,10 @@ export default function BleProvisionScreen() {
   const handleConnect = async (ssid: string, password: string, username: string) => {
     setLinkError('');
     const token = pairingTokenRef.current ?? '';
+    if (!pairingCodeConfirmed) {
+      setLinkError('Enter the 4-digit code shown on your display before choosing Wi-Fi.');
+      return;
+    }
     if (!token) {
       setLinkError('Could not get pairing token — check your internet connection and try again.');
       return;
@@ -721,9 +755,7 @@ export default function BleProvisionScreen() {
               disabled={!state.foundDevice}
               onPress={async () => {
                 const connected = await connectToDevice();
-                if (connected) {
-                  fetchPairingToken(state.foundDevice?.name ?? state.deviceId);
-                }
+                if (!connected) return;
               }}>
               <Text style={styles.primaryText}>Connect via Bluetooth</Text>
             </Pressable>
@@ -752,48 +784,76 @@ export default function BleProvisionScreen() {
               </Text>
             </View>
 
-            <Text style={styles.sectionTitle}>Choose a Wi‑Fi network</Text>
-
-            {state.isScanning && (
-              <View style={styles.wifiScanCard}>
-                <ActivityIndicator color={colors.accent} />
-                <Text style={styles.wifiScanText}>Scanning for Wi-Fi networks...</Text>
-              </View>
-            )}
-
-            {!state.isScanning && state.wifiNetworks.length > 0 && (
-              <View style={styles.networkList}>
-                {state.wifiNetworks.map((network, index) => (
-                  <NetworkRow
-                    key={`${network.ssid}-${index}`}
-                    network={network}
-                    onPress={() => openNetworkModal(network)}
-                    isFirst={index === 0}
-                    isLast={index === state.wifiNetworks.length - 1}
-                  />
-                ))}
+            {state.phase === 'connected' && !pairingCodeConfirmed && (
+              <View style={styles.pairingCard}>
+                <Text style={styles.pairingTitle}>Enter the 4-digit code shown on your display</Text>
+                <TextInput
+                  value={pairingCodeInput}
+                  onChangeText={text => {
+                    setPairingCodeInput(text.replace(/\D/g, '').slice(0, 4));
+                    if (linkError) setLinkError('');
+                  }}
+                  placeholder="0000"
+                  placeholderTextColor={colors.textMuted}
+                  keyboardType="number-pad"
+                  maxLength={4}
+                  style={styles.pairingCodeInput}
+                />
                 <Pressable
-                  style={[styles.networkRow, styles.networkRowLast, styles.networkRowOtherTop]}
-                  onPress={openManualModal}>
-                  <Text style={styles.manualEntryText}>Other network...</Text>
-                  <Text style={styles.chevron}>›</Text>
+                  style={[styles.primaryButton, pairingCodeInput.length !== 4 && styles.primaryButtonDisabled]}
+                  onPress={handleConfirmPairingCode}
+                  disabled={pairingCodeInput.length !== 4}>
+                  <Text style={styles.primaryText}>Confirm code</Text>
                 </Pressable>
               </View>
             )}
 
-            {!state.isScanning && state.wifiNetworks.length === 0 && (
-              <View style={styles.wifiScanCard}>
-                <Text style={styles.wifiScanText}>No Wi-Fi networks found</Text>
-                <Pressable onPress={requestWifiScan}>
-                  <Text style={styles.rescanText}>Tap to rescan</Text>
-                </Pressable>
-              </View>
-            )}
+            {(pairingCodeConfirmed || state.phase !== 'connected') && (
+              <>
+                <Text style={styles.sectionTitle}>Choose a Wi‑Fi network</Text>
 
-            {!state.isScanning && !isBusy && state.wifiNetworks.length > 0 && (
-              <Pressable style={styles.rescanRow} onPress={requestWifiScan}>
-                <Text style={styles.rescanText}>↺  Rescan for networks</Text>
-              </Pressable>
+                {state.isScanning && (
+                  <View style={styles.wifiScanCard}>
+                    <ActivityIndicator color={colors.accent} />
+                    <Text style={styles.wifiScanText}>Scanning for Wi-Fi networks...</Text>
+                  </View>
+                )}
+
+                {!state.isScanning && state.wifiNetworks.length > 0 && (
+                  <View style={styles.networkList}>
+                    {state.wifiNetworks.map((network, index) => (
+                      <NetworkRow
+                        key={`${network.ssid}-${index}`}
+                        network={network}
+                        onPress={() => openNetworkModal(network)}
+                        isFirst={index === 0}
+                        isLast={index === state.wifiNetworks.length - 1}
+                      />
+                    ))}
+                    <Pressable
+                      style={[styles.networkRow, styles.networkRowLast, styles.networkRowOtherTop]}
+                      onPress={openManualModal}>
+                      <Text style={styles.manualEntryText}>Other network...</Text>
+                      <Text style={styles.chevron}>›</Text>
+                    </Pressable>
+                  </View>
+                )}
+
+                {!state.isScanning && state.wifiNetworks.length === 0 && (
+                  <View style={styles.wifiScanCard}>
+                    <Text style={styles.wifiScanText}>No Wi-Fi networks found</Text>
+                    <Pressable onPress={requestWifiScan}>
+                      <Text style={styles.rescanText}>Tap to rescan</Text>
+                    </Pressable>
+                  </View>
+                )}
+
+                {!state.isScanning && !isBusy && state.wifiNetworks.length > 0 && (
+                  <Pressable style={styles.rescanRow} onPress={requestWifiScan}>
+                    <Text style={styles.rescanText}>↺  Rescan for networks</Text>
+                  </Pressable>
+                )}
+              </>
             )}
           </Animated.View>
         )}
@@ -952,6 +1012,31 @@ const styles = StyleSheet.create({
     marginBottom: spacing.md,
   },
   connectedText: {color: colors.successText, fontWeight: '700', fontSize: typography.body},
+  pairingCard: {
+    backgroundColor: colors.card,
+    borderColor: colors.border,
+    borderWidth: 1,
+    borderRadius: radii.lg,
+    padding: spacing.md,
+    gap: spacing.sm,
+  },
+  pairingTitle: {
+    color: colors.text,
+    fontSize: typography.body,
+    fontWeight: '700',
+  },
+  pairingCodeInput: {
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderWidth: 1,
+    borderRadius: radii.md,
+    color: colors.text,
+    fontSize: 24,
+    fontWeight: '700',
+    paddingHorizontal: spacing.md,
+    minHeight: layout.buttonHeight,
+    textAlign: 'center',
+  },
   wifiScanCard: {
     backgroundColor: colors.card,
     borderColor: colors.border,
