@@ -28,25 +28,14 @@ import {useSelectedDevice} from '../../../hooks/useSelectedDevice';
 import {apiFetch} from '../../../lib/api';
 import {logger} from '../../../lib/logger';
 import {queryKeys} from '../../../lib/queryKeys';
-import {DISPLAY_WEEKDAYS, type DisplayWeekday} from '../../../lib/displays';
+import {DISPLAY_WEEKDAYS} from '../../../lib/displays';
 import {styles} from './DashboardOverview.styles';
 import {DashboardOverviewTimeAdjustField as TimeAdjustField} from './DashboardOverviewTimeAdjustField';
 import DisplayManagementSection from './PresetsScreen';
 
-const DAY_OPTIONS: Array<{id: DisplayWeekday; label: string}> = [
-  {id: 'sun', label: 'S'},
-  {id: 'mon', label: 'M'},
-  {id: 'tue', label: 'T'},
-  {id: 'wed', label: 'W'},
-  {id: 'thu', label: 'T'},
-  {id: 'fri', label: 'F'},
-  {id: 'sat', label: 'S'},
-];
-
 const DEFAULT_QUIET_HOURS = {
   start: '23:00',
   end: '05:00',
-  days: [...DISPLAY_WEEKDAYS] as DisplayWeekday[],
 };
 const DASHBOARD_REFRESH_PULL_DISTANCE = 96;
 
@@ -61,7 +50,6 @@ const formatShortTimezoneLabel = (timezone: string) => {
 type QuietHoursDraft = {
   start: string;
   end: string;
-  days: DisplayWeekday[];
 };
 
 export default function DashboardOverviewScreen() {
@@ -187,7 +175,6 @@ export default function DashboardOverviewScreen() {
     setQuietHours({
       start: deviceSettings.quietHoursStart ?? DEFAULT_QUIET_HOURS.start,
       end: deviceSettings.quietHoursEnd ?? DEFAULT_QUIET_HOURS.end,
-      days: deviceSettings.quietHoursDays.length > 0 ? deviceSettings.quietHoursDays : [...DISPLAY_WEEKDAYS],
     });
     setQuietHoursError('');
   }, [deviceSettings, hasLinkedDevice, selectedDevice.id]);
@@ -206,18 +193,11 @@ export default function DashboardOverviewScreen() {
         timezone: getCurrentIanaTimeZone(),
         quietHoursStart: enabled ? draft.start : null,
         quietHoursEnd: enabled ? draft.end : null,
-        quietHoursDays: enabled ? (draft.days.length > 0 ? draft.days : [...DISPLAY_WEEKDAYS]) : [],
+        quietHoursDays: enabled ? [...DISPLAY_WEEKDAYS] : [],
       };
       const validationError = validateDeviceSettings(payload);
       if (validationError) throw new Error(validationError);
       await updateDeviceSettings(selectedDevice.id, payload);
-      const refreshResponse = await apiFetch(`/refresh/device/${selectedDevice.id}`, {method: 'POST'});
-      if (!refreshResponse.ok) {
-        logger.error('Quiet hours refresh failed', {
-          deviceId: selectedDevice.id,
-          status: refreshResponse.status,
-        });
-      }
     },
     onSuccess: () => {
       setQuietHoursError('');
@@ -225,7 +205,12 @@ export default function DashboardOverviewScreen() {
       void queryClient.invalidateQueries({queryKey: queryKeys.deviceSettings(selectedDevice.id)});
     },
     onError: (error) => {
-      setQuietHoursError(error instanceof Error ? error.message : 'Unable to update quiet hours.');
+      const message = error instanceof Error ? error.message : 'Unable to update quiet hours.';
+      setQuietHoursError(
+        message === 'Request failed (500)'
+          ? 'Quiet hours could not be synced right now.'
+          : message,
+      );
     },
   });
   const quietHoursSaving = quietHoursMutation.isPending;
@@ -322,7 +307,7 @@ export default function DashboardOverviewScreen() {
     const validationError = validateScheduleWindow({
       start: nextDraft.start,
       end: nextDraft.end,
-      days: nextDraft.days,
+      days: DISPLAY_WEEKDAYS,
     });
     if (validationError) {
       setQuietHoursError(validationError);
@@ -514,34 +499,7 @@ export default function DashboardOverviewScreen() {
 
             {quietHoursExpanded ? (
               <>
-                <View style={styles.quietDaysWrap}>
-                  <View style={[styles.quietDaysRow, quietHoursInputsDisabled && styles.quietDaysRowDisabled]}>
-                    {DAY_OPTIONS.map(day => {
-                      const active = quietHours.days.includes(day.id);
-                      return (
-                        <Pressable
-                          key={day.id}
-                          style={[styles.quietDayPill, active && styles.quietDayPillActive]}
-                          disabled={quietHoursInputsDisabled}
-                          onPress={() => {
-                            const nextDays = active
-                              ? quietHours.days.filter(item => item !== day.id)
-                              : [...quietHours.days, day.id];
-                            const nextQuietHours = {
-                              ...quietHours,
-                              days: DISPLAY_WEEKDAYS.filter(option => nextDays.includes(option)),
-                            };
-                            setQuietHours(nextQuietHours);
-                            if (quietHoursEnabled) void persistQuietHours(true, nextQuietHours);
-                          }}>
-                          <Text style={[styles.quietDayPillText, active && styles.quietDayPillTextActive]}>
-                            {day.label}
-                          </Text>
-                        </Pressable>
-                      );
-                    })}
-                  </View>
-                </View>
+                <Text style={styles.quietMetaText}>Applies every day in {quietHoursTimezoneLabel}.</Text>
 
                 <View style={styles.quietRangeRow}>
                   <TimeAdjustField
@@ -560,7 +518,7 @@ export default function DashboardOverviewScreen() {
               </>
             ) : null}
 
-            {quietHoursError || deviceSettingsError ? (
+            {quietHoursError || (!deviceSettings && deviceSettingsError) ? (
               <Text style={styles.commandError}>{quietHoursError || deviceSettingsError}</Text>
             ) : null}
             </View>

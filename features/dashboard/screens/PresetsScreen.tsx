@@ -119,6 +119,9 @@ const isReorderLineBus = (display: DevicePreset, label: string) => {
 
 const sortDisplaysForCarousel = (items: DevicePreset[], activePresetId: string | null) =>
   [...items].sort((a, b) => {
+    const aIsActive = activePresetId != null && a.presetId === activePresetId;
+    const bIsActive = activePresetId != null && b.presetId === activePresetId;
+    if (aIsActive !== bIsActive) return aIsActive ? -1 : 1;
     if (a.sortOrder !== b.sortOrder) return a.sortOrder - b.sortOrder;
     return a.name.localeCompare(b.name);
   });
@@ -165,6 +168,7 @@ export default function DisplayManagementSection({
   const previousDisplayIdRef = useRef<string | null>(null);
   const previousDisplayRef = useRef<DevicePreset | null>(null);
   const skipNextPreviewTransitionRef = useRef(false);
+  const previousEffectiveActiveDisplayIdRef = useRef<string | null>(null);
   const ledScale = useRef(new Animated.Value(1)).current;
 
   const handleLedPressIn = useCallback(() => {
@@ -320,6 +324,17 @@ export default function DisplayManagementSection({
       }
 
       if (nextActiveDisplayId) {
+        const setActiveResponse = await apiFetch(`/device/${deviceId}/active-preset`, {
+          method: 'PATCH',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({presetId: nextActiveDisplayId}),
+        });
+        if (!setActiveResponse.ok) {
+          const data = await setActiveResponse.json().catch(() => null);
+          throw new Error(
+            typeof data?.error === 'string' ? data.error : `Request failed (${setActiveResponse.status})`,
+          );
+        }
         await apiFetch(`/refresh/device/${deviceId}`, {method: 'POST'});
       }
 
@@ -378,6 +393,38 @@ export default function DisplayManagementSection({
     },
   });
 
+  const setActivePresetMutation = useMutation({
+    mutationFn: async ({
+      targetDeviceIds,
+      presetId,
+    }: {
+      targetDeviceIds: string[];
+      presetId: string;
+    }) => {
+      await Promise.all(
+        targetDeviceIds.map(async targetDeviceId => {
+          const response = await apiFetch(`/device/${targetDeviceId}/active-preset`, {
+            method: 'PATCH',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({presetId}),
+          });
+          if (!response.ok) {
+            const data = await response.json().catch(() => null);
+            throw new Error(
+              typeof data?.error === 'string' ? data.error : `Request failed (${response.status})`,
+            );
+          }
+        }),
+      );
+    },
+    onSuccess: (_data, variables) => {
+      variables.targetDeviceIds.forEach(targetDeviceId => {
+        void queryClient.invalidateQueries({queryKey: queryKeys.presets(targetDeviceId)});
+        void queryClient.invalidateQueries({queryKey: queryKeys.lastCommand(targetDeviceId)});
+      });
+    },
+  });
+
   useEffect(() => {
     if (!isScreenFocused || !deviceId || status !== 'authenticated') return;
     setCarouselIndex(0);
@@ -412,13 +459,8 @@ export default function DisplayManagementSection({
   const isBrightnessControlExpanded = currentDisplay ? !!expandedBrightnessControls[currentDisplay.presetId] : false;
   const effectivePreviewWidth = previewStageWidth > 0 ? previewStageWidth : 320;
   const previewTravelDistance = Math.max(windowWidth, effectivePreviewWidth) + 24;
-  const activeSelectedTargetCount = currentDisplay
-    ? selectedTargets.filter(target => mockActiveDisplayIdsByTarget[target.id] === currentDisplay.presetId).length
-    : 0;
-  const areAllSelectedTargetsActive =
-    !!currentDisplay &&
-    selectedTargets.length > 0 &&
-    activeSelectedTargetCount === selectedTargets.length;
+  const isCurrentDisplayActive =
+    !!currentDisplay && effectiveActiveDisplayId === currentDisplay.presetId;
   const selectorTitle = useMemo(() => {
     if (selectedTargets.length === 0) return selectedDevice.name || 'This Display';
     if (selectedTargets.length === 1) return selectedTargets[0].name;
@@ -549,6 +591,18 @@ export default function DisplayManagementSection({
     setCarouselIndex(targetIndex);
     setPendingFocusDisplayId(null);
   }, [pendingFocusDisplayId, safeIndex, visibleDisplays]);
+
+  useEffect(() => {
+    if (!effectiveActiveDisplayId || visibleDisplays.length === 0) return;
+    const previousActiveDisplayId = previousEffectiveActiveDisplayIdRef.current;
+    previousEffectiveActiveDisplayIdRef.current = effectiveActiveDisplayId;
+    if (previousActiveDisplayId === null || previousActiveDisplayId === effectiveActiveDisplayId) return;
+    const targetIndex = visibleDisplays.findIndex(display => display.presetId === effectiveActiveDisplayId);
+    if (targetIndex === -1 || targetIndex === safeIndex) return;
+    skipNextPreviewTransitionRef.current = true;
+    setCarouselDirection(targetIndex > safeIndex ? 1 : -1);
+    setCarouselIndex(targetIndex);
+  }, [effectiveActiveDisplayId, safeIndex, visibleDisplays]);
 
 
   const confirmDelete = useCallback(
@@ -705,21 +759,34 @@ export default function DisplayManagementSection({
   );
 
   const handleApplyActiveToSelected = useCallback(
-    (display: DevicePreset) => {
+    async (display: DevicePreset) => {
       if (selectedTargetIds.length === 0) return;
-      // TODO(server): replace this optimistic frontend map with a bulk assignment API
-      // and include the resulting per-linked-display preset IDs in the displays response.
+      const realTargetIds = selectedTargets.filter(target => !target.isMock).map(target => target.id);
+      const mockTargetIds = selectedTargets.filter(target => target.isMock).map(target => target.id);
+
+      try {
+        if (realTargetIds.length > 0) {
+          await setActivePresetMutation.mutateAsync({
+            targetDeviceIds: realTargetIds,
+            presetId: display.presetId,
+          });
+        }
+      } catch (err) {
+        Alert.alert('Set active failed', err instanceof Error ? err.message : 'Could not set active preset');
+        return;
+      }
+
       skipNextPreviewTransitionRef.current = true;
       setPendingFocusDisplayId(display.presetId);
       setMockActiveDisplayIdsByTarget(prev => {
         const next = {...prev};
-        selectedTargetIds.forEach(targetId => {
+        [...realTargetIds, ...mockTargetIds].forEach(targetId => {
           next[targetId] = display.presetId;
         });
         return next;
       });
     },
-    [selectedTargetIds],
+    [selectedTargetIds, selectedTargets, setActivePresetMutation],
   );
 
   useEffect(() => {
@@ -742,6 +809,16 @@ export default function DisplayManagementSection({
       <View style={styles.pageHeader}>
         <View style={styles.pageHeaderRow}>
           <View style={styles.pageHeaderLeft}>
+            <Pressable
+              style={[
+                styles.addBtn,
+                styles.headerActionSpacer,
+                deleteDisplayMutation.isPending && styles.headerActionDisabled,
+              ]}
+              disabled={deleteDisplayMutation.isPending || !currentDisplay}
+              onPress={() => currentDisplay ? confirmDelete(currentDisplay) : undefined}>
+              <Ionicons name="trash-outline" size={18} color={colors.dangerText} />
+            </Pressable>
             <Pressable
               style={styles.addBtn}
               onPress={() => setReorderVisible(true)}
@@ -899,14 +976,18 @@ export default function DisplayManagementSection({
                         <View style={styles.navOverflowSpacer} />
                       )}
                     </View>
-                    {areAllSelectedTargetsActive ? (
+                    {isCurrentDisplayActive ? (
                       <View style={styles.navActiveLabelCompact}>
                         <View style={styles.navActiveDotCompact} />
                         <Text style={styles.navActiveLabelCompactText}>Active</Text>
                       </View>
                     ) : (
                       <Pressable
-                        style={styles.setActivePill}
+                        style={[
+                          styles.setActivePill,
+                          setActivePresetMutation.isPending && styles.setActivePillDisabled,
+                        ]}
+                        disabled={setActivePresetMutation.isPending}
                         onPress={() => handleApplyActiveToSelected(currentDisplay)}>
                         <Text style={styles.setActivePillText}>Set Active</Text>
                       </Pressable>
@@ -1289,8 +1370,19 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: spacing.sm,
   },
-  pageHeaderLeft: {width: layout.iconButton, alignItems: 'flex-start'},
+  pageHeaderLeft: {
+    width: layout.iconButton * 2 + spacing.xs,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-start',
+  },
   pageHeaderRight: {width: layout.iconButton, alignItems: 'flex-end'},
+  headerActionSpacer: {
+    marginRight: spacing.xs,
+  },
+  headerActionDisabled: {
+    opacity: 0.5,
+  },
   displaySelectorBtn: {
     flex: 1,
     minWidth: 0,

@@ -1278,6 +1278,19 @@ export default function DisplayEditorScreen() {
           : typeof result?.preset?.presetId === 'string'
             ? result.preset.presetId
             : nextEditingDisplayId;
+      if (nextPresetId) {
+        const setActiveResponse = await apiFetch(`/device/${nextDeviceId}/active-preset`, {
+          method: 'PATCH',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({presetId: nextPresetId}),
+        });
+        if (!setActiveResponse.ok) {
+          const data = await setActiveResponse.json().catch(() => null);
+          throw new Error(
+            typeof data?.error === 'string' ? data.error : `Request failed (${setActiveResponse.status})`,
+          );
+        }
+      }
       await apiFetch(`/refresh/device/${nextDeviceId}`, {method: 'POST'});
       return {nextPresetId};
     },
