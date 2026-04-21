@@ -68,7 +68,6 @@ import {
   getAvailableModes,
   getModeLabel,
   isExpressRouteBadge,
-  isExpressVariant,
   isLiveCitySupported,
   isNycBusBadge,
   loadArrivalForSelection,
@@ -3011,32 +3010,6 @@ function SelectionSheet({
   );
 }
 
-function SimplePicker({
-  visible,
-  options,
-  value,
-  onSelect,
-  onClose,
-}: {
-  visible: boolean;
-  options: SelectionSheetOption[];
-  value: string;
-  onSelect: (id: string) => void;
-  onClose: () => void;
-}) {
-  return (
-    <SelectionSheet
-      visible={visible}
-      title="Choose Service Pattern"
-      subtitle="Pick the version of this line you want to show."
-      options={options}
-      value={value}
-      onSelect={onSelect}
-      onClose={onClose}
-    />
-  );
-}
-
 function StepTransitionMessage({
   message,
   badgeLabel,
@@ -3301,7 +3274,6 @@ function LinePickerStep({
   const allRoutes = useMemo(() => linesByMode[selectedMode] ?? [], [linesByMode, selectedMode]);
   const isLoading = !!linesLoadingByMode[selectedMode];
   const [lineSearch, setLineSearch] = useState('');
-  const [variantPickerEntry, setVariantPickerEntry] = useState<RoutePickerItem | null>(null);
   const [expandedPatternRouteId, setExpandedPatternRouteId] = useState<string | null>(
     selectedRouteId || null,
   );
@@ -3388,10 +3360,6 @@ function LinePickerStep({
       Animated.spring(anim, {toValue: 1.15, tension: 200, friction: 8, useNativeDriver: true}),
       Animated.spring(anim, {toValue: 1, tension: 200, friction: 8, useNativeDriver: true}),
     ]).start();
-    if (route.routes.length > 1) {
-      setVariantPickerEntry(route);
-      return;
-    }
     const selectedRoute = route.routes[0];
     const patterns = selectedRoute?.patterns ?? [];
     if (isChicagoTrainListMode && patterns.length > 1) {
@@ -3767,22 +3735,6 @@ function LinePickerStep({
           </View>
         )}
       </ScrollView>
-      <SimplePicker
-        visible={!!variantPickerEntry}
-        options={(variantPickerEntry?.routes ?? []).map(route => ({
-          id: route.id,
-          label: isExpressVariant(route) ? `Express ${route.label}` : `Regular ${route.label}`,
-          description: isExpressVariant(route)
-            ? 'Faster pattern with fewer stops.'
-            : 'Standard pattern with the regular stop sequence.',
-        }))}
-        value={selectedRouteId}
-        onSelect={id => {
-          setVariantPickerEntry(null);
-          onSelectLine(id);
-        }}
-        onClose={() => setVariantPickerEntry(null)}
-      />
     </View>
   );
 }
