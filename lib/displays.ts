@@ -98,8 +98,8 @@ type PreviewSlot = {
   timesColor?: string;
 };
 
-export type DeviceDisplay = {
-  displayId: string;
+export type DevicePreset = {
+  presetId: string;
   deviceId: string;
   name: string;
   paused: boolean;
@@ -580,14 +580,14 @@ export const getLiveArrivalLookup = (payload: unknown): LiveArrivalLookup => {
   return {byLineKey, byIndex};
 };
 
-export const toDisplayScheduleText = (display: DeviceDisplay) => {
+export const toDisplayScheduleText = (display: DevicePreset) => {
   const days = Array.isArray(display.scheduleDays) ? display.scheduleDays : [];
   const dayLabel = days.length === 0 ? 'Every day' : days.map((day) => day.toUpperCase()).join(', ');
   return `${dayLabel} ${display.scheduleStart ?? '00:00'}-${display.scheduleEnd ?? '23:59'}`;
 };
 
 export const toPreviewSlots = (
-  display: DeviceDisplay,
+  display: DevicePreset,
   accent: string,
   stopNames: Record<string, string> = {},
   liveArrivals: LiveArrivalLookup | null = null,
@@ -656,7 +656,7 @@ export const toPreviewSlots = (
         : undefined;
 
     return {
-      id: `${display.displayId}-${index}`,
+      id: `${display.presetId}-${index}`,
       color,
       textColor: badgeShape === 'circle' ? '#FFFFFF' : line.textColor || lineTextColor,
       routeLabel: resolvePreviewRouteLabel(line),
@@ -673,7 +673,7 @@ export const toPreviewSlots = (
   });
 };
 
-export const validateDisplayDraft = (payload: DisplaySavePayload) => {
+export const validatePresetDraft = (payload: DisplaySavePayload) => {
   if (!payload.name.trim()) return 'Display name is required';
   const scheduleError = validateScheduleWindow({
     start: payload.scheduleStart,
@@ -700,31 +700,31 @@ export const validateDisplayDraft = (payload: DisplaySavePayload) => {
   return null;
 };
 
-export async function fetchDisplays(deviceId: string) {
-  const response = await apiFetch(`/device/${deviceId}/displays`);
+export async function fetchPresets(deviceId: string) {
+  const response = await apiFetch(`/device/${deviceId}/presets`);
   if (!response.ok) throw new Error(await parseError(response));
   const data = await response.json();
   return {
-    displays: Array.isArray(data?.displays) ? (data.displays as DeviceDisplay[]) : [],
-    activeDisplayId: typeof data?.activeDisplayId === 'string' ? data.activeDisplayId : null,
+    presets: Array.isArray(data?.presets) ? (data.presets as DevicePreset[]) : [],
+    activePresetId: typeof data?.activePresetId === 'string' ? data.activePresetId : null,
   };
 }
 
-export async function fetchDisplay(deviceId: string, displayId: string) {
-  const response = await apiFetch(`/device/${deviceId}/displays/${displayId}`);
+export async function fetchPreset(deviceId: string, presetId: string) {
+  const response = await apiFetch(`/device/${deviceId}/presets/${presetId}`);
   if (!response.ok) throw new Error(await parseError(response));
   const data = await response.json();
-  if (!data?.display) throw new Error('Display not found');
-  return data.display as DeviceDisplay;
+  if (!data?.preset) throw new Error('Preset not found');
+  return data.preset as DevicePreset;
 }
 
-function logDisplaySaveRequest(method: 'POST' | 'PATCH', path: string, payload: DisplaySavePayload) {
-  logger.info('Display save request', {method, path, payload});
+function logPresetSaveRequest(method: 'POST' | 'PATCH', path: string, payload: DisplaySavePayload) {
+  logger.info('Preset save request', {method, path, payload});
 }
 
-export async function createDisplay(deviceId: string, payload: DisplaySavePayload) {
-  const path = `/device/${deviceId}/displays`;
-  logDisplaySaveRequest('POST', path, payload);
+export async function createPreset(deviceId: string, payload: DisplaySavePayload) {
+  const path = `/device/${deviceId}/presets`;
+  logPresetSaveRequest('POST', path, payload);
   const response = await apiFetch(path, {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
@@ -734,9 +734,9 @@ export async function createDisplay(deviceId: string, payload: DisplaySavePayloa
   return response.json();
 }
 
-export async function updateDisplay(deviceId: string, displayId: string, payload: DisplaySavePayload) {
-  const path = `/device/${deviceId}/displays/${displayId}`;
-  logDisplaySaveRequest('PATCH', path, payload);
+export async function updatePreset(deviceId: string, presetId: string, payload: DisplaySavePayload) {
+  const path = `/device/${deviceId}/presets/${presetId}`;
+  logPresetSaveRequest('PATCH', path, payload);
   const response = await apiFetch(path, {
     method: 'PATCH',
     headers: {'Content-Type': 'application/json'},
@@ -746,8 +746,8 @@ export async function updateDisplay(deviceId: string, displayId: string, payload
   return response.json();
 }
 
-export async function deleteDisplay(deviceId: string, displayId: string) {
-  const response = await apiFetch(`/device/${deviceId}/displays/${displayId}`, {
+export async function deletePreset(deviceId: string, presetId: string) {
+  const response = await apiFetch(`/device/${deviceId}/presets/${presetId}`, {
     method: 'DELETE',
   });
   if (!response.ok) throw new Error(await parseError(response));

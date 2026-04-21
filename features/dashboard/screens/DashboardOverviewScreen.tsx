@@ -279,7 +279,7 @@ export default function DashboardOverviewScreen() {
         await Promise.all([
           queryClient.invalidateQueries({queryKey: queryKeys.deviceSettings(selectedDevice.id)}),
           queryClient.invalidateQueries({queryKey: queryKeys.deviceOnline(selectedDevice.id)}),
-          queryClient.invalidateQueries({queryKey: queryKeys.displays(selectedDevice.id)}),
+          queryClient.invalidateQueries({queryKey: queryKeys.presets(selectedDevice.id)}),
           queryClient.invalidateQueries({queryKey: queryKeys.lastCommand(selectedDevice.id)}),
         ]);
         return;

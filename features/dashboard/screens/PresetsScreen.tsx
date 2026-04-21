@@ -33,14 +33,14 @@ import {useAppState} from '../../../state/appState';
 import {useAuth} from '../../../state/authProvider';
 import {
   buildStopLookupKey,
-  deleteDisplay,
-  fetchDisplays,
+  deletePreset,
+  fetchPresets,
   getLiveArrivalLookup,
   providerToCity,
   toPreviewSlots,
-  updateDisplay,
+  updatePreset,
   type DisplaySavePayload,
-  type DeviceDisplay,
+  type DevicePreset,
 } from '../../../lib/displays';
 import {CITY_LINE_COLORS, hashLineColor, resolveProviderLineColor} from '../../../lib/lineColors';
 import {getTransitStationName} from '../../../lib/transitApi';
@@ -61,7 +61,7 @@ type ManagedDisplayTarget = {
 };
 
 const buildDisplayPayload = (
-  display: DeviceDisplay,
+  display: DevicePreset,
   options: {brightness?: number},
 ): DisplaySavePayload => {
   const brightness = options.brightness ?? display.config.brightness ?? 60;
@@ -80,7 +80,7 @@ const buildDisplayPayload = (
   };
 };
 
-const getDisplayLineLabels = (display: DeviceDisplay) =>
+const getDisplayLineLabels = (display: DevicePreset) =>
   Array.from(
     new Set(
       (display.config.lines ?? [])
@@ -89,7 +89,7 @@ const getDisplayLineLabels = (display: DeviceDisplay) =>
     ),
   ).slice(0, 3);
 
-const getDisplayProviders = (display: DeviceDisplay) =>
+const getDisplayProviders = (display: DevicePreset) =>
   Array.from(
     new Set(
       (display.config.lines ?? [])
@@ -98,7 +98,7 @@ const getDisplayProviders = (display: DeviceDisplay) =>
     ),
   );
 
-const getReorderLineBadgeColors = (display: DeviceDisplay, label: string) => {
+const getReorderLineBadgeColors = (display: DevicePreset, label: string) => {
   const matchedLine = (display.config.lines ?? []).find(
     l => typeof l.line === 'string' && l.line.trim().toUpperCase() === label,
   );
@@ -109,7 +109,7 @@ const getReorderLineBadgeColors = (display: DeviceDisplay, label: string) => {
   return providerColor ?? lineColors[label] ?? hashLineColor(label);
 };
 
-const isReorderLineBus = (display: DeviceDisplay, label: string) => {
+const isReorderLineBus = (display: DevicePreset, label: string) => {
   const matchedLine = (display.config.lines ?? []).find(
     l => typeof l.line === 'string' && l.line.trim().toUpperCase() === label,
   );
@@ -117,13 +117,13 @@ const isReorderLineBus = (display: DeviceDisplay, label: string) => {
   return provider === 'mta-bus' || provider === 'septa-bus';
 };
 
-const sortDisplaysForCarousel = (items: DeviceDisplay[], activeDisplayId: string | null) =>
+const sortDisplaysForCarousel = (items: DevicePreset[], activePresetId: string | null) =>
   [...items].sort((a, b) => {
     if (a.sortOrder !== b.sortOrder) return a.sortOrder - b.sortOrder;
     return a.name.localeCompare(b.name);
   });
 
-const getHiddenDisplayLineCount = (display: DeviceDisplay | null) =>
+const getHiddenDisplayLineCount = (display: DevicePreset | null) =>
   Math.max(0, (display?.config.lines?.length ?? 0) - 2);
 
 type DisplayManagementSectionProps = {
@@ -135,7 +135,7 @@ export default function DisplayManagementSection({
 }: DisplayManagementSectionProps) {
   const queryClient = useQueryClient();
   const router = useRouter();
-  const params = useLocalSearchParams<{focusDisplayId?: string}>();
+  const params = useLocalSearchParams<{focusPresetId?: string}>();
   const {state: appState} = useAppState();
   const {deviceId, deviceIds, status} = useAuth();
   const selectedDevice = useSelectedDevice();
@@ -152,18 +152,18 @@ export default function DisplayManagementSection({
   const [mockSelectedTargetIdsByAccount, setMockSelectedTargetIdsByAccount] = useState<Record<string, string[]>>({});
   const [mockActiveDisplayIdsByTarget, setMockActiveDisplayIdsByTarget] = useState<Record<string, string>>({});
   const [pendingFocusDisplayId, setPendingFocusDisplayId] = useState<string | null>(
-    typeof params.focusDisplayId === 'string' ? params.focusDisplayId : null,
+    typeof params.focusPresetId === 'string' ? params.focusPresetId : null,
   );
   const [previewStageWidth, setPreviewStageWidth] = useState(0);
   const [previewTransition, setPreviewTransition] = useState<{
-    outgoing: DeviceDisplay;
-    incoming: DeviceDisplay;
+    outgoing: DevicePreset;
+    incoming: DevicePreset;
     direction: 1 | -1;
   } | null>(null);
   const brightnessCommitTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const previewTrackAnim = useRef(new Animated.Value(1)).current;
   const previousDisplayIdRef = useRef<string | null>(null);
-  const previousDisplayRef = useRef<DeviceDisplay | null>(null);
+  const previousDisplayRef = useRef<DevicePreset | null>(null);
   const skipNextPreviewTransitionRef = useRef(false);
   const ledScale = useRef(new Animated.Value(1)).current;
 
@@ -193,17 +193,17 @@ export default function DisplayManagementSection({
 
 
   const displaysQuery = useQuery({
-    queryKey: queryKeys.displays(deviceId || 'none'),
+    queryKey: queryKeys.presets(deviceId || 'none'),
     queryFn: () => {
       if (!deviceId) throw new Error('No device selected');
-      return fetchDisplays(deviceId);
+      return fetchPresets(deviceId);
     },
     enabled: !!deviceId && status === 'authenticated',
     staleTime: 30_000,
   });
 
-  const displays = useMemo(() => displaysQuery.data?.displays ?? [], [displaysQuery.data?.displays]);
-  const activeDisplayId = displaysQuery.data?.activeDisplayId ?? null;
+  const displays = useMemo(() => displaysQuery.data?.presets ?? [], [displaysQuery.data?.presets]);
+  const activePresetId = displaysQuery.data?.activePresetId ?? null;
   const loading = displaysQuery.isPending;
   const errorText = displaysQuery.error instanceof Error ? displaysQuery.error.message : '';
   const accountSelectionKey = selectedDevice.id || deviceId || 'default';
@@ -282,20 +282,20 @@ export default function DisplayManagementSection({
   }, [stopNameQueries, stopPairs]);
 
   const deleteDisplayMutation = useMutation({
-    mutationFn: async (display: DeviceDisplay) => {
+    mutationFn: async (display: DevicePreset) => {
       if (!deviceId) return;
-      await deleteDisplay(deviceId, display.displayId);
+      await deletePreset(deviceId, display.presetId);
     },
     onSuccess: () => {
       if (!deviceId) return;
-      void queryClient.invalidateQueries({queryKey: queryKeys.displays(deviceId)});
+      void queryClient.invalidateQueries({queryKey: queryKeys.presets(deviceId)});
     },
   });
 
   const reorderDisplaysMutation = useMutation({
     mutationFn: async (orderedIds: string[]) => {
       if (!deviceId) return orderedIds;
-      const displayMap = new Map(displays.map(display => [display.displayId, display]));
+      const displayMap = new Map(displays.map(display => [display.presetId, display]));
       const nextActiveDisplayId = orderedIds[0] ?? null;
       const maxPriority = Math.max(0, ...displays.map(display => display.priority));
       const updates = orderedIds
@@ -307,7 +307,7 @@ export default function DisplayManagementSection({
               ? maxPriority + 1
               : display.priority;
           if (display.sortOrder === index && display.priority === nextPriority) return null;
-          return updateDisplay(deviceId, displayId, {
+          return updatePreset(deviceId, displayId, {
             ...buildDisplayPayload(display, {}),
             sortOrder: index,
             priority: nextPriority,
@@ -330,22 +330,22 @@ export default function DisplayManagementSection({
       const orderLookup = Object.fromEntries(orderedIds.map((displayId, index) => [displayId, index]));
       const nextActiveDisplayId = orderedIds[0] ?? null;
       queryClient.setQueryData(
-        queryKeys.displays(deviceId),
-        (current: {displays: DeviceDisplay[]; activeDisplayId: string | null} | undefined) =>
+        queryKeys.presets(deviceId),
+        (current: {presets: DevicePreset[]; activePresetId: string | null} | undefined) =>
           current
             ? {
                 ...current,
-                activeDisplayId: nextActiveDisplayId,
-                displays: current.displays.map(display =>
-                  typeof orderLookup[display.displayId] === 'number'
-                    ? {...display, sortOrder: orderLookup[display.displayId]}
+                activePresetId: nextActiveDisplayId,
+                presets: current.presets.map(display =>
+                  typeof orderLookup[display.presetId] === 'number'
+                    ? {...display, sortOrder: orderLookup[display.presetId]}
                     : display,
                 ),
               }
             : current,
       );
       setCarouselIndex(0);
-      void queryClient.invalidateQueries({queryKey: queryKeys.displays(deviceId)});
+      void queryClient.invalidateQueries({queryKey: queryKeys.presets(deviceId)});
       void queryClient.invalidateQueries({queryKey: queryKeys.lastCommand(deviceId)});
     },
   });
@@ -355,18 +355,18 @@ export default function DisplayManagementSection({
       display,
       brightness,
     }: {
-      display: DeviceDisplay;
+      display: DevicePreset;
       brightness?: number;
     }) => {
       if (!deviceId) return;
       const payload = buildDisplayPayload(display, {brightness});
-      await updateDisplay(deviceId, display.displayId, payload);
-      if (display.displayId === activeDisplayId) {
+      await updatePreset(deviceId, display.presetId, payload);
+      if (display.presetId === activePresetId) {
         const refreshRes = await apiFetch(`/refresh/device/${deviceId}`, {method: 'POST'});
         if (!refreshRes.ok) {
           logger.error('Display refresh failed', {
             deviceId,
-            displayId: display.displayId,
+            displayId: display.presetId,
             status: refreshRes.status,
           });
         }
@@ -374,18 +374,18 @@ export default function DisplayManagementSection({
     },
     onSuccess: () => {
       if (!deviceId) return;
-      void queryClient.invalidateQueries({queryKey: queryKeys.displays(deviceId)});
+      void queryClient.invalidateQueries({queryKey: queryKeys.presets(deviceId)});
     },
   });
 
   useEffect(() => {
     if (!isScreenFocused || !deviceId || status !== 'authenticated') return;
     setCarouselIndex(0);
-    void queryClient.invalidateQueries({queryKey: queryKeys.displays(deviceId)});
+    void queryClient.invalidateQueries({queryKey: queryKeys.presets(deviceId)});
     void queryClient.invalidateQueries({queryKey: queryKeys.lastCommand(deviceId)});
   }, [deviceId, isScreenFocused, queryClient, status]);
 
-  const effectiveActiveDisplayId = mockActiveDisplayIdsByTarget[selectedDevice.id] ?? activeDisplayId;
+  const effectiveActiveDisplayId = mockActiveDisplayIdsByTarget[selectedDevice.id] ?? activePresetId;
   const sortedDisplays = useMemo(
     () => sortDisplaysForCarousel(displays, effectiveActiveDisplayId),
     [displays, effectiveActiveDisplayId],
@@ -406,14 +406,14 @@ export default function DisplayManagementSection({
   const currentDisplay = visibleDisplays[safeIndex] ?? null;
   const currentDisplayCity = providerToCity(currentDisplay?.config.lines?.[0]?.provider ?? null) ?? selectedCity;
   const currentBrightness = currentDisplay
-    ? brightnessOverrides[currentDisplay.displayId] ?? currentDisplay.config.brightness ?? 60
+    ? brightnessOverrides[currentDisplay.presetId] ?? currentDisplay.config.brightness ?? 60
     : 60;
   const currentDisplayHiddenLineCount = getHiddenDisplayLineCount(currentDisplay);
-  const isBrightnessControlExpanded = currentDisplay ? !!expandedBrightnessControls[currentDisplay.displayId] : false;
+  const isBrightnessControlExpanded = currentDisplay ? !!expandedBrightnessControls[currentDisplay.presetId] : false;
   const effectivePreviewWidth = previewStageWidth > 0 ? previewStageWidth : 320;
   const previewTravelDistance = Math.max(windowWidth, effectivePreviewWidth) + 24;
   const activeSelectedTargetCount = currentDisplay
-    ? selectedTargets.filter(target => mockActiveDisplayIdsByTarget[target.id] === currentDisplay.displayId).length
+    ? selectedTargets.filter(target => mockActiveDisplayIdsByTarget[target.id] === currentDisplay.presetId).length
     : 0;
   const areAllSelectedTargetsActive =
     !!currentDisplay &&
@@ -439,27 +439,27 @@ export default function DisplayManagementSection({
       accountDisplayTargets.forEach((target, index) => {
         if (next[target.id]) return;
         // TODO(server): hydrate real per-display active preset assignments for linked displays/accounts.
-        next[target.id] = index === 0 ? activeDisplayId ?? sortedDisplays[0].displayId : sortedDisplays[index % sortedDisplays.length].displayId;
+        next[target.id] = index === 0 ? activePresetId ?? sortedDisplays[0].presetId : sortedDisplays[index % sortedDisplays.length].presetId;
       });
       return next;
     });
-  }, [accountDisplayTargets, activeDisplayId, sortedDisplays]);
+  }, [accountDisplayTargets, activePresetId, sortedDisplays]);
 
   const renderDisplayPreview = useCallback(
-    (display: DeviceDisplay, city: typeof currentDisplayCity) => (
+    (display: DevicePreset, city: typeof currentDisplayCity) => (
       <DashboardPreviewSection
         slots={toPreviewSlots(
           display,
           CITY_BRANDS[city].accent,
           stopNames,
-          display.displayId === effectiveActiveDisplayId ? liveArrivalLookup : null,
+          display.presetId === effectiveActiveDisplayId ? liveArrivalLookup : null,
           {showDirectionFallback: false},
         )}
         displayType={display.config.displayType ?? Number(display.config.lines?.[0]?.displayType) ?? 1}
         onSelectSlot={() =>
           router.push({
             pathname: '/preset-editor',
-            params: {city, from: 'dashboard', mode: 'edit', displayId: display.displayId},
+            params: {city, from: 'dashboard', mode: 'edit', presetId: display.presetId},
           })
         }
         onReorderSlot={() => {}}
@@ -473,7 +473,7 @@ export default function DisplayManagementSection({
   );
 
   useLayoutEffect(() => {
-    const nextDisplayId = currentDisplay?.displayId ?? null;
+    const nextDisplayId = currentDisplay?.presetId ?? null;
     if (!nextDisplayId) {
       previousDisplayIdRef.current = null;
       previousDisplayRef.current = null;
@@ -527,21 +527,21 @@ export default function DisplayManagementSection({
     }).start(({finished}) => {
       if (finished) {
         setPreviewTransition(current =>
-          current?.incoming.displayId === nextDisplayId ? null : current,
+          current?.incoming.presetId === nextDisplayId ? null : current,
         );
       }
     });
-  }, [carouselDirection, currentDisplay, currentDisplay?.displayId, previewTrackAnim]);
+  }, [carouselDirection, currentDisplay, currentDisplay?.presetId, previewTrackAnim]);
 
   useEffect(() => {
-    if (typeof params.focusDisplayId === 'string' && params.focusDisplayId.length > 0) {
-      setPendingFocusDisplayId(params.focusDisplayId);
+    if (typeof params.focusPresetId === 'string' && params.focusPresetId.length > 0) {
+      setPendingFocusDisplayId(params.focusPresetId);
     }
-  }, [params.focusDisplayId]);
+  }, [params.focusPresetId]);
 
   useEffect(() => {
     if (!pendingFocusDisplayId || visibleDisplays.length === 0) return;
-    const targetIndex = visibleDisplays.findIndex(display => display.displayId === pendingFocusDisplayId);
+    const targetIndex = visibleDisplays.findIndex(display => display.presetId === pendingFocusDisplayId);
     if (targetIndex === -1) return;
     if (targetIndex !== safeIndex && !skipNextPreviewTransitionRef.current) {
       setCarouselDirection(targetIndex > safeIndex ? 1 : -1);
@@ -552,7 +552,7 @@ export default function DisplayManagementSection({
 
 
   const confirmDelete = useCallback(
-    (display: DeviceDisplay) => {
+    (display: DevicePreset) => {
       if (!deviceId) return;
       Alert.alert('Delete preset?', `Delete "${display.name}"? This cannot be undone.`, [
         {text: 'Cancel', style: 'cancel'},
@@ -621,7 +621,7 @@ export default function DisplayManagementSection({
 
   const commitBrightnessChange = useCallback(
     async (displayId: string, brightness: number) => {
-      const latestDisplay = displays.find(display => display.displayId === displayId);
+      const latestDisplay = displays.find(display => display.presetId === displayId);
       if (!latestDisplay) return;
 
       const previousBrightness = latestDisplay.config.brightness ?? 60;
@@ -653,9 +653,9 @@ export default function DisplayManagementSection({
   );
 
   const handleBrightnessChange = useCallback(
-    (display: DeviceDisplay, brightness: number) => {
-      setBrightnessOverrides(prev => ({...prev, [display.displayId]: brightness}));
-      scheduleBrightnessCommit(display.displayId, brightness);
+    (display: DevicePreset, brightness: number) => {
+      setBrightnessOverrides(prev => ({...prev, [display.presetId]: brightness}));
+      scheduleBrightnessCommit(display.presetId, brightness);
     },
     [scheduleBrightnessCommit],
   );
@@ -705,16 +705,16 @@ export default function DisplayManagementSection({
   );
 
   const handleApplyActiveToSelected = useCallback(
-    (display: DeviceDisplay) => {
+    (display: DevicePreset) => {
       if (selectedTargetIds.length === 0) return;
       // TODO(server): replace this optimistic frontend map with a bulk assignment API
       // and include the resulting per-linked-display preset IDs in the displays response.
       skipNextPreviewTransitionRef.current = true;
-      setPendingFocusDisplayId(display.displayId);
+      setPendingFocusDisplayId(display.presetId);
       setMockActiveDisplayIdsByTarget(prev => {
         const next = {...prev};
         selectedTargetIds.forEach(targetId => {
-          next[targetId] = display.displayId;
+          next[targetId] = display.presetId;
         });
         return next;
       });
@@ -1037,13 +1037,13 @@ function ReorderDisplaysModal({
   onSave,
 }: {
   visible: boolean;
-  displays: DeviceDisplay[];
+  displays: DevicePreset[];
   saving: boolean;
-  onDelete: (display: DeviceDisplay) => void;
+  onDelete: (display: DevicePreset) => void;
   onClose: () => void;
   onSave: (orderedIds: string[]) => void;
 }) {
-  const [draftDisplays, setDraftDisplays] = useState<DeviceDisplay[]>([]);
+  const [draftDisplays, setDraftDisplays] = useState<DevicePreset[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
   const listHeight = Math.min(draftDisplays.length * REORDER_ROW_HEIGHT, 420);
 
@@ -1052,13 +1052,13 @@ function ReorderDisplaysModal({
     setDraftDisplays(displays);
     setActiveId(null);
   }, [visible, displays]);
-  const initialIds = useMemo(() => displays.map(display => display.displayId), [displays]);
+  const initialIds = useMemo(() => displays.map(display => display.presetId), [displays]);
 
   const handleDragEnd = useCallback(
-    ({data}: {data: DeviceDisplay[]}) => {
+    ({data}: {data: DevicePreset[]}) => {
       setActiveId(null);
       setDraftDisplays(data);
-      const orderedIds = data.map(display => display.displayId);
+      const orderedIds = data.map(display => display.presetId);
       const changed =
         orderedIds.length === initialIds.length &&
         orderedIds.some((displayId, index) => displayId !== initialIds[index]);
@@ -1088,7 +1088,7 @@ function ReorderDisplaysModal({
 
             <DraggableFlatList
               data={draftDisplays}
-              keyExtractor={item => item.displayId}
+              keyExtractor={item => item.presetId}
               activationDistance={0}
               autoscrollSpeed={240}
               dragItemOverflow={false}
@@ -1097,14 +1097,14 @@ function ReorderDisplaysModal({
               showsHorizontalScrollIndicator={false}
               style={[styles.reorderList, {maxHeight: listHeight}]}
               contentContainerStyle={styles.reorderListContent}
-              onDragBegin={index => setActiveId(draftDisplays[index]?.displayId ?? null)}
+              onDragBegin={index => setActiveId(draftDisplays[index]?.presetId ?? null)}
               onRelease={() => setActiveId(null)}
               onDragEnd={handleDragEnd}
-              renderItem={({item, drag, isActive, getIndex}: RenderItemParams<DeviceDisplay>) => (
+              renderItem={({item, drag, isActive, getIndex}: RenderItemParams<DevicePreset>) => (
                 <ReorderListRow
                   display={item}
                   index={getIndex() ?? 0}
-                  isDragging={isActive || activeId === item.displayId}
+                  isDragging={isActive || activeId === item.presetId}
                   saving={saving}
                   onDelete={onDelete}
                   onDragStart={drag}
@@ -1127,11 +1127,11 @@ function ReorderListRow({
   onDelete,
   onDragStart,
 }: {
-  display: DeviceDisplay;
+  display: DevicePreset;
   isDragging: boolean;
   index: number;
   saving: boolean;
-  onDelete: (display: DeviceDisplay) => void;
+  onDelete: (display: DevicePreset) => void;
   onDragStart: () => void;
 }) {
   const lineLabels = getDisplayLineLabels(display);
@@ -1152,7 +1152,7 @@ function ReorderListRow({
               const isBus = isReorderLineBus(display, label);
               return (
                 <View
-                  key={`${display.displayId}-${label}`}
+                  key={`${display.presetId}-${label}`}
                   style={[
                     styles.reorderLineBadge,
                     isBus && styles.reorderLineBadgeBusPill,

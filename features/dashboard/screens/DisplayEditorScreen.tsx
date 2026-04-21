@@ -47,12 +47,12 @@ import {
   serializeUiDirection,
 } from '../../../lib/transitUi';
 import {
-  createDisplay,
-  fetchDisplay,
-  fetchDisplays,
-  updateDisplay,
-  validateDisplayDraft,
-  type DeviceDisplay,
+  createPreset,
+  fetchPreset,
+  fetchPresets,
+  updatePreset,
+  validatePresetDraft,
+  type DevicePreset,
   type DisplaySavePayload,
 } from '../../../lib/displays';
 import {useAuth} from '../../../state/authProvider';
@@ -547,7 +547,7 @@ export default function DisplayEditorScreen() {
   const queryClient = useQueryClient();
   const router = useRouter();
   const {state: appState, setPreset, setSelectedStations, setArrivals: setAppArrivals, setSelectedCity} = useAppState();
-  const params = useLocalSearchParams<{city?: string; from?: string; mode?: string; displayId?: string}>();
+  const params = useLocalSearchParams<{city?: string; from?: string; mode?: string; presetId?: string}>();
   const initialCity = normalizeCityIdParam(params.city ?? appState.selectedCity);
   const isCreateMode = params.mode === 'new';
   const [editorCity, setEditorCity] = useState<CityId>(initialCity);
@@ -567,7 +567,7 @@ export default function DisplayEditorScreen() {
   const [stationSearch, setStationSearch] = useState<Record<string, string>>({});
   const [presetName, setPresetName] = useState('Preset 1');
   const [editingDisplayId, setEditingDisplayId] = useState<string | null>(
-    typeof params.displayId === 'string' ? params.displayId : null,
+    typeof params.presetId === 'string' ? params.presetId : null,
   );
   const [displayMetadata, setDisplayMetadata] = useState({paused: false, priority: 0, sortOrder: 0, scrolling: false, brightness: DEFAULT_BRIGHTNESS});
   const [saving, setSaving] = useState(false);
@@ -807,12 +807,12 @@ export default function DisplayEditorScreen() {
   useEffect(() => {
     if (!isCreateMode || !deviceId) return;
     queryClient.fetchQuery({
-      queryKey: queryKeys.displays(deviceId),
-      queryFn: () => fetchDisplays(deviceId),
+      queryKey: queryKeys.presets(deviceId),
+      queryFn: () => fetchPresets(deviceId),
     })
-      .then(({displays}) => {
-        const names = new Set(displays.map(d => d.name));
-        let n = displays.length + 1;
+      .then(({presets}) => {
+        const names = new Set(presets.map(d => d.name));
+        let n = presets.length + 1;
         while (names.has(`Preset ${n}`)) n++;
         setPresetName(`Preset ${n}`);
       })
@@ -887,8 +887,8 @@ export default function DisplayEditorScreen() {
 
         if (editingDisplayId) {
           sourceDisplay = await queryClient.fetchQuery({
-            queryKey: queryKeys.display(selectedDevice.id, editingDisplayId),
-            queryFn: () => fetchDisplay(selectedDevice.id, editingDisplayId),
+            queryKey: queryKeys.preset(selectedDevice.id, editingDisplayId),
+            queryFn: () => fetchPreset(selectedDevice.id, editingDisplayId),
           });
         } else if (!isCreateMode) {
           const configResult = await queryClient.fetchQuery({
@@ -1220,7 +1220,7 @@ export default function DisplayEditorScreen() {
     };
   }, [city, displayMetadata.brightness, displayMetadata.paused, displayMetadata.priority, displayMetadata.scrolling, displayMetadata.sortOrder, displayPresetsByLine, lines, linesByMode, presetName, routesByStation, stationsByLine, stationsByMode]);
 
-  const displayValidationError = useMemo(() => validateDisplayDraft(draftPayload), [draftPayload]);
+  const displayValidationError = useMemo(() => validatePresetDraft(draftPayload), [draftPayload]);
   const canAutoConfirmCurrentPreset =
     editorStep === 'format'
     && !!selectedLineId
@@ -1249,7 +1249,7 @@ export default function DisplayEditorScreen() {
           },
     [displayPresetsByLine, draftPayload, saveDisplayPresetsByLine],
   );
-  const saveValidationError = useMemo(() => validateDisplayDraft(saveDraftPayload), [saveDraftPayload]);
+  const saveValidationError = useMemo(() => validatePresetDraft(saveDraftPayload), [saveDraftPayload]);
   const completedLines = useMemo(
     () => lines.filter(line => line.stationId.trim().length > 0 && line.routeId.trim().length > 0),
     [lines],
@@ -1271,22 +1271,22 @@ export default function DisplayEditorScreen() {
       payload: DisplaySavePayload;
     }) => {
       const result = nextEditingDisplayId
-        ? await updateDisplay(nextDeviceId, nextEditingDisplayId, payload)
-        : await createDisplay(nextDeviceId, payload);
-      const nextDisplayId =
-        typeof result?.displayId === 'string'
-          ? result.displayId
-          : typeof result?.display?.displayId === 'string'
-            ? result.display.displayId
+        ? await updatePreset(nextDeviceId, nextEditingDisplayId, payload)
+        : await createPreset(nextDeviceId, payload);
+      const nextPresetId =
+        typeof result?.presetId === 'string'
+          ? result.presetId
+          : typeof result?.preset?.presetId === 'string'
+            ? result.preset.presetId
             : nextEditingDisplayId;
       await apiFetch(`/refresh/device/${nextDeviceId}`, {method: 'POST'});
-      return {nextDisplayId};
+      return {nextPresetId};
     },
     onSuccess: (_result, variables) => {
-      void queryClient.invalidateQueries({queryKey: queryKeys.displays(variables.nextDeviceId)});
+      void queryClient.invalidateQueries({queryKey: queryKeys.presets(variables.nextDeviceId)});
       if (variables.nextEditingDisplayId) {
         void queryClient.invalidateQueries({
-          queryKey: queryKeys.display(variables.nextDeviceId, variables.nextEditingDisplayId),
+          queryKey: queryKeys.preset(variables.nextDeviceId, variables.nextEditingDisplayId),
         });
       }
     },
@@ -1319,13 +1319,13 @@ export default function DisplayEditorScreen() {
         if (saveDisplayPresetsByLine !== displayPresetsByLine) {
           setDisplayPresetsByLine(saveDisplayPresetsByLine);
         }
-        const cachedDisplays =
-          queryClient.getQueryData<{displays: DeviceDisplay[]; activeDisplayId: string | null}>(
-            queryKeys.displays(selectedDevice.id),
-          ) ?? (await fetchDisplays(selectedDevice.id));
-        const maxPriority = Math.max(0, ...cachedDisplays.displays.map(display => display.priority));
+        const cachedPresets =
+          queryClient.getQueryData<{presets: DevicePreset[]; activePresetId: string | null}>(
+            queryKeys.presets(selectedDevice.id),
+          ) ?? (await fetchPresets(selectedDevice.id));
+        const maxPriority = Math.max(0, ...cachedPresets.presets.map(display => display.priority));
         const shouldKeepActivePriority =
-          !!editingDisplayId && cachedDisplays.activeDisplayId === editingDisplayId;
+          !!editingDisplayId && cachedPresets.activePresetId === editingDisplayId;
         let payloadToSave = saveDraftPayload;
         payloadToSave = {
           ...payloadToSave,
@@ -1333,8 +1333,8 @@ export default function DisplayEditorScreen() {
         };
         if (!editingDisplayId) {
           const nextSortOrder =
-            cachedDisplays.displays.length > 0
-              ? Math.max(...cachedDisplays.displays.map(display => display.sortOrder)) + 1
+            cachedPresets.presets.length > 0
+              ? Math.max(...cachedPresets.presets.map(display => display.sortOrder)) + 1
               : 0;
           payloadToSave = {
             ...payloadToSave,
@@ -1346,10 +1346,10 @@ export default function DisplayEditorScreen() {
           nextEditingDisplayId: editingDisplayId,
           payload: payloadToSave,
         });
-        const nextDisplayId = result.nextDisplayId;
-        savedDisplayId = nextDisplayId;
-        if (nextDisplayId) {
-          setEditingDisplayId(nextDisplayId);
+        const nextPresetId = result.nextPresetId;
+        savedDisplayId = nextPresetId;
+        if (nextPresetId) {
+          setEditingDisplayId(nextPresetId);
         }
       } catch (err) {
         const msg = err instanceof Error ? err.message : 'Save failed';
@@ -1399,7 +1399,7 @@ export default function DisplayEditorScreen() {
         if (savedDisplayId) {
           router.replace({
             pathname: '/dashboard',
-            params: {focusDisplayId: savedDisplayId},
+            params: {focusPresetId: savedDisplayId},
           });
           return;
         }
