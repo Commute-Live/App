@@ -32,6 +32,8 @@ import {DISPLAY_WEEKDAYS} from '../../../lib/displays';
 import {styles} from './DashboardOverview.styles';
 import {DashboardOverviewTimeAdjustField as TimeAdjustField} from './DashboardOverviewTimeAdjustField';
 import DisplayManagementSection from './PresetsScreen';
+import {useUserDevices} from '../../../hooks/useUserDevices';
+import type {UserDevice} from '../../../lib/userDevices';
 
 const DEFAULT_QUIET_HOURS = {
   start: '23:00',
@@ -62,6 +64,7 @@ export default function DashboardOverviewScreen() {
   } = useAppState();
   const {status, user, deviceId, deviceIds, setDeviceId} = useAuth();
   const selectedDevice = useSelectedDevice();
+  const {devices} = useUserDevices();
   const hasLinkedDevice = deviceIds.length > 0;
   const isScreenFocused = useTabRouteIsActive('/dashboard');
   const [quietHoursEnabled, setQuietHoursEnabled] = useState(false);
@@ -74,9 +77,9 @@ export default function DashboardOverviewScreen() {
 
   const currentDeviceIndex = useMemo(() => {
     if (!deviceId) return 0;
-    const index = deviceIds.indexOf(deviceId);
+    const index = devices.findIndex((device: UserDevice) => device.deviceId === deviceId);
     return index === -1 ? 0 : index;
-  }, [deviceId, deviceIds]);
+  }, [deviceId, devices]);
 
   const deviceSettingsQuery = useQuery({
     queryKey: queryKeys.deviceSettings(selectedDevice.id || 'none'),
@@ -190,6 +193,7 @@ export default function DashboardOverviewScreen() {
       if (!selectedDevice.id) return;
       const payload = {
         deviceId: selectedDevice.id,
+        name: deviceSettings?.name ?? selectedDevice.name,
         timezone: getCurrentIanaTimeZone(),
         quietHoursStart: enabled ? draft.start : null,
         quietHoursEnd: enabled ? draft.end : null,
@@ -320,9 +324,9 @@ export default function DashboardOverviewScreen() {
   };
 
   const cycleDevice = (direction: 1 | -1) => {
-    if (deviceIds.length <= 1) return;
-    const nextIndex = (currentDeviceIndex + direction + deviceIds.length) % deviceIds.length;
-    const nextDeviceId = deviceIds[nextIndex];
+    if (devices.length <= 1) return;
+    const nextIndex = (currentDeviceIndex + direction + devices.length) % devices.length;
+    const nextDeviceId = devices[nextIndex]?.deviceId;
     if (nextDeviceId) {
       setDeviceId(nextDeviceId);
     }
@@ -331,9 +335,9 @@ export default function DashboardOverviewScreen() {
   const deviceLabels = useMemo(
     () =>
       Object.fromEntries(
-        deviceIds.map((id, index) => [id, id === deviceId ? selectedDevice.name : `Device ${index + 1}`]),
+        devices.map((device: UserDevice) => [device.deviceId, device.name ?? device.deviceId]),
       ) as Record<string, string>,
-    [deviceId, deviceIds, selectedDevice.name],
+    [devices],
   );
 
   if (status === 'loading') {
@@ -387,13 +391,13 @@ export default function DashboardOverviewScreen() {
           scrollEventThrottle={16}
           onScroll={handleDashboardScroll}
           onScrollEndDrag={handleDashboardScrollEndDrag}>
-          {hasLinkedDevice && deviceIds.length > 1 ? (
+          {hasLinkedDevice && devices.length > 1 ? (
             <View style={styles.pageHeader}>
             <View style={styles.deviceSwitcherRow}>
               <View style={styles.deviceSwitcherHeader}>
                 <Text style={styles.switcherLabel}>Linked devices</Text>
                 <Text style={styles.switcherMeta}>
-                  {currentDeviceIndex + 1} of {deviceIds.length}
+                  {currentDeviceIndex + 1} of {devices.length}
                 </Text>
               </View>
 
@@ -412,13 +416,13 @@ export default function DashboardOverviewScreen() {
               </View>
 
               <View style={styles.devicePillWrap}>
-                {deviceIds.map(id => (
+                {devices.map((device: UserDevice) => (
                   <Pressable
-                    key={id}
-                    style={[styles.devicePill, deviceId === id && styles.devicePillActive]}
-                    onPress={() => setDeviceId(id)}>
-                    <Text style={[styles.devicePillText, deviceId === id && styles.devicePillTextActive]}>
-                      {deviceLabels[id] ?? 'My Device'}
+                    key={device.deviceId}
+                    style={[styles.devicePill, deviceId === device.deviceId && styles.devicePillActive]}
+                    onPress={() => setDeviceId(device.deviceId)}>
+                    <Text style={[styles.devicePillText, deviceId === device.deviceId && styles.devicePillTextActive]}>
+                      {deviceLabels[device.deviceId] ?? device.deviceId}
                     </Text>
                   </Pressable>
                 ))}

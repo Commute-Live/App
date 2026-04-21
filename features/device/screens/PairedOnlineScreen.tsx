@@ -9,23 +9,27 @@ import {colors, layout, radii, spacing, typography} from '../../../theme';
 import {apiFetch} from '../../../lib/api';
 import {useAuth} from '../../../state/authProvider';
 import {logger} from '../../../lib/logger';
-
-const fallbackDevice = {id: 'commutelive-001', name: 'My Device'};
+import {useUserDevices} from '../../../hooks/useUserDevices';
+import type {UserDevice} from '../../../lib/userDevices';
 
 export default function PairedOnlineScreen() {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [linkStatus, setLinkStatus] = useState<'idle' | 'linking' | 'linked' | 'error'>('idle');
   const [linkMessage, setLinkMessage] = useState('');
-  const {deviceId, user, clearAuth} = useAuth();
+  const {deviceId, user, clearAuth, setDeviceId} = useAuth();
+  const {devices} = useUserDevices();
   const userId = user?.id ?? null;
-  const devices = useMemo(() => [
-    {
-      id: deviceId ?? fallbackDevice.id,
-      name: fallbackDevice.name,
-    },
-  ], [deviceId]);
-  const [selected, setSelected] = useState(devices[0]);
+  const linkedDevices = useMemo(
+    () =>
+      devices.map((device: UserDevice) => ({
+        id: device.deviceId,
+        name: device.name ?? device.deviceId,
+        online: device.online,
+      })),
+    [devices],
+  );
+  const [selected, setSelected] = useState<(typeof linkedDevices)[number] | null>(linkedDevices[0] ?? null);
 
   const linkDeviceMutation = useMutation({
     mutationFn: async (nextDeviceId: string) => {
@@ -59,8 +63,12 @@ export default function PairedOnlineScreen() {
   });
 
   useEffect(() => {
-    setSelected(devices[0]);
-  }, [deviceId, devices]);
+    const nextSelected =
+      linkedDevices.find((device: {id: string}) => device.id === deviceId) ??
+      linkedDevices[0] ??
+      null;
+    setSelected(nextSelected);
+  }, [deviceId, linkedDevices]);
 
   useEffect(() => {
     if (!deviceId || !userId) return;
@@ -101,8 +109,8 @@ export default function PairedOnlineScreen() {
           <View style={styles.dropdownRow}>
             <View>
               <Text style={styles.dropdownLabel}>Device</Text>
-              <Text style={styles.dropdownValue}>{selected.name}</Text>
-              <Text style={styles.dropdownMeta}>Connected</Text>
+              <Text style={styles.dropdownValue}>{selected?.name ?? 'Device'}</Text>
+              <Text style={styles.dropdownMeta}>{selected?.online ? 'Online' : 'Offline'}</Text>
             </View>
             <Ionicons
               name={open ? 'chevron-up' : 'chevron-down'}
@@ -118,7 +126,7 @@ export default function PairedOnlineScreen() {
 
         <View style={styles.infoCard}>
           <Text style={styles.infoLabel}>Display</Text>
-          <Text style={styles.infoValue}>{selected.name}</Text>
+          <Text style={styles.infoValue}>{selected?.name ?? 'Device'}</Text>
           <Text style={styles.infoLabel}>Account</Text>
           <Text style={styles.infoValue}>{userId ? 'Signed in' : 'Not signed in'}</Text>
           <Text style={styles.linkStatus}>
@@ -135,19 +143,20 @@ export default function PairedOnlineScreen() {
 
         {open ? (
           <View style={styles.dropdownList}>
-            {devices.map(device => (
+            {linkedDevices.map((device: {id: string; name: string; online: boolean}) => (
               <Pressable
                 key={device.id}
                 style={({pressed}) => [styles.dropdownItem, pressed && styles.pressed]}
                 onPress={() => {
                   setSelected(device);
+                  setDeviceId(device.id);
                   setOpen(false);
                 }}>
                 <View>
                   <Text style={styles.dropdownValue}>{device.name}</Text>
-                  <Text style={styles.dropdownMeta}>Connected</Text>
+                  <Text style={styles.dropdownMeta}>{device.online ? 'Online' : 'Offline'}</Text>
                 </View>
-                {selected.id === device.id ? (
+                {selected?.id === device.id ? (
                   <Ionicons name="checkmark" size={16} color={colors.accent} />
                 ) : null}
               </Pressable>

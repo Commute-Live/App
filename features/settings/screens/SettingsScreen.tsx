@@ -1,8 +1,10 @@
 import React, {useEffect, useState} from 'react';
 import {Alert, Pressable, ScrollView, StyleSheet, Text, View} from 'react-native';
+import {TextInput} from 'react-native';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
 import {Ionicons} from '@expo/vector-icons';
 import {useLocalSearchParams, useRouter} from 'expo-router';
+import {useMutation, useQueryClient} from '@tanstack/react-query';
 import {colors, layout, radii, settingsSectionColors, spacing, typography} from '../../../theme';
 import {useAuth} from '../../../state/authProvider';
 import {AppBrandHeader} from '../../../components/AppBrandHeader';
@@ -10,6 +12,10 @@ import {TabScreen} from '../../../components/TabScreen';
 import {useAppState} from '../../../state/appState';
 import {logger} from '../../../lib/datadog';
 import {resetDeviceWifi} from '../../../lib/deviceSetup';
+import {useUserDevices} from '../../../hooks/useUserDevices';
+import type {UserDevice} from '../../../lib/userDevices';
+import {queryKeys} from '../../../lib/queryKeys';
+import {updateDeviceSettings} from '../../../lib/deviceSettings';
 
 type SectionKey = 'Account' | 'Session' | 'Device' | 'Time Format' | 'Notifications' | 'Privacy';
 
@@ -25,23 +31,59 @@ const SECTIONS: {key: SectionKey; label: string; icon: keyof typeof Ionicons.gly
 export default function SettingsScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const queryClient = useQueryClient();
   const params = useLocalSearchParams<{debug?: string}>();
   const {deviceId, disconnectDevice, signOut, deleteAccount, user, currentProvider, displayCount} = useAuth();
   const {state: appState} = useAppState();
+  const {devices} = useUserDevices();
   const [openSection, setOpenSection] = useState<SectionKey | null>(null);
   const [isSigningOut, setIsSigningOut] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isDisconnecting, setIsDisconnecting] = useState(false);
   const [isChangingWifi, setIsChangingWifi] = useState(false);
+  const [deviceNameDraft, setDeviceNameDraft] = useState('');
   const [deviceNotice, setDeviceNotice] = useState<{kind: 'success' | 'error'; text: string} | null>(null);
   const [timeFormat, setTimeFormat] = useState<'ampm' | '24h'>('ampm');
   const [scrollViewportHeight, setScrollViewportHeight] = useState(0);
   const [scrollContentHeight, setScrollContentHeight] = useState(0);
   const currentDeviceId = deviceId ?? appState.deviceId;
+  const currentDevice = devices.find((device: UserDevice) => device.deviceId === currentDeviceId) ?? null;
   const isDeviceOnline = appState.deviceStatus === 'pairedOnline';
   const showDeviceDebug = params.debug === 'device';
   const scrollEnabled = scrollContentHeight > scrollViewportHeight + 1;
   const displayCountLabel = `${displayCount} ${displayCount === 1 ? 'display' : 'displays'}`;
+
+  useEffect(() => {
+    setDeviceNameDraft(currentDevice?.name ?? 'My Device');
+  }, [currentDevice?.deviceId, currentDevice?.name]);
+
+  const renameDeviceMutation = useMutation({
+    mutationFn: async () => {
+      if (!currentDeviceId) throw new Error('No device selected');
+      const nextName = deviceNameDraft.trim() || 'My Device';
+      await updateDeviceSettings(currentDeviceId, {
+        deviceId: currentDeviceId,
+        name: nextName,
+        timezone: currentDevice?.timezone ?? 'UTC',
+        quietHoursStart: currentDevice?.quietHoursStart ?? null,
+        quietHoursEnd: currentDevice?.quietHoursEnd ?? null,
+        quietHoursDays: currentDevice?.quietHoursDays ?? [],
+      });
+    },
+    onSuccess: async () => {
+      setDeviceNotice({kind: 'success', text: 'Display name updated.'});
+      await queryClient.invalidateQueries({queryKey: queryKeys.user.devices});
+      if (currentDeviceId) {
+        await queryClient.invalidateQueries({queryKey: queryKeys.deviceSettings(currentDeviceId)});
+      }
+    },
+    onError: (error) => {
+      setDeviceNotice({
+        kind: 'error',
+        text: error instanceof Error ? error.message : 'Could not update display name.',
+      });
+    },
+  });
 
   useEffect(() => {
     if (showDeviceDebug) {
@@ -243,6 +285,33 @@ export default function SettingsScreen() {
                           <Text style={styles.detailLabel}>Linked displays</Text>
                           <Text style={styles.detailValue}>{displayCountLabel}</Text>
                         </View>
+                        <View style={styles.detailRow}>
+                          <Text style={styles.detailLabel}>Selected display</Text>
+                          <Text style={styles.detailValue}>{currentDevice?.name ?? currentDeviceId ?? 'No device paired'}</Text>
+                        </View>
+                        {currentDeviceId ? (
+                          <View style={styles.renameBlock}>
+                            <Text style={styles.detailLabel}>Display name</Text>
+                            <View style={styles.renameRow}>
+                              <TextInput
+                                value={deviceNameDraft}
+                                onChangeText={setDeviceNameDraft}
+                                placeholder="My Device"
+                                placeholderTextColor={colors.textMuted}
+                                style={styles.renameInput}
+                                editable={!renameDeviceMutation.isPending}
+                              />
+                              <Pressable
+                                style={[styles.renameSaveButton, renameDeviceMutation.isPending && styles.buttonDisabled]}
+                                onPress={() => renameDeviceMutation.mutate()}
+                                disabled={renameDeviceMutation.isPending}>
+                                <Text style={styles.renameSaveButtonText}>
+                                  {renameDeviceMutation.isPending ? 'Saving…' : 'Save'}
+                                </Text>
+                              </Pressable>
+                            </View>
+                          </View>
+                        ) : null}
                         <View style={styles.detailRow}>
                           <Text style={styles.detailLabel}>Status</Text>
                           <View style={styles.statusValue}>
@@ -508,6 +577,38 @@ const styles = StyleSheet.create({
   secondaryActionButtonText: {color: colors.text, fontWeight: '700', fontSize: typography.body},
   ghostButton: {minHeight: 40, alignItems: 'center', justifyContent: 'center', paddingHorizontal: spacing.md},
   ghostButtonText: {color: colors.textMuted, fontWeight: '600', fontSize: typography.label},
+  renameBlock: {
+    gap: spacing.xs,
+  },
+  renameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  renameInput: {
+    flex: 1,
+    minHeight: 40,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.background,
+    paddingHorizontal: spacing.sm,
+    color: colors.text,
+    fontSize: 13,
+  },
+  renameSaveButton: {
+    minHeight: 40,
+    borderRadius: radii.md,
+    backgroundColor: colors.accent,
+    paddingHorizontal: spacing.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  renameSaveButtonText: {
+    color: colors.onAccent,
+    fontSize: 13,
+    fontWeight: '700',
+  },
   buttonDisabled: {opacity: 0.5},
 
   // ─── Notices ─────────────────────────────────────────────────────────────

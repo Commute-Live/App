@@ -4,7 +4,7 @@ import {SafeAreaView} from 'react-native-safe-area-context';
 import {Ionicons} from '@expo/vector-icons';
 import {useRouter} from 'expo-router';
 import {ScreenHeader} from '../../../components/ScreenHeader';
-import {useMutation, useQuery} from '@tanstack/react-query';
+import {useMutation, useQuery, useQueryClient} from '@tanstack/react-query';
 import {colors, layout, radii, spacing, typography} from '../../../theme';
 import {useAppState} from '../../../state/appState';
 import {apiFetch} from '../../../lib/api';
@@ -15,6 +15,7 @@ import {postPairingRoute, supportsLocalDeviceSetup, unsupportedDeviceSetupMessag
 
 export default function SetupIntroScreen() {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const {state, setDeviceStatus, setDeviceId} = useAppState();
   const {deviceIds, hydrate} = useAuth();
   const setupSsid = 'Commute-Live-Setup-xxx';
@@ -110,6 +111,7 @@ export default function SetupIntroScreen() {
       setNeedsHomeWifiForLink(false);
       setDeviceStatus('pairedOnline');
       setErrorMsg('');
+      await queryClient.invalidateQueries({queryKey: queryKeys.user.devices});
       router.replace(postPairingRoute);
       return true;
     }
@@ -241,7 +243,7 @@ export default function SetupIntroScreen() {
           <View style={styles.deviceIdCard}>
             <View style={styles.deviceIdRow}>
               <Text style={styles.deviceIdLabel}>Display</Text>
-              <Text style={styles.deviceIdValue}>My Device</Text>
+              <Text style={styles.deviceIdValue}>{state.deviceId ?? 'Not detected yet'}</Text>
             </View>
             <View style={styles.deviceIdDivider} />
             <View style={styles.deviceIdRow}>

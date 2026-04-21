@@ -114,9 +114,10 @@ export function AuthProvider({children}: {children: React.ReactNode}) {
     setDeviceIds([]);
     setStatus('unauthenticated');
     setCurrentProvider(null);
+    queryClient.removeQueries({queryKey: queryKeys.user.devices});
     clearAppAuth();
     clearDatadogUser();
-  }, [clearAppAuth]);
+  }, [clearAppAuth, queryClient]);
 
   useEffect(() => {
     setSessionInvalidHandler(() => {
@@ -136,13 +137,16 @@ export function AuthProvider({children}: {children: React.ReactNode}) {
 
   const hydrate = useCallback(async () => {
     setStatus('loading');
-    const result = await authMeQuery.refetch();
+    const [result] = await Promise.all([
+      authMeQuery.refetch(),
+      queryClient.invalidateQueries({queryKey: queryKeys.user.devices}),
+    ]);
     if (result.data) {
       applyAuthenticatedProfile(result.data);
       return;
     }
     clearAuth();
-  }, [applyAuthenticatedProfile, authMeQuery, clearAuth]);
+  }, [applyAuthenticatedProfile, authMeQuery, clearAuth, queryClient]);
 
   const signOutMutation = useMutation({
     mutationFn: async () => {
@@ -196,6 +200,7 @@ export function AuthProvider({children}: {children: React.ReactNode}) {
         if (!response.ok || !profile) {
           return {ok: false as const, error: data?.message ?? data?.error ?? 'Sign-in failed'};
         }
+        queryClient.removeQueries({queryKey: queryKeys.user.devices});
         queryClient.setQueryData(queryKeys.auth.me, profile);
         applyAuthenticatedProfile(profile);
         setCurrentProvider(provider);
@@ -253,6 +258,7 @@ export function AuthProvider({children}: {children: React.ReactNode}) {
       queryClient.removeQueries({queryKey: queryKeys.deviceConfig(disconnectDeviceId)});
       queryClient.removeQueries({queryKey: queryKeys.deviceSettings(disconnectDeviceId)});
       queryClient.removeQueries({queryKey: queryKeys.lastCommand(disconnectDeviceId)});
+      await queryClient.invalidateQueries({queryKey: queryKeys.user.devices});
       queryClient.setQueryData(queryKeys.auth.me, result.profile);
       applyAuthenticatedProfile(result.profile);
 
