@@ -123,7 +123,8 @@ export function DashboardOverviewTimeAdjustField({
                   if (selectedDate) setDraftDate(selectedDate);
                 }}
                 accentColor={colors.accent}
-                themeVariant="dark"
+                textColor={colors.text}
+                themeVariant="light"
                 style={styles.timePickerModalControl}
               />
             </Pressable>

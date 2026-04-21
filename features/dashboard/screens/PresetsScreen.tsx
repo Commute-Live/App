@@ -287,21 +287,20 @@ export default function DisplayManagementSection({
 
   const deleteDisplayMutation = useMutation({
     mutationFn: async (display: DevicePreset) => {
-      if (!deviceId) return;
+      if (!deviceId) return null;
       await deletePreset(deviceId, display.presetId);
-      return display;
+      const nextPresets = await fetchPresets(deviceId);
+      return {deletedDisplay: display, nextPresets};
     },
-    onSuccess: deletedDisplay => {
+    onSuccess: result => {
       if (!deviceId) return;
-      const remainingDisplays = sortDisplaysForCarousel(
-        displays.filter(display => display.presetId !== deletedDisplay?.presetId),
-        null,
-      );
-      const nextActiveDisplayId = remainingDisplays[0]?.presetId ?? null;
+      if (!result) return;
+      const {deletedDisplay, nextPresets} = result;
+      const nextActiveDisplayId = nextPresets.activePresetId;
       setMockActiveDisplayIdsByTarget(prev => {
         const next = {...prev};
         Object.keys(next).forEach(targetId => {
-          if (next[targetId] === deletedDisplay?.presetId) {
+          if (next[targetId] === deletedDisplay.presetId) {
             if (nextActiveDisplayId) {
               next[targetId] = nextActiveDisplayId;
             } else {
@@ -315,17 +314,7 @@ export default function DisplayManagementSection({
         skipNextPreviewTransitionRef.current = true;
         setPendingFocusDisplayId(nextActiveDisplayId);
       }
-      queryClient.setQueryData(
-        queryKeys.presets(deviceId),
-        (current: {presets: DevicePreset[]; activePresetId: string | null} | undefined) =>
-          current
-            ? {
-                ...current,
-                activePresetId: nextActiveDisplayId,
-                presets: current.presets.filter(display => display.presetId !== deletedDisplay?.presetId),
-              }
-            : current,
-      );
+      queryClient.setQueryData(queryKeys.presets(deviceId), nextPresets);
       setCarouselIndex(0);
       void queryClient.invalidateQueries({queryKey: queryKeys.presets(deviceId)});
       void queryClient.invalidateQueries({queryKey: queryKeys.lastCommand(deviceId)});
