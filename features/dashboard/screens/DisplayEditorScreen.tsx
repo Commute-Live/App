@@ -19,6 +19,7 @@ const Haptics = {
   ImpactFeedbackStyle: _Haptics.ImpactFeedbackStyle,
 };
 import {colors} from '../../../theme';
+import {resolveProviderLineColor} from '../../../lib/lineColors';
 import DashboardPreviewSection from '../components/DashboardPreviewSection';
 import {useAppState} from '../../../state/appState';
 import {CITY_BRANDS, CITY_LABELS, CITY_OPTIONS, type CityId} from '../../../constants/cities';
@@ -417,8 +418,6 @@ const inferDisplayPreset = (
   if (line.primaryContent === 'direction') return 2;
   return fallbackPreset;
 };
-
-const isNycRailMode = (mode: ModeId) => mode === 'lirr' || mode === 'mnr';
 
 const trimRouteHeadsign = (value: string | null | undefined) => {
   const trimmed = value?.trim() ?? '';
@@ -1671,19 +1670,24 @@ export default function DisplayEditorScreen() {
             : 'pill';
 
 
+        const resolvedRouteId = line.routeId ?? route?.id ?? '?';
+        let providerColor: {color: string; textColor: string} | null = null;
+        try {
+          providerColor = resolveProviderLineColor(resolveBackendProvider(city, safeMode), resolvedRouteId);
+        } catch {
+          // unsupported city/mode — no override
+        }
         return {
           id: line.id,
-          color: route?.color ?? colors.border,
-          textColor: route?.textColor || DEFAULT_TEXT_COLOR,
-          routeLabel: isNycRailMode(safeMode)
-            ? (route ? '' : '?')
-            : getLocalRouteBadgeLabel(
-                city,
-                safeMode,
-                line.routeId ?? route?.id ?? '?',
-                route?.label ?? line.routeId ?? '?',
-                route?.shortName,
-              ),
+          color: route?.color ?? providerColor?.color ?? colors.border,
+          textColor: route?.textColor || providerColor?.textColor || DEFAULT_TEXT_COLOR,
+          routeLabel: getLocalRouteBadgeLabel(
+            city,
+            safeMode,
+            resolvedRouteId,
+            route?.label ?? line.routeId ?? '?',
+            route?.shortName,
+          ),
           badgeShape,
           imageSource: city === 'chicago' && safeMode === 'train' && line.routeId
             ? getCtaLineImage(line.routeId, route?.label ?? line.routeId)

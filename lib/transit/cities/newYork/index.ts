@@ -203,7 +203,12 @@ export const newYorkTransitModule: TransitCityModule = {
     if (mode === 'train') return (routeShortName?.trim() || routeId.trim()).toUpperCase();
     if (mode === 'bus') return formatNewYorkBusRoutePickerLabel(routeId, routeLabel ?? routeId);
     if (mode === 'lirr') return getNewYorkLirrLineLabel(routeId, routeLabel ?? routeId).toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 3);
-    if (mode === 'mnr') return routeId.trim().toUpperCase().slice(0, 3);
+    if (mode === 'mnr') {
+      const MNR_BADGE: Record<string, string> = {'1': 'HUD', '2': 'HAR', '3': 'NHV', '4': 'NHV', '5': 'NHV', '6': 'NHV'};
+      const short = routeShortName?.trim() ?? '';
+      if (short && !/^\d+$/.test(short)) return short;
+      return MNR_BADGE[routeId.trim()] ?? routeId.trim().toUpperCase().slice(0, 3);
+    }
     return (routeShortName?.trim() || routeId.trim() || routeLabel?.trim() || '').toUpperCase().slice(0, 3);
   },
   getDirectionLabel: (mode, direction, routeId, variant) =>

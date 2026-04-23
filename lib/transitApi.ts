@@ -262,7 +262,7 @@ export const normalizeTransitStation = (value: unknown): TransitStation | null =
       if (!lineId) return null;
       return {
         id: lineId,
-        shortName: readFirstString(line, ['shortName']) ?? lineId,
+        shortName: readFirstString(line, ['badgeText', 'shortName']) ?? lineId,
         label: readFirstString(line, ['label', 'longName']) ?? lineId,
       };
     })
@@ -296,11 +296,11 @@ export const normalizeTransitLine = (value: unknown, context?: TransitContext): 
 
   const id = readFirstString(value, ['id', 'lineId', 'routeId', 'shortName', 'line']);
   if (!id) return null;
-  const shortName = readFirstString(value, ['shortName']) ?? null;
+  const shortName = readFirstString(value, ['badgeText', 'shortName']) ?? null;
 
   const label = readFirstString(value, ['label', 'longName', 'name', 'line', 'shortName']) ?? id;
 
-  const rawColor = readFirstString(value, ['color', 'routeColor', 'bg_color']);
+  const rawColor = readFirstString(value, ['badgeColor', 'color', 'routeColor', 'bg_color']);
   const color = rawColor ? (rawColor.startsWith('#') ? rawColor : `#${rawColor}`) : null;
 
   const rawTextColor = readFirstString(value, ['textColor', 'text_color', 'routeTextColor']);

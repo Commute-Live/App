@@ -367,9 +367,6 @@ const resolvePreviewRouteLabel = (
         return preferredHeadsign;
       }
     }
-    if (mode === 'mnr') {
-      return getLocalLineLabel(city, mode, lineId, lineId);
-    }
     return getLocalRouteBadgeLabel(city, mode, lineId, shortName || lineId, shortName || undefined);
   }
   return lineId.toUpperCase().slice(0, 4);
