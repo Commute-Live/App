@@ -17,7 +17,7 @@ export default function PairedOnlineScreen() {
   const [open, setOpen] = useState(false);
   const [linkStatus, setLinkStatus] = useState<'idle' | 'linking' | 'linked' | 'error'>('idle');
   const [linkMessage, setLinkMessage] = useState('');
-  const {deviceId, user, clearAuth, setDeviceId} = useAuth();
+  const {deviceId, user, clearAuth, hydrate, setDeviceId} = useAuth();
   const {devices} = useUserDevices();
   const userId = user?.id ?? null;
   const linkedDevices = useMemo(
@@ -76,7 +76,7 @@ export default function PairedOnlineScreen() {
     setLinkStatus('linking');
     setLinkMessage('');
     linkDeviceMutation.mutate(deviceId, {
-      onSuccess: result => {
+      onSuccess: async result => {
         if (!result.ok && result.authExpired) {
           clearAuth();
           router.replace('/auth');
@@ -89,6 +89,7 @@ export default function PairedOnlineScreen() {
           return;
         }
         logger.info('Device linked successfully', {userId, deviceId});
+        await hydrate();
         setLinkStatus('linked');
         setLinkMessage(result.message);
       },
@@ -98,7 +99,7 @@ export default function PairedOnlineScreen() {
         setLinkMessage('Network error.');
       },
     });
-  }, [clearAuth, deviceId, linkDeviceMutation, linkStatus, router, userId]);
+  }, [clearAuth, deviceId, hydrate, linkDeviceMutation, linkStatus, router, userId]);
 
   return (
     <SafeAreaView style={styles.container} edges={['top', 'left', 'right', 'bottom']}>

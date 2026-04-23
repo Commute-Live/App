@@ -25,6 +25,7 @@ import {CITY_BRANDS, CITY_LABELS, CITY_OPTIONS, type CityId} from '../../../cons
 import type {DisplayContent, DisplayFormat, TransitStationLine} from '../../../types/transit';
 import type {Display3DSlot} from '../components/Display3DPreview';
 import {apiFetch} from '../../../lib/api';
+import {getStartPairingRoute} from '../../../lib/deviceSetup';
 import {queryKeys} from '../../../lib/queryKeys';
 import type {
   ModeId,
@@ -1954,7 +1955,7 @@ export default function DisplayEditorScreen() {
                 }
                 setEditorStep('lines');
               }}
-              onAddDevice={() => router.push('/register-device')}
+              onAddDevice={() => router.push(getStartPairingRoute())}
             />
           </Animated.View>
         ) : null}
@@ -2012,7 +2013,7 @@ export default function DisplayEditorScreen() {
                 });
                 setEditorStep('stops');
               }}
-              onAddDevice={() => router.push('/register-device')}
+              onAddDevice={() => router.push(getStartPairingRoute())}
             />
           </Animated.View>
         ) : null}
@@ -2026,7 +2027,7 @@ export default function DisplayEditorScreen() {
           keyboardDismissMode="on-drag">
 
           {!hasLinkedDevice ? (
-            <Pressable style={styles.noDeviceBar} onPress={() => router.push('/register-device')}>
+            <Pressable style={styles.noDeviceBar} onPress={() => router.push(getStartPairingRoute())}>
               <Text style={styles.noDeviceText}>No device linked — tap to add one</Text>
             </Pressable>
           ) : null}

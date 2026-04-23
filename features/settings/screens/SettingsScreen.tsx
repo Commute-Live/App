@@ -11,7 +11,7 @@ import {AppBrandHeader} from '../../../components/AppBrandHeader';
 import {TabScreen} from '../../../components/TabScreen';
 import {useAppState} from '../../../state/appState';
 import {logger} from '../../../lib/datadog';
-import {resetDeviceWifi} from '../../../lib/deviceSetup';
+import {getStartPairingRoute, resetDeviceWifi} from '../../../lib/deviceSetup';
 import {useUserDevices} from '../../../hooks/useUserDevices';
 import type {UserDevice} from '../../../lib/userDevices';
 import {queryKeys} from '../../../lib/queryKeys';
@@ -33,7 +33,7 @@ export default function SettingsScreen() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const params = useLocalSearchParams<{debug?: string}>();
-  const {deviceId, disconnectDevice, signOut, deleteAccount, user, currentProvider, displayCount} = useAuth();
+  const {deviceId, disconnectDevice, signOut, deleteAccount, user, currentProvider, displayCount, setDeviceId} = useAuth();
   const {state: appState} = useAppState();
   const {devices} = useUserDevices();
   const [openSection, setOpenSection] = useState<SectionKey | null>(null);
@@ -47,11 +47,20 @@ export default function SettingsScreen() {
   const [scrollViewportHeight, setScrollViewportHeight] = useState(0);
   const [scrollContentHeight, setScrollContentHeight] = useState(0);
   const currentDeviceId = deviceId ?? appState.deviceId;
-  const currentDevice = devices.find((device: UserDevice) => device.deviceId === currentDeviceId) ?? null;
-  const isDeviceOnline = appState.deviceStatus === 'pairedOnline';
+  const currentDevice =
+    devices.find((device: UserDevice) => device.deviceId === currentDeviceId) ??
+    devices[0] ??
+    null;
+  const isDeviceOnline = currentDevice?.online ?? false;
   const showDeviceDebug = params.debug === 'device';
   const scrollEnabled = scrollContentHeight > scrollViewportHeight + 1;
   const displayCountLabel = `${displayCount} ${displayCount === 1 ? 'display' : 'displays'}`;
+
+  useEffect(() => {
+    if (!currentDeviceId && devices[0]?.deviceId) {
+      setDeviceId(devices[0].deviceId);
+    }
+  }, [currentDeviceId, devices, setDeviceId]);
 
   useEffect(() => {
     setDeviceNameDraft(currentDevice?.name ?? 'My Device');
@@ -142,7 +151,7 @@ export default function SettingsScreen() {
         return;
       }
       logger.info('Device unpaired', {userId: user?.id, deviceId: targetDeviceId});
-      if (result.deviceIds.length === 0) { router.replace('/ble-provision'); return; }
+      if (result.deviceIds.length === 0) { router.replace(getStartPairingRoute()); return; }
       setDeviceNotice({kind: 'success', text: `Unpaired. Switched to device ${result.deviceIds[0]}.`});
     } finally {
       setIsDisconnecting(false);
@@ -199,6 +208,10 @@ export default function SettingsScreen() {
       case 'Notifications': return 'Enabled';
       case 'Privacy': return 'View';
     }
+  };
+
+  const handlePairAnotherDisplay = () => {
+    router.push(getStartPairingRoute());
   };
 
   return (
@@ -289,6 +302,37 @@ export default function SettingsScreen() {
                           <Text style={styles.detailLabel}>Selected display</Text>
                           <Text style={styles.detailValue}>{currentDevice?.name ?? currentDeviceId ?? 'No device paired'}</Text>
                         </View>
+                        {devices.length > 0 ? (
+                          <View style={styles.deviceListBlock}>
+                            <Text style={styles.detailLabel}>Choose display</Text>
+                            <View style={styles.deviceList}>
+                              {devices.map((device: UserDevice) => {
+                                const isSelected = device.deviceId === currentDevice?.deviceId;
+                                return (
+                                  <Pressable
+                                    key={device.deviceId}
+                                    style={[styles.deviceListRow, isSelected && styles.deviceListRowSelected]}
+                                    onPress={() => {
+                                      setDeviceNotice(null);
+                                      setDeviceId(device.deviceId);
+                                    }}>
+                                    <View style={styles.deviceListCopy}>
+                                      <Text style={styles.deviceListName}>{device.name ?? device.deviceId}</Text>
+                                      <Text style={styles.deviceListMeta}>
+                                        {device.online ? 'Online' : 'Offline'} · {device.deviceId}
+                                      </Text>
+                                    </View>
+                                    {isSelected ? (
+                                      <Ionicons name="checkmark-circle" size={18} color={colors.accent} />
+                                    ) : (
+                                      <Ionicons name="ellipse-outline" size={18} color={colors.textMuted} />
+                                    )}
+                                  </Pressable>
+                                );
+                              })}
+                            </View>
+                          </View>
+                        ) : null}
                         {currentDeviceId ? (
                           <View style={styles.renameBlock}>
                             <Text style={styles.detailLabel}>Display name</Text>
@@ -335,6 +379,12 @@ export default function SettingsScreen() {
                             {deviceNotice.text}
                           </Text>
                         ) : null}
+                        <Pressable
+                          style={[styles.primaryActionButton, (isChangingWifi || isDisconnecting) && styles.buttonDisabled]}
+                          onPress={handlePairAnotherDisplay}
+                          disabled={isChangingWifi || isDisconnecting}>
+                          <Text style={styles.primaryActionButtonText}>Pair another display</Text>
+                        </Pressable>
                         {currentDeviceId ? (
                           <Pressable
                             style={[styles.secondaryActionButton, (isChangingWifi || isDisconnecting) && styles.buttonDisabled]}
@@ -564,6 +614,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
   },
   destructiveButtonText: {color: colors.dangerText, fontWeight: '700', fontSize: typography.body},
+  primaryActionButton: {
+    backgroundColor: colors.accent,
+    minHeight: layout.buttonHeight,
+    borderRadius: radii.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: spacing.md,
+  },
+  primaryActionButtonText: {color: colors.onAccent, fontWeight: '800', fontSize: typography.body},
   secondaryActionButton: {
     backgroundColor: colors.background,
     borderColor: colors.border,
@@ -577,6 +636,40 @@ const styles = StyleSheet.create({
   secondaryActionButtonText: {color: colors.text, fontWeight: '700', fontSize: typography.body},
   ghostButton: {minHeight: 40, alignItems: 'center', justifyContent: 'center', paddingHorizontal: spacing.md},
   ghostButtonText: {color: colors.textMuted, fontWeight: '600', fontSize: typography.label},
+  deviceListBlock: {
+    gap: spacing.xs,
+  },
+  deviceList: {
+    gap: spacing.xs,
+  },
+  deviceListRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.background,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.sm,
+  },
+  deviceListRowSelected: {
+    borderColor: colors.accent,
+    backgroundColor: colors.accentMuted,
+  },
+  deviceListCopy: {
+    flex: 1,
+    gap: spacing.xxs,
+  },
+  deviceListName: {
+    color: colors.text,
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  deviceListMeta: {
+    color: colors.textMuted,
+    fontSize: 12,
+  },
   renameBlock: {
     gap: spacing.xs,
   },

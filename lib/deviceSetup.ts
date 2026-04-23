@@ -9,12 +9,16 @@ export const postPairingRoute = '/dashboard';
 export const unsupportedDeviceSetupMessage =
   'Device setup is currently available only in the iOS and Android app. Finish onboarding on a phone or tablet, then come back here to manage your display.';
 
-export function getPostAuthRoute(deviceIds: string[]) {
+export function getStartPairingRoute(): '/ble-provision' | '/register-device' {
+  return supportsBleProvisioning ? '/ble-provision' : '/register-device';
+}
+
+export function getPostAuthRoute(deviceIds: string[]): '/dashboard' | '/ble-provision' | '/register-device' {
   if (deviceIds.length > 0) {
     return '/dashboard';
   }
 
-  return supportsBleProvisioning ? '/ble-provision' : '/setup-intro';
+  return getStartPairingRoute();
 }
 
 const parseDeviceSetupError = async (response: Response) => {

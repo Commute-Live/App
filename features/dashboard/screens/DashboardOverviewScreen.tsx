@@ -26,6 +26,7 @@ import {useAppState} from '../../../state/appState';
 import {useAuth} from '../../../state/authProvider';
 import {useSelectedDevice} from '../../../hooks/useSelectedDevice';
 import {apiFetch} from '../../../lib/api';
+import {getStartPairingRoute} from '../../../lib/deviceSetup';
 import {logger} from '../../../lib/logger';
 import {queryKeys} from '../../../lib/queryKeys';
 import {DISPLAY_WEEKDAYS} from '../../../lib/displays';
@@ -432,7 +433,7 @@ export default function DashboardOverviewScreen() {
           ) : null}
 
           {!hasLinkedDevice ? (
-            <Pressable style={[styles.card, styles.noDeviceCard]} onPress={() => router.push('/register-device')}>
+            <Pressable style={[styles.card, styles.noDeviceCard]} onPress={() => router.push(getStartPairingRoute())}>
             <View style={styles.deviceHeaderRow}>
               <View style={styles.deviceHeaderText}>
                 <Text style={styles.sectionLabel}>No Device Linked</Text>
