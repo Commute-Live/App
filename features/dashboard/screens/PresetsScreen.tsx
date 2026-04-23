@@ -35,6 +35,7 @@ import {useAuth} from '../../../state/authProvider';
 import {
   buildStopLookupKey,
   deletePreset,
+  fetchActivePreset,
   fetchPresets,
   getLiveArrivalLookup,
   providerToCity,
@@ -59,23 +60,6 @@ type ManagedDisplayTarget = {
   name: string;
   activePresetId: string | null;
   online: boolean;
-};
-
-const updateCachedUserDeviceActivePreset = (
-  devices: UserDevice[] | undefined,
-  targetDeviceIds: string[],
-  activePresetId: string | null,
-) => {
-  if (!devices) return devices;
-  const targetIds = new Set(targetDeviceIds);
-  return devices.map(device =>
-    targetIds.has(device.deviceId)
-      ? {
-          ...device,
-          activePresetId,
-        }
-      : device,
-  );
 };
 
 const buildDisplayPayload = (
@@ -158,7 +142,7 @@ export default function DisplayManagementSection({
   const router = useRouter();
   const params = useLocalSearchParams<{focusPresetId?: string}>();
   const {state: appState} = useAppState();
-  const {deviceId, deviceIds, status} = useAuth();
+  const {deviceId, deviceIds, status, setDeviceId} = useAuth();
   const {devices: linkedDevices} = useUserDevices();
   const selectedDevice = useSelectedDevice();
   const selectedCity = appState.selectedCity;
@@ -227,6 +211,25 @@ export default function DisplayManagementSection({
 
   const displays = useMemo(() => displaysQuery.data?.presets ?? [], [displaysQuery.data?.presets]);
   const activePresetId = displaysQuery.data?.activePresetId ?? null;
+  const activePresetQueries = useQueries({
+    queries: linkedDevices.map((device: UserDevice) => ({
+      queryKey: queryKeys.activePreset(device.deviceId),
+      queryFn: () => fetchActivePreset(device.deviceId),
+      enabled: status === 'authenticated',
+      staleTime: 15_000,
+    })),
+  });
+  const activePresetIdsByDevice = useMemo(() => {
+    const next = new Map<string, string | null>();
+    linkedDevices.forEach((device: UserDevice, index: number) => {
+      const query = activePresetQueries[index] as {data?: {activePresetId: string | null}} | undefined;
+      next.set(device.deviceId, query?.data?.activePresetId ?? null);
+    });
+    if (deviceId) {
+      next.set(deviceId, activePresetId);
+    }
+    return next;
+  }, [activePresetId, activePresetQueries, deviceId, linkedDevices]);
   const loading = displaysQuery.isPending;
   const errorText = displaysQuery.error instanceof Error ? displaysQuery.error.message : '';
   const accountSelectionKey = selectedDevice.id || deviceId || 'default';
@@ -237,10 +240,10 @@ export default function DisplayManagementSection({
       .map((device: UserDevice) => ({
         id: device.deviceId,
         name: device.name ?? device.deviceId,
-        activePresetId: device.activePresetId,
+        activePresetId: activePresetIdsByDevice.get(device.deviceId) ?? null,
         online: device.online,
       }));
-  }, [deviceIds, linkedDevices, selectedDevice.id]);
+  }, [activePresetIdsByDevice, deviceIds, linkedDevices, selectedDevice.id]);
 
   const lastCommandQuery = useQuery({
     queryKey: queryKeys.lastCommand(deviceId || 'none'),
@@ -313,12 +316,8 @@ export default function DisplayManagementSection({
         setPendingFocusDisplayId(nextActiveDisplayId);
       }
       queryClient.setQueryData(queryKeys.presets(deviceId), nextPresets);
-      queryClient.setQueryData(
-        queryKeys.user.devices,
-        (current: UserDevice[] | undefined) =>
-          updateCachedUserDeviceActivePreset(current, [deviceId], nextActiveDisplayId),
-      );
       setCarouselIndex(0);
+      void queryClient.invalidateQueries({queryKey: queryKeys.activePreset(deviceId)});
       void queryClient.invalidateQueries({queryKey: queryKeys.presets(deviceId)});
       void queryClient.invalidateQueries({queryKey: queryKeys.lastCommand(deviceId)});
       void queryClient.invalidateQueries({queryKey: queryKeys.user.devices});
@@ -327,73 +326,29 @@ export default function DisplayManagementSection({
 
   const reorderDisplaysMutation = useMutation({
     mutationFn: async (orderedIds: string[]) => {
-      if (!deviceId) return orderedIds;
-      const displayMap = new Map(displays.map(display => [display.presetId, display]));
-      const nextActiveDisplayId = orderedIds[0] ?? null;
-      const maxPriority = Math.max(0, ...displays.map(display => display.priority));
-      const updates = orderedIds
-        .map((displayId, index) => {
-          const display = displayMap.get(displayId);
-          if (!display) return null;
-          const nextPriority =
-            displayId === nextActiveDisplayId && display.priority !== maxPriority + 1
-              ? maxPriority + 1
-              : display.priority;
-          if (display.sortOrder === index && display.priority === nextPriority) return null;
-          return updatePreset(deviceId, displayId, {
-            ...buildDisplayPayload(display, {}),
-            sortOrder: index,
-            priority: nextPriority,
-          });
-        })
-        .filter((update): update is Promise<unknown> => update !== null);
-
-      if (updates.length > 0) {
-        await Promise.all(updates);
+      if (!deviceId) return null;
+      const response = await apiFetch(`/device/${deviceId}/presets/reorder`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({presetIds: orderedIds}),
+      });
+      if (!response.ok) {
+        const data = await response.json().catch(() => null);
+        throw new Error(typeof data?.error === 'string' ? data.error : `Request failed (${response.status})`);
       }
-
-      if (nextActiveDisplayId) {
-        const setActiveResponse = await apiFetch(`/device/${deviceId}/active-preset`, {
-          method: 'PATCH',
-          headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({presetId: nextActiveDisplayId}),
-        });
-        if (!setActiveResponse.ok) {
-          const data = await setActiveResponse.json().catch(() => null);
-          throw new Error(
-            typeof data?.error === 'string' ? data.error : `Request failed (${setActiveResponse.status})`,
-          );
-        }
-        await apiFetch(`/refresh/device/${deviceId}`, {method: 'POST'});
-      }
-
-      return orderedIds;
+      const data = await response.json().catch(() => null);
+      return {
+        presets: Array.isArray(data?.presets) ? (data.presets as DevicePreset[]) : [],
+        activePresetId: typeof data?.activePresetId === 'string' ? data.activePresetId : null,
+      };
     },
-    onSuccess: orderedIds => {
+    onSuccess: result => {
       if (!deviceId) return;
-      const orderLookup = Object.fromEntries(orderedIds.map((displayId, index) => [displayId, index]));
-      const nextActiveDisplayId = orderedIds[0] ?? null;
-      queryClient.setQueryData(
-        queryKeys.presets(deviceId),
-        (current: {presets: DevicePreset[]; activePresetId: string | null} | undefined) =>
-          current
-            ? {
-                ...current,
-                activePresetId: nextActiveDisplayId,
-                presets: current.presets.map(display =>
-                  typeof orderLookup[display.presetId] === 'number'
-                    ? {...display, sortOrder: orderLookup[display.presetId]}
-                    : display,
-                ),
-              }
-            : current,
-      );
-      queryClient.setQueryData(
-        queryKeys.user.devices,
-        (current: UserDevice[] | undefined) =>
-          updateCachedUserDeviceActivePreset(current, [deviceId], nextActiveDisplayId),
-      );
+      if (result) {
+        queryClient.setQueryData(queryKeys.presets(deviceId), result);
+      }
       setCarouselIndex(0);
+      void queryClient.invalidateQueries({queryKey: queryKeys.activePreset(deviceId)});
       void queryClient.invalidateQueries({queryKey: queryKeys.presets(deviceId)});
       void queryClient.invalidateQueries({queryKey: queryKeys.lastCommand(deviceId)});
       void queryClient.invalidateQueries({queryKey: queryKeys.user.devices});
@@ -462,24 +417,10 @@ export default function DisplayManagementSection({
     },
     onSuccess: (_data, variables) => {
       variables.targetDeviceIds.forEach(targetDeviceId => {
-        queryClient.setQueryData(
-          queryKeys.presets(targetDeviceId),
-          (current: {presets: DevicePreset[]; activePresetId: string | null} | undefined) =>
-            current
-              ? {
-                  ...current,
-                  activePresetId: variables.presetId,
-                }
-              : current,
-        );
+        void queryClient.invalidateQueries({queryKey: queryKeys.activePreset(targetDeviceId)});
         void queryClient.refetchQueries({queryKey: queryKeys.presets(targetDeviceId), type: 'active'});
         void queryClient.refetchQueries({queryKey: queryKeys.lastCommand(targetDeviceId), type: 'active'});
       });
-      queryClient.setQueryData(
-        queryKeys.user.devices,
-        (current: UserDevice[] | undefined) =>
-          updateCachedUserDeviceActivePreset(current, variables.targetDeviceIds, variables.presetId),
-      );
       void queryClient.invalidateQueries({queryKey: queryKeys.user.devices});
     },
   });
@@ -487,12 +428,13 @@ export default function DisplayManagementSection({
   useEffect(() => {
     if (!isScreenFocused || !deviceId || status !== 'authenticated') return;
     setCarouselIndex(0);
+    void queryClient.invalidateQueries({queryKey: queryKeys.activePreset(deviceId)});
     void queryClient.invalidateQueries({queryKey: queryKeys.presets(deviceId)});
     void queryClient.invalidateQueries({queryKey: queryKeys.lastCommand(deviceId)});
   }, [deviceId, isScreenFocused, queryClient, status]);
 
   const effectiveActiveDisplayId =
-    accountDisplayTargets.find(target => target.id === selectedDevice.id)?.activePresetId ?? activePresetId;
+    activePresetIdsByDevice.get(selectedDevice.id) ?? activePresetId;
   const sortedDisplays = useMemo(
     () => sortDisplaysForCarousel(displays, effectiveActiveDisplayId),
     [displays, effectiveActiveDisplayId],
@@ -523,7 +465,9 @@ export default function DisplayManagementSection({
   const effectivePreviewWidth = previewStageWidth > 0 ? previewStageWidth : 320;
   const previewTravelDistance = Math.max(windowWidth, effectivePreviewWidth) + 24;
   const isCurrentDisplayActive =
-    !!currentDisplay && effectiveActiveDisplayId === currentDisplay.presetId;
+    !!currentDisplay &&
+    selectedTargets.length > 0 &&
+    selectedTargets.every(target => (activePresetIdsByDevice.get(target.id) ?? null) === currentDisplay.presetId);
   const selectorTitle = useMemo(() => {
     if (selectedTargets.length === 0) return selectedDevice.name || 'This Display';
     if (selectedTargets.length === 1) return selectedTargets[0].name;
@@ -540,6 +484,12 @@ export default function DisplayManagementSection({
     if (selectionModeByDevice[accountSelectionKey]) return;
     setSelectionModeByDevice(prev => ({...prev, [accountSelectionKey]: 'single'}));
   }, [accountSelectionKey, selectionModeByDevice]);
+  useEffect(() => {
+    if (selectionMode !== 'single') return;
+    const nextSelectedDeviceId = selectedTargetIds[0] ?? null;
+    if (!nextSelectedDeviceId || nextSelectedDeviceId === deviceId) return;
+    setDeviceId(nextSelectedDeviceId);
+  }, [deviceId, selectedTargetIds, selectionMode, setDeviceId]);
 
   const renderDisplayPreview = useCallback(
     (display: DevicePreset, city: typeof currentDisplayCity) => (

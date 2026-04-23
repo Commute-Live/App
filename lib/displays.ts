@@ -710,6 +710,15 @@ export async function fetchPresets(deviceId: string) {
   };
 }
 
+export async function fetchActivePreset(deviceId: string) {
+  const response = await apiFetch(`/device/${deviceId}/presets/active`);
+  if (!response.ok) throw new Error(await parseError(response));
+  const data = await response.json();
+  return {
+    activePresetId: typeof data?.activePresetId === 'string' ? data.activePresetId : null,
+  };
+}
+
 export async function fetchPreset(deviceId: string, presetId: string) {
   const response = await apiFetch(`/device/${deviceId}/presets/${presetId}`);
   if (!response.ok) throw new Error(await parseError(response));

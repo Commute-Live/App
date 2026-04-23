@@ -33,8 +33,6 @@ import {DISPLAY_WEEKDAYS} from '../../../lib/displays';
 import {styles} from './DashboardOverview.styles';
 import {DashboardOverviewTimeAdjustField as TimeAdjustField} from './DashboardOverviewTimeAdjustField';
 import DisplayManagementSection from './PresetsScreen';
-import {useUserDevices} from '../../../hooks/useUserDevices';
-import type {UserDevice} from '../../../lib/userDevices';
 
 const DEFAULT_QUIET_HOURS = {
   start: '23:00',
@@ -65,7 +63,6 @@ export default function DashboardOverviewScreen() {
   } = useAppState();
   const {status, user, deviceId, deviceIds, setDeviceId} = useAuth();
   const selectedDevice = useSelectedDevice();
-  const {devices} = useUserDevices();
   const hasLinkedDevice = deviceIds.length > 0;
   const isScreenFocused = useTabRouteIsActive('/dashboard');
   const [quietHoursEnabled, setQuietHoursEnabled] = useState(false);
@@ -75,12 +72,6 @@ export default function DashboardOverviewScreen() {
   const [dashboardSwipeEnabled, setDashboardSwipeEnabled] = useState(true);
   const [dashboardRefreshing, setDashboardRefreshing] = useState(false);
   const dashboardScrollY = useRef(new Animated.Value(0)).current;
-
-  const currentDeviceIndex = useMemo(() => {
-    if (!deviceId) return 0;
-    const index = devices.findIndex((device: UserDevice) => device.deviceId === deviceId);
-    return index === -1 ? 0 : index;
-  }, [deviceId, devices]);
 
   const deviceSettingsQuery = useQuery({
     queryKey: queryKeys.deviceSettings(selectedDevice.id || 'none'),
@@ -324,23 +315,6 @@ export default function DashboardOverviewScreen() {
     if (quietHoursEnabled) void persistQuietHours(true, nextDraft);
   };
 
-  const cycleDevice = (direction: 1 | -1) => {
-    if (devices.length <= 1) return;
-    const nextIndex = (currentDeviceIndex + direction + devices.length) % devices.length;
-    const nextDeviceId = devices[nextIndex]?.deviceId;
-    if (nextDeviceId) {
-      setDeviceId(nextDeviceId);
-    }
-  };
-
-  const deviceLabels = useMemo(
-    () =>
-      Object.fromEntries(
-        devices.map((device: UserDevice) => [device.deviceId, device.name ?? device.deviceId]),
-      ) as Record<string, string>,
-    [devices],
-  );
-
   if (status === 'loading') {
     return (
       <View style={[styles.container, {paddingTop: insets.top}]}>
@@ -392,46 +366,6 @@ export default function DashboardOverviewScreen() {
           scrollEventThrottle={16}
           onScroll={handleDashboardScroll}
           onScrollEndDrag={handleDashboardScrollEndDrag}>
-          {hasLinkedDevice && devices.length > 1 ? (
-            <View style={styles.pageHeader}>
-            <View style={styles.deviceSwitcherRow}>
-              <View style={styles.deviceSwitcherHeader}>
-                <Text style={styles.switcherLabel}>Linked devices</Text>
-                <Text style={styles.switcherMeta}>
-                  {currentDeviceIndex + 1} of {devices.length}
-                </Text>
-              </View>
-
-              <View style={styles.deviceCycleRow}>
-                <Pressable style={styles.deviceCycleButton} onPress={() => cycleDevice(-1)}>
-                  <Ionicons name="chevron-back" size={18} color={colors.text} />
-                </Pressable>
-                <View style={styles.deviceCycleCurrent}>
-                  <Text style={styles.deviceCycleCurrentText} numberOfLines={1}>
-                    {deviceLabels[selectedDevice.id] ?? selectedDevice.name}
-                  </Text>
-                </View>
-                <Pressable style={styles.deviceCycleButton} onPress={() => cycleDevice(1)}>
-                  <Ionicons name="chevron-forward" size={18} color={colors.text} />
-                </Pressable>
-              </View>
-
-              <View style={styles.devicePillWrap}>
-                {devices.map((device: UserDevice) => (
-                  <Pressable
-                    key={device.deviceId}
-                    style={[styles.devicePill, deviceId === device.deviceId && styles.devicePillActive]}
-                    onPress={() => setDeviceId(device.deviceId)}>
-                    <Text style={[styles.devicePillText, deviceId === device.deviceId && styles.devicePillTextActive]}>
-                      {deviceLabels[device.deviceId] ?? device.deviceId}
-                    </Text>
-                  </Pressable>
-                ))}
-              </View>
-            </View>
-          </View>
-          ) : null}
-
           {!hasLinkedDevice ? (
             <Pressable style={[styles.card, styles.noDeviceCard]} onPress={() => router.push(getStartPairingRoute())}>
             <View style={styles.deviceHeaderRow}>

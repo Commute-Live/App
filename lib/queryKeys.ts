@@ -8,6 +8,7 @@ export const queryKeys = {
     devices: ['user', 'devices'] as const,
   },
   presets: (deviceId: string) => ['device', deviceId, 'presets'] as const,
+  activePreset: (deviceId: string) => ['device', deviceId, 'presets', 'active'] as const,
   preset: (deviceId: string, presetId: string) => ['device', deviceId, 'presets', presetId] as const,
   deviceConfig: (deviceId: string) => ['device', deviceId, 'config'] as const,
   deviceSettings: (deviceId: string) => ['device', deviceId, 'settings'] as const,
