@@ -1,7 +1,14 @@
 import {logger} from './logger';
 
 const ENV_API_BASE =
-  (process.env.API_BASE ?? process.env.EXPO_PUBLIC_API_BASE ?? '').trim();
+  (
+    process.env.API_BASE ??
+    process.env.EXPO_PUBLIC_API_BASE ??
+    process.env.EXPO_PUBLIC_SERVER_URL ??
+    ''
+  )
+    .trim()
+    .replace(/\/+$/, '');
 const DEFAULT_API_BASE = __DEV__ ? 'https://staging.commutelive.com' : '';
 
 export const API_BASE = ENV_API_BASE || DEFAULT_API_BASE;
