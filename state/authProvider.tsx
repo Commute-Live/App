@@ -137,10 +137,8 @@ export function AuthProvider({children}: {children: React.ReactNode}) {
 
   const hydrate = useCallback(async () => {
     setStatus('loading');
-    const [result] = await Promise.all([
-      authMeQuery.refetch(),
-      queryClient.invalidateQueries({queryKey: queryKeys.user.devices}),
-    ]);
+    const result = await authMeQuery.refetch();
+    await queryClient.invalidateQueries({queryKey: queryKeys.user.devices});
     if (result.data) {
       applyAuthenticatedProfile(result.data);
       return;

@@ -232,9 +232,9 @@ export default function DisplayManagementSection({
   }, [activePresetId, activePresetQueries, deviceId, linkedDevices]);
   const loading = displaysQuery.isPending;
   const errorText = displaysQuery.error instanceof Error ? displaysQuery.error.message : '';
-  const accountSelectionKey = selectedDevice.id || deviceId || 'default';
+  const accountSelectionKey = deviceId || 'default';
   const accountDisplayTargets = useMemo((): ManagedDisplayTarget[] => {
-    const linkedIds = new Set([...(deviceIds ?? []), selectedDevice.id].filter(Boolean));
+    const linkedIds = new Set(deviceIds ?? []);
     return linkedDevices
       .filter((device: UserDevice) => linkedIds.has(device.deviceId))
       .map((device: UserDevice) => ({
@@ -243,7 +243,7 @@ export default function DisplayManagementSection({
         activePresetId: activePresetIdsByDevice.get(device.deviceId) ?? null,
         online: device.online,
       }));
-  }, [activePresetIdsByDevice, deviceIds, linkedDevices, selectedDevice.id]);
+  }, [activePresetIdsByDevice, deviceIds, linkedDevices]);
 
   const lastCommandQuery = useQuery({
     queryKey: queryKeys.lastCommand(deviceId || 'none'),
@@ -301,7 +301,7 @@ export default function DisplayManagementSection({
 
   const deleteDisplayMutation = useMutation({
     mutationFn: async (display: DevicePreset) => {
-      if (!deviceId) return null;
+      if (!deviceId) throw new Error('No device selected.');
       await deletePreset(deviceId, display.presetId);
       const nextPresets = await fetchPresets(deviceId);
       return {deletedDisplay: display, nextPresets};
@@ -326,7 +326,7 @@ export default function DisplayManagementSection({
 
   const reorderDisplaysMutation = useMutation({
     mutationFn: async (orderedIds: string[]) => {
-      if (!deviceId) return null;
+      if (!deviceId) throw new Error('No device selected.');
       const response = await apiFetch(`/device/${deviceId}/presets/reorder`, {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
@@ -444,8 +444,12 @@ export default function DisplayManagementSection({
     if (storedSelection && storedSelection.length > 0) {
       return storedSelection.filter(targetId => accountDisplayTargets.some(target => target.id === targetId));
     }
-    return accountDisplayTargets.slice(0, 1).map(target => target.id);
-  }, [accountDisplayTargets, accountSelectionKey, selectedTargetIdsByDevice]);
+    const fallbackTargetId =
+      accountDisplayTargets.find(target => target.id === deviceId)?.id ??
+      accountDisplayTargets[0]?.id ??
+      null;
+    return fallbackTargetId ? [fallbackTargetId] : [];
+  }, [accountDisplayTargets, accountSelectionKey, deviceId, selectedTargetIdsByDevice]);
   const selectionMode =
     selectionModeByDevice[accountSelectionKey] ??
     (selectedTargetIds.length > 1 ? 'multiple' : 'single');
@@ -477,9 +481,10 @@ export default function DisplayManagementSection({
   useEffect(() => {
     if (accountDisplayTargets.length === 0) return;
     if (selectedTargetIdsByDevice[accountSelectionKey]) return;
-    const initialSelection = accountDisplayTargets.slice(0, 1).map(target => target.id);
+    const selectedTarget = accountDisplayTargets.find(target => target.id === deviceId);
+    const initialSelection = selectedTarget ? [selectedTarget.id] : accountDisplayTargets.slice(0, 1).map(target => target.id);
     setSelectedTargetIdsByDevice(prev => ({...prev, [accountSelectionKey]: initialSelection}));
-  }, [accountDisplayTargets, accountSelectionKey, selectedTargetIdsByDevice]);
+  }, [accountDisplayTargets, accountSelectionKey, deviceId, selectedTargetIdsByDevice]);
   useEffect(() => {
     if (selectionModeByDevice[accountSelectionKey]) return;
     setSelectionModeByDevice(prev => ({...prev, [accountSelectionKey]: 'single'}));
@@ -488,8 +493,36 @@ export default function DisplayManagementSection({
     if (selectionMode !== 'single') return;
     const nextSelectedDeviceId = selectedTargetIds[0] ?? null;
     if (!nextSelectedDeviceId || nextSelectedDeviceId === deviceId) return;
+    if (brightnessCommitTimeoutRef.current) {
+      clearTimeout(brightnessCommitTimeoutRef.current);
+      brightnessCommitTimeoutRef.current = null;
+    }
+    if (deviceId) {
+      queryClient.removeQueries({queryKey: queryKeys.presets(deviceId)});
+      queryClient.removeQueries({queryKey: queryKeys.lastCommand(deviceId)});
+    }
+    setBrightnessOverrides({});
+    setExpandedBrightnessControls({});
+    setPreviewTransition(null);
+    setReorderVisible(false);
+    setAccountSelectorVisible(false);
     setDeviceId(nextSelectedDeviceId);
-  }, [deviceId, selectedTargetIds, selectionMode, setDeviceId]);
+  }, [deviceId, queryClient, selectedTargetIds, selectionMode, setDeviceId]);
+
+  useEffect(() => {
+    setBrightnessOverrides({});
+    setExpandedBrightnessControls({});
+  }, [deviceId]);
+
+  useEffect(() => {
+    if (isScreenFocused) return;
+    setReorderVisible(false);
+    setAccountSelectorVisible(false);
+    if (brightnessCommitTimeoutRef.current) {
+      clearTimeout(brightnessCommitTimeoutRef.current);
+      brightnessCommitTimeoutRef.current = null;
+    }
+  }, [isScreenFocused]);
 
   const renderDisplayPreview = useCallback(
     (display: DevicePreset, city: typeof currentDisplayCity) => (
@@ -815,6 +848,7 @@ export default function DisplayManagementSection({
     return () => {
       if (brightnessCommitTimeoutRef.current) {
         clearTimeout(brightnessCommitTimeoutRef.current);
+        brightnessCommitTimeoutRef.current = null;
       }
     };
   }, []);

@@ -55,6 +55,23 @@ function MarqueeText({
   const ownTranslateX = useRef(new Animated.Value(0)).current;
   const overflow = textWidth > containerWidth + 6 ? textWidth - containerWidth : 0;
   const shouldAnimate = enabled && containerWidth > 0 && overflow > 0;
+  const needsMeasurement = enabled && containerWidth > 0 && textWidth === 0;
+
+  useEffect(() => {
+    setTextWidth(0);
+  }, [text]);
+
+  const handleContainerLayout = (width: number) => {
+    const nextWidth = Math.round(width);
+    setContainerWidth(currentWidth => (currentWidth === nextWidth ? currentWidth : nextWidth));
+  };
+  const handleTextLayout = (width: number) => {
+    const nextWidth = Math.ceil(width);
+    setTextWidth(currentWidth => {
+      if (currentWidth > 0) return currentWidth;
+      return currentWidth === nextWidth ? currentWidth : nextWidth;
+    });
+  };
 
   // Standalone animation (used when no shared clock)
   useEffect(() => {
@@ -96,16 +113,18 @@ function MarqueeText({
     : ownTranslateX;
 
   return (
-    <View style={styles.marqueeWrap} onLayout={event => setContainerWidth(event.nativeEvent.layout.width)}>
-      <Text
-        style={[textStyle, styles.marqueeMeasure]}
-        numberOfLines={1}
-        onTextLayout={event => {
-          const lineWidth = event.nativeEvent.lines[0]?.width ?? 0;
-          setTextWidth(lineWidth);
-        }}>
-        {text}
-      </Text>
+    <View style={styles.marqueeWrap} onLayout={event => handleContainerLayout(event.nativeEvent.layout.width)}>
+      {needsMeasurement ? (
+        <Text
+          style={[textStyle, styles.marqueeMeasure]}
+          numberOfLines={1}
+          onTextLayout={event => {
+            const lineWidth = event.nativeEvent.lines[0]?.width ?? 0;
+            handleTextLayout(lineWidth);
+          }}>
+          {text}
+        </Text>
+      ) : null}
       {shouldAnimate ? (
         <Animated.View style={[styles.marqueeContent, {width: textWidth, transform: [{translateX}]}]}>
           <Text style={textStyle} numberOfLines={1}>

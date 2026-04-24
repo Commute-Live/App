@@ -144,7 +144,10 @@ export default function DashboardOverviewScreen() {
   useEffect(() => {
     if (!isScreenFocused) return;
     if (hasLinkedDevice && selectedDevice.id && status === 'authenticated') {
-      void queryClient.invalidateQueries({queryKey: queryKeys.deviceSettings(selectedDevice.id)});
+      void Promise.all([
+        queryClient.invalidateQueries({queryKey: queryKeys.deviceSettings(selectedDevice.id)}),
+        queryClient.invalidateQueries({queryKey: queryKeys.deviceOnline(selectedDevice.id)}),
+      ]);
       return;
     }
     if (!hasLinkedDevice) {

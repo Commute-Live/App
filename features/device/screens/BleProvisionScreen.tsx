@@ -22,6 +22,7 @@ import {useAuth} from '../../../state/authProvider';
 import {useBleProvision, WifiNetwork} from '../hooks/useBleProvision';
 import {AppBrandHeader} from '../../../components/AppBrandHeader';
 import {postPairingRoute, supportsBleProvisioning, unsupportedDeviceSetupMessage} from '../../../lib/deviceSetup';
+import {logger} from '../../../lib/logger';
 
 type ProvisionStep = 'idle' | 'linking';
 
@@ -172,7 +173,8 @@ const getProvisionProgressCopy = ({
 };
 
 const SignalBars = ({rssi}: {rssi: number}) => {
-  const bars = rssi > -50 ? 3 : rssi > -70 ? 2 : 1;
+  const safeRssi = Number.isFinite(rssi) ? Math.max(-100, Math.min(0, rssi)) : -100;
+  const bars = safeRssi > -50 ? 3 : safeRssi > -70 ? 2 : 1;
   return (
     <View style={{flexDirection: 'row', alignItems: 'flex-end', gap: 2}}>
       {[1, 2, 3].map(i => (
@@ -264,7 +266,9 @@ function PasswordModal({
   const title = isManual ? 'Other Network' : (network?.ssid ?? '');
   const canConnect = isManual
     ? ssid.trim().length > 0 && (isOpen || password.trim().length > 0)
-    : isOpen || password.trim().length > 0;
+    : isEnterprise
+      ? username.trim().length > 0 && password.trim().length > 0
+      : isOpen || password.trim().length > 0;
 
   useEffect(() => {
     if (visible) {
@@ -374,7 +378,7 @@ function PasswordModal({
                           style={modal.fieldInput}
                           value={username}
                           onChangeText={setUsername}
-                          placeholder="Optional"
+                          placeholder={isEnterprise ? 'Required' : 'Optional'}
                           placeholderTextColor={colors.textMuted}
                           autoCapitalize="none"
                           autoCorrect={false}
@@ -444,6 +448,7 @@ export default function BleProvisionScreen() {
   const [pairingCodeConfirmed, setPairingCodeConfirmed] = useState(false);
   const pairingTokenRef = useRef<string | null>(null);
   const hasRequestedScanRef = useRef(false);
+  const previousProvisionDeviceIdRef = useRef<string | null>(null);
   const bluetoothMessage = state.bluetoothMessage;
 
   const isProvisioning = provisionStep !== 'idle';
@@ -499,6 +504,21 @@ export default function BleProvisionScreen() {
     return () => clearTimeout(timer);
   }, [isDeviceOffline, state.phase, reset]);
 
+  const getPairingTokenErrorMessage = (errorCode: string | null) => {
+    switch (errorCode) {
+      case 'pairingCode is required':
+        return 'Enter the 4-digit code shown on your display before continuing.';
+      case 'expectedDeviceId is required':
+        return 'The display could not be identified. Restart setup and try again.';
+      case 'PAIRING_CODE_MISMATCH':
+        return 'That pairing code does not match the display. Check the 4-digit code and try again.';
+      case 'DEVICE_ID_MISMATCH':
+        return 'The selected display changed during setup. Restart setup and try again.';
+      default:
+        return 'Could not get pairing token — check your internet connection and try again.';
+    }
+  };
+
   const fetchPairingToken = async (expectedDeviceId?: string | null, pairingCode?: string | null) => {
     pairingTokenRef.current = null;
     const deviceId = expectedDeviceId ?? state.deviceId ?? null;
@@ -517,18 +537,38 @@ export default function BleProvisionScreen() {
         pairingTokenRef.current = data.token;
         return true;
       }
-      setLinkError('Could not get pairing token — check your internet connection and try again.');
-    } catch {
+      const errorCode = typeof data?.error === 'string' ? data.error : null;
+      logger.error('Pairing token request failed', {
+        deviceId,
+        pairingCode,
+        status: res.status,
+        error: errorCode,
+      });
+      setLinkError(getPairingTokenErrorMessage(errorCode));
+    } catch (error: unknown) {
+      logger.error('Pairing token request crashed', {
+        deviceId,
+        pairingCode,
+        error: error instanceof Error ? error.message : String(error),
+      });
       setLinkError('Could not get pairing token — check your internet connection and try again.');
     }
     return false;
   };
 
   useEffect(() => {
-    pairingTokenRef.current = null;
-    setPairingCodeInput('');
-    setPairingCodeConfirmed(false);
-  }, [state.deviceId, state.pairingCode]);
+    if (!state.deviceId) {
+      previousProvisionDeviceIdRef.current = null;
+      pairingTokenRef.current = null;
+      return;
+    }
+    if (previousProvisionDeviceIdRef.current == null) {
+      pairingTokenRef.current = null;
+      setPairingCodeInput('');
+      setPairingCodeConfirmed(false);
+    }
+    previousProvisionDeviceIdRef.current = state.deviceId;
+  }, [state.deviceId]);
 
   useEffect(() => {
     if (!targetDeviceId || state.phase !== 'device_found' || state.foundDevice) {
@@ -586,6 +626,10 @@ export default function BleProvisionScreen() {
 
   const handleConnect = async (ssid: string, password: string, username: string) => {
     setLinkError('');
+    if (modalNetwork?.encryption === 4 && username.trim().length === 0) {
+      setLinkError('Enter the enterprise Wi-Fi username.');
+      return;
+    }
     const token = pairingTokenRef.current ?? '';
     if (!pairingCodeConfirmed) {
       setLinkError('Enter the 4-digit code shown on your display before choosing Wi-Fi.');
@@ -597,7 +641,16 @@ export default function BleProvisionScreen() {
     }
 
     const espDeviceId = await sendCredentials(ssid, password, username, token, API_BASE);
-    if (!espDeviceId) return;
+    if (!espDeviceId) {
+      logger.error('BLE credential submission failed', {
+        deviceId: state.deviceId,
+        targetDeviceId,
+        ssid,
+        error: state.errorMsg,
+        phase: state.phase,
+      });
+      return;
+    }
 
     // Keep modal open showing progress, close once done
     setDeviceId(espDeviceId);
@@ -611,6 +664,10 @@ export default function BleProvisionScreen() {
         'The display finished provisioning, but the app took too long to finish linking it to your account.',
       );
       if (!result.ok) {
+        logger.error('Display link failed after BLE provisioning', {
+          deviceId: espDeviceId,
+          error: result.error,
+        });
         setLinkError(result.error);
         return;
       }
@@ -624,6 +681,10 @@ export default function BleProvisionScreen() {
       router.replace(postPairingRoute);
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : '';
+      logger.error('BLE provisioning completion failed', {
+        deviceId: espDeviceId,
+        error: message || String(error),
+      });
       setLinkError(
         message || 'The display finished provisioning, but the app could not finish setup. Check your internet connection and try again.',
       );

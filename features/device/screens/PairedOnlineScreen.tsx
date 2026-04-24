@@ -29,7 +29,7 @@ export default function PairedOnlineScreen() {
       })),
     [devices],
   );
-  const [selected, setSelected] = useState<(typeof linkedDevices)[number] | null>(linkedDevices[0] ?? null);
+  const [selectedDeviceId, setSelectedDeviceId] = useState<string | null>(deviceId ?? linkedDevices[0]?.id ?? null);
 
   const linkDeviceMutation = useMutation({
     mutationFn: async (nextDeviceId: string) => {
@@ -63,12 +63,19 @@ export default function PairedOnlineScreen() {
   });
 
   useEffect(() => {
-    const nextSelected =
-      linkedDevices.find((device: {id: string}) => device.id === deviceId) ??
-      linkedDevices[0] ??
+    const nextSelectedDeviceId =
+      linkedDevices.find((device: {id: string}) => device.id === deviceId)?.id ??
+      linkedDevices[0]?.id ??
       null;
-    setSelected(nextSelected);
+    setSelectedDeviceId(currentSelectedDeviceId =>
+      currentSelectedDeviceId === nextSelectedDeviceId ? currentSelectedDeviceId : nextSelectedDeviceId,
+    );
   }, [deviceId, linkedDevices]);
+
+  const selected =
+    linkedDevices.find((device: {id: string}) => device.id === selectedDeviceId) ??
+    linkedDevices[0] ??
+    null;
 
   useEffect(() => {
     if (!deviceId || !userId) return;
@@ -149,7 +156,7 @@ export default function PairedOnlineScreen() {
                 key={device.id}
                 style={({pressed}) => [styles.dropdownItem, pressed && styles.pressed]}
                 onPress={() => {
-                  setSelected(device);
+                  setSelectedDeviceId(device.id);
                   setDeviceId(device.id);
                   setOpen(false);
                 }}>

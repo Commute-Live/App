@@ -1,5 +1,5 @@
-import React, {useEffect} from 'react';
-import {Stack, useRouter} from 'expo-router';
+import React from 'react';
+import {Stack} from 'expo-router';
 import {DatadogProvider} from '@datadog/mobile-react-native';
 import {createDatadogConfig} from '../lib/datadog';
 import {StatusBar} from 'expo-status-bar';
@@ -44,15 +44,7 @@ GoogleSignin.configure({
 const datadogConfig = createDatadogConfig();
 
 function AppNavigator() {
-  const router = useRouter();
   const {status} = useAuth();
-
-  useEffect(() => {
-    if (status === 'unauthenticated') {
-      const t = setTimeout(() => router.replace('/'), 50);
-      return () => clearTimeout(t);
-    }
-  }, [status, router]);
 
   return (
     <Stack
@@ -64,17 +56,21 @@ function AppNavigator() {
       }}>
       <Stack.Screen name="index" />
       <Stack.Screen name="auth" />
-      <Stack.Screen name="register-device" />
-      <Stack.Screen name="ble-provision" options={{animation: 'fade'}} />
-      <Stack.Screen name="(tabs)" options={{animation: 'none'}} />
-      <Stack.Screen name="preset-editor" options={{animation: 'slide_from_right'}} />
-      <Stack.Screen name="paired-online" />
-      <Stack.Screen name="setup-intro" />
-      <Stack.Screen name="reconnect-help" />
-      <Stack.Screen name="edit-stations" />
-      <Stack.Screen name="change-layout" />
-      <Stack.Screen name="switch-preset" />
-      <Stack.Screen name="brightness" />
+      <Stack.Screen name="google-auth-callback" />
+      <Stack.Screen name="modal" />
+      <Stack.Protected guard={status === 'authenticated'}>
+        <Stack.Screen name="register-device" />
+        <Stack.Screen name="ble-provision" options={{animation: 'fade'}} />
+        <Stack.Screen name="(tabs)" options={{animation: 'none'}} />
+        <Stack.Screen name="preset-editor" options={{animation: 'slide_from_right'}} />
+        <Stack.Screen name="paired-online" />
+        <Stack.Screen name="setup-intro" />
+        <Stack.Screen name="reconnect-help" />
+        <Stack.Screen name="edit-stations" />
+        <Stack.Screen name="change-layout" />
+        <Stack.Screen name="switch-preset" />
+        <Stack.Screen name="brightness" />
+      </Stack.Protected>
       <Stack.Screen name="+not-found" />
     </Stack>
   );

@@ -23,7 +23,7 @@ export default function SetupIntroScreen() {
   const [ssid, setSsid] = useState('');
   const [wifiUsername, setWifiUsername] = useState('');
   const [wifiPassword, setWifiPassword] = useState('');
-  const canConnect = ssid.length > 0 && wifiPassword.trim().length > 0;
+  const canConnect = ssid.trim().length > 0 && wifiPassword.trim().length > 0;
   const [connectStatus, setConnectStatus] = useState<'idle' | 'connecting' | 'success' | 'error'>('idle');
   const [errorMsg, setErrorMsg] = useState('');
   const [pendingLinkDeviceId, setPendingLinkDeviceId] = useState<string | null>(null);
@@ -105,13 +105,25 @@ export default function SetupIntroScreen() {
     }
   }, [setDeviceId, setDeviceStatus, statusQuery.data]);
 
+  const invalidateDeviceQueries = async (deviceIdToRefresh: string) => {
+    await Promise.all([
+      queryClient.invalidateQueries({queryKey: queryKeys.user.devices}),
+      queryClient.invalidateQueries({queryKey: queryKeys.deviceOnline(deviceIdToRefresh)}),
+      queryClient.invalidateQueries({queryKey: queryKeys.activePreset(deviceIdToRefresh)}),
+      queryClient.invalidateQueries({queryKey: queryKeys.presets(deviceIdToRefresh)}),
+      queryClient.invalidateQueries({queryKey: queryKeys.lastCommand(deviceIdToRefresh)}),
+      queryClient.invalidateQueries({queryKey: queryKeys.deviceSettings(deviceIdToRefresh)}),
+      queryClient.invalidateQueries({queryKey: queryKeys.deviceConfig(deviceIdToRefresh)}),
+    ]);
+  };
+
   const tryRegisterAndLinkDevice = async (deviceIdToLink: string) => {
     if (deviceIds.includes(deviceIdToLink)) {
       setPendingLinkDeviceId(null);
       setNeedsHomeWifiForLink(false);
       setDeviceStatus('pairedOnline');
       setErrorMsg('');
-      await queryClient.invalidateQueries({queryKey: queryKeys.user.devices});
+      await invalidateDeviceQueries(deviceIdToLink);
       router.replace(postPairingRoute);
       return true;
     }
@@ -131,7 +143,14 @@ export default function SetupIntroScreen() {
       setNeedsHomeWifiForLink(false);
       setDeviceStatus('pairedOnline');
       setErrorMsg('');
-      await hydrate();
+      try {
+        await hydrate();
+        await invalidateDeviceQueries(deviceIdToLink);
+      } catch {
+        setConnectStatus('error');
+        setErrorMsg('The display linked, but the app could not refresh your account. Try again.');
+        return false;
+      }
       router.replace(postPairingRoute);
       return true;
     } catch {
@@ -154,8 +173,9 @@ export default function SetupIntroScreen() {
     setPendingLinkDeviceId(null);
 
     try {
+      const normalizedSsid = ssid.trim();
       const result = await connectWifiMutation.mutateAsync({
-        ssid,
+        ssid: normalizedSsid,
         wifiPassword,
         wifiUsername,
         currentDeviceId: state.deviceId,
@@ -262,6 +282,7 @@ export default function SetupIntroScreen() {
               autoCapitalize="none"
               autoCorrect={false}
               style={styles.input}
+              editable={!isConnecting}
             />
             <TextInput
               value={wifiUsername}
@@ -271,6 +292,7 @@ export default function SetupIntroScreen() {
               autoCapitalize="none"
               autoCorrect={false}
               style={styles.input}
+              editable={!isConnecting}
             />
             <TextInput
               value={wifiPassword}
@@ -279,6 +301,7 @@ export default function SetupIntroScreen() {
               placeholderTextColor={colors.textMuted}
               secureTextEntry
               style={styles.input}
+              editable={!isConnecting}
             />
           </View>
 

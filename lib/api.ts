@@ -1,11 +1,16 @@
 import {logger} from './logger';
 
-const DEFAULT_API_BASE = 'https://staging.commutelive.com';
+const ENV_API_BASE =
+  (process.env.API_BASE ?? process.env.EXPO_PUBLIC_API_BASE ?? '').trim();
+const DEFAULT_API_BASE = __DEV__ ? 'https://staging.commutelive.com' : '';
 
-export const API_BASE = DEFAULT_API_BASE;
+export const API_BASE = ENV_API_BASE || DEFAULT_API_BASE;
 
 const resolveUrl = (input: string) => {
   if (/^https?:\/\//i.test(input)) return input;
+  if (!API_BASE) {
+    throw new Error('API_BASE is not configured');
+  }
   const path = input.startsWith('/') ? input : `/${input}`;
   return `${API_BASE}${path}`;
 };
@@ -33,6 +38,7 @@ const formatRequestBodyForLog = (body: RequestInit['body']) => {
 const shouldLogRequest = (url: string, method: string) => {
   if (!__DEV__) return false;
   if (method === 'GET') return false;
+  if (!API_BASE) return false;
   return (
     url.startsWith(`${API_BASE}/device/`) ||
     url.startsWith(`${API_BASE}/refresh/device/`)
@@ -59,7 +65,7 @@ export const setSessionInvalidHandler = (
 };
 
 const shouldHandleWithRefresh = (url: string) => {
-  if (!url.startsWith(API_BASE)) return false;
+  if (!API_BASE || !url.startsWith(API_BASE)) return false;
   return !url.endsWith('/auth/login') && !url.endsWith('/auth/refresh') && !url.endsWith('/auth/logout');
 };
 
