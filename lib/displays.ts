@@ -73,6 +73,12 @@ export type PreviewSlotOptions = {
   maxSlots?: number;
 };
 
+type PreviewOrderSignature = {
+  provider: string;
+  routeLabel: string;
+  stopName: string;
+};
+
 const CTA_LINE_IMAGES: Record<string, number> = {
   red: require('../assets/images/cta/red.png'),
   blue: require('../assets/images/cta/blue.png'),
@@ -686,6 +692,74 @@ export const toDisplayScheduleText = (display: DevicePreset) => {
   return `${dayLabel} ${display.scheduleStart ?? '00:00'}-${display.scheduleEnd ?? '23:59'}`;
 };
 
+const normalizePreviewSignaturePart = (value: string | null | undefined) =>
+  (value ?? '').trim().replace(/\s+/g, ' ').toUpperCase();
+
+const buildExpectedPreviewOrder = (
+  display: DevicePreset,
+  stopNames: Record<string, string>,
+  maxSlots: number,
+): PreviewOrderSignature[] =>
+  (display.config.lines ?? []).slice(0, maxSlots).map(line => {
+    const directionLabel = resolvePreviewDirectionCueLabel(line);
+    const headsignLabel = resolvePreviewHeadsignLabel(line);
+    const destinationLabel = stopNames[buildStopLookupKey(line)] || line.stop || 'Select stop';
+    const previewTitle =
+      line.topText ||
+      resolvePreviewContent(line.primaryContent, destinationLabel, directionLabel, headsignLabel, line.label);
+
+    return {
+      provider: normalizePreviewSignaturePart(line.provider),
+      routeLabel: normalizePreviewSignaturePart(resolvePreviewRouteLabel(line)),
+      stopName: normalizePreviewSignaturePart(previewTitle),
+    };
+  });
+
+const buildLivePreviewOrder = (
+  liveArrivals: LiveArrivalLookup,
+  maxSlots: number,
+): PreviewOrderSignature[] =>
+  liveArrivals.orderedEntries.slice(0, maxSlots).map(entry => ({
+    provider: normalizePreviewSignaturePart(entry.provider),
+    routeLabel: normalizePreviewSignaturePart(entry.routeLabel),
+    stopName: normalizePreviewSignaturePart(entry.stopName),
+  }));
+
+const livePreviewMatchesDisplay = (
+  display: DevicePreset,
+  stopNames: Record<string, string>,
+  liveArrivals: LiveArrivalLookup | null,
+  maxSlots: number,
+) => {
+  if (!liveArrivals?.orderedEntries.length) return false;
+
+  const expected = buildExpectedPreviewOrder(display, stopNames, maxSlots);
+  const live = buildLivePreviewOrder(liveArrivals, maxSlots);
+  if (expected.length === 0 || live.length < expected.length) return false;
+
+  const duplicateKeys = new Set<string>();
+  const seenKeys = new Set<string>();
+  expected.forEach(entry => {
+    const key = `${entry.provider}|${entry.routeLabel}`;
+    if (seenKeys.has(key)) duplicateKeys.add(key);
+    seenKeys.add(key);
+  });
+
+  return expected.every((entry, index) => {
+    const liveEntry = live[index];
+    if (!liveEntry) return false;
+    if (entry.provider !== liveEntry.provider) return false;
+    if (entry.routeLabel !== liveEntry.routeLabel) return false;
+
+    const key = `${entry.provider}|${entry.routeLabel}`;
+    if (duplicateKeys.has(key)) {
+      return entry.stopName === liveEntry.stopName;
+    }
+
+    return true;
+  });
+};
+
 export const toPreviewSlots = (
   display: DevicePreset,
   accent: string,
@@ -697,11 +771,14 @@ export const toPreviewSlots = (
   const maxSlots = Number.isFinite(options.maxSlots)
     ? Math.max(1, Math.trunc(options.maxSlots ?? 0))
     : 2;
-  if (liveArrivals?.orderedEntries.length) {
+  const matchedLiveArrivals = livePreviewMatchesDisplay(display, stopNames, liveArrivals, maxSlots)
+    ? liveArrivals
+    : null;
+  if (matchedLiveArrivals?.orderedEntries.length) {
     const resolvedDisplayType = Number.isFinite(Number(display.config.displayType))
       ? Math.max(1, Math.min(5, Math.trunc(Number(display.config.displayType))))
       : 1;
-    return liveArrivals.orderedEntries.slice(0, maxSlots).map((entry, index) => {
+    return matchedLiveArrivals.orderedEntries.slice(0, maxSlots).map((entry, index) => {
       const routeLabel = entry.routeLabel ?? '';
       const provider = entry.provider ?? '';
       const lineId = routeLabel.toUpperCase();
@@ -767,9 +844,9 @@ export const toPreviewSlots = (
         : 1;
     const lineKey = buildPreviewLineKey(line);
     const liveArrival =
-      liveArrivals?.byLineKey[lineKey] ??
-      liveArrivals?.byLineKey[toBaseLineKey(lineKey)] ??
-      liveArrivals?.byIndex[index];
+      matchedLiveArrivals?.byLineKey[lineKey] ??
+      matchedLiveArrivals?.byLineKey[toBaseLineKey(lineKey)] ??
+      matchedLiveArrivals?.byIndex[index];
     const liveTimes = liveArrival?.labels ?? [];
     const liveTime = liveTimes[0];
     const liveTimeColor =
