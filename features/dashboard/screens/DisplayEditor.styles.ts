@@ -3,6 +3,17 @@ import {colors, layout, radii, spacing, typography} from '../../../theme';
 
 export const styles = StyleSheet.create({
   container: {flex: 1, backgroundColor: colors.background},
+  centeredLoadingState: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: layout.screenPadding,
+  },
+  loadingText: {
+    color: colors.textMuted,
+    fontSize: 15,
+    fontWeight: '600',
+  },
   keyboardAvoid: {flex: 1},
   scroll: {padding: layout.screenPadding, paddingBottom: 144, gap: layout.screenGap},
   topBarWrap: {

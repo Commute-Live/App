@@ -491,6 +491,7 @@ export default function DisplayManagementSection({
   }, [accountSelectionKey, selectionModeByDevice]);
   useEffect(() => {
     if (selectionMode !== 'single') return;
+    if (!selectedTargetIdsByDevice[accountSelectionKey]) return;
     const nextSelectedDeviceId = selectedTargetIds[0] ?? null;
     if (!nextSelectedDeviceId || nextSelectedDeviceId === deviceId) return;
     if (brightnessCommitTimeoutRef.current) {
@@ -506,8 +507,15 @@ export default function DisplayManagementSection({
     setPreviewTransition(null);
     setReorderVisible(false);
     setAccountSelectorVisible(false);
+    // Overwrite the destination device's stored selection so a stale entry there
+    // cannot bounce us back on the next render (A→B→A→B infinite swap).
+    setSelectedTargetIdsByDevice(prev =>
+      prev[nextSelectedDeviceId]?.[0] === nextSelectedDeviceId
+        ? prev
+        : {...prev, [nextSelectedDeviceId]: [nextSelectedDeviceId]},
+    );
     setDeviceId(nextSelectedDeviceId);
-  }, [deviceId, queryClient, selectedTargetIds, selectionMode, setDeviceId]);
+  }, [accountSelectionKey, deviceId, queryClient, selectedTargetIds, selectionMode, selectedTargetIdsByDevice, setDeviceId]);
 
   useEffect(() => {
     setBrightnessOverrides({});

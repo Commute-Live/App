@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
 import {Ionicons} from '@expo/vector-icons';
-import {useRouter} from 'expo-router';
+import {useLocalSearchParams, useRouter} from 'expo-router';
 import {useMutation, useQuery, useQueryClient} from '@tanstack/react-query';
 import {colors, spacing} from '../../../theme';
 import {AppBrandHeader} from '../../../components/AppBrandHeader';
@@ -57,12 +57,15 @@ export default function DashboardOverviewScreen() {
   const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
   const router = useRouter();
+  const params = useLocalSearchParams<{deviceId?: string}>();
   const {
-    state: {selectedCity},
+    state: {selectedCity, deviceStatus},
     setDeviceStatus,
   } = useAppState();
   const {status, user, deviceId, deviceIds, setDeviceId} = useAuth();
   const selectedDevice = useSelectedDevice();
+  const requestedDeviceId = typeof params.deviceId === 'string' ? params.deviceId : null;
+  const requestedDeviceAvailable = requestedDeviceId ? deviceIds.includes(requestedDeviceId) : false;
   const hasLinkedDevice = deviceIds.length > 0;
   const isScreenFocused = useTabRouteIsActive('/dashboard');
   const [quietHoursEnabled, setQuietHoursEnabled] = useState(false);
@@ -140,6 +143,11 @@ export default function DashboardOverviewScreen() {
       setDeviceId(deviceIds[0]);
     }
   }, [deviceId, deviceIds, setDeviceId]);
+
+  useEffect(() => {
+    if (!requestedDeviceId || !requestedDeviceAvailable || requestedDeviceId === deviceId) return;
+    setDeviceId(requestedDeviceId);
+  }, [deviceId, requestedDeviceAvailable, requestedDeviceId, setDeviceId]);
 
   useEffect(() => {
     if (!isScreenFocused) return;
@@ -329,6 +337,17 @@ export default function DashboardOverviewScreen() {
     );
   }
 
+  if (requestedDeviceId && requestedDeviceAvailable && deviceId !== requestedDeviceId) {
+    return (
+      <View style={[styles.container, {paddingTop: insets.top}]}>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={colors.accent} />
+          <Text style={styles.loadingText}>Loading display…</Text>
+        </View>
+      </View>
+    );
+  }
+
   return (
     <TabScreen
       style={[styles.container, {paddingTop: insets.top}]}
@@ -398,6 +417,24 @@ export default function DashboardOverviewScreen() {
                 </Text>
               </View>
             </View>
+            </Pressable>
+          ) : null}
+
+
+          {hasLinkedDevice && deviceStatus === 'pairedOffline' ? (
+            <Pressable
+              style={[styles.card, styles.offlineCard]}
+              onPress={() => router.push('/reconnect-help')}>
+              <View style={styles.offlineHeaderRow}>
+                <Ionicons name="cloud-offline-outline" size={20} color={colors.accent} />
+                <View style={styles.offlineHeaderCopy}>
+                  <Text style={styles.cardTitle}>Display Offline</Text>
+                  <Text style={styles.deviceSubMeta}>
+                    Your display is showing saved arrivals. Tap to reconnect Wi-Fi.
+                  </Text>
+                </View>
+                <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+              </View>
             </Pressable>
           ) : null}
 

@@ -95,10 +95,6 @@ export default function ReconnectHelpScreen() {
           </View>
         ))}
 
-        <Pressable style={styles.primaryButton} onPress={() => router.push('/dashboard')}>
-          <Text style={styles.primaryText}>I'm back online</Text>
-        </Pressable>
-
         {currentDeviceId ? (
           <>
             <Pressable
@@ -130,13 +126,20 @@ export default function ReconnectHelpScreen() {
           <Text style={styles.ghostText}>Back to status</Text>
         </Pressable>
       </ScrollView>
+
+      <View style={styles.footer}>
+        <Pressable style={styles.primaryButton} onPress={() => router.push('/dashboard')}>
+          <Text style={styles.primaryText}>I'm back online</Text>
+        </Pressable>
+      </View>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   container: {flex: 1, backgroundColor: colors.background},
-  content: {padding: layout.screenPadding, paddingBottom: spacing.xxl, gap: spacing.md},
+  content: {padding: layout.screenPadding, paddingBottom: spacing.md, gap: spacing.md},
+  footer: {padding: layout.screenPadding, paddingBottom: spacing.sm},
   heading: {color: colors.text, fontSize: typography.titleLg, fontWeight: '800'},
   subheading: {color: colors.textMuted, fontSize: typography.body, lineHeight: 18, marginBottom: spacing.sm},
   card: {

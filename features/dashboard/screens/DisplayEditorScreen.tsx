@@ -542,14 +542,23 @@ const getWizardStepDefs = ({
 
 const WIZARD_STEP_DEFAULT_COLOR = colors.accent;
 const WIZARD_STEP_ACTIVE_COLOR = colors.accent;
+const VALID_EDITOR_STEPS: EditorStep[] = ['city', 'service', 'lines', 'stops', 'format', 'done'];
+
+const resolveInitialEditorStep = (step: string | undefined, isCreateMode: boolean): EditorStep => {
+  if (typeof step === 'string' && VALID_EDITOR_STEPS.includes(step as EditorStep)) {
+    return step as EditorStep;
+  }
+  return isCreateMode ? 'city' : 'done';
+};
 
 export default function DisplayEditorScreen() {
   const queryClient = useQueryClient();
   const router = useRouter();
   const {state: appState, setPreset, setSelectedStations, setArrivals: setAppArrivals, setSelectedCity} = useAppState();
-  const params = useLocalSearchParams<{city?: string; from?: string; mode?: string; presetId?: string}>();
+  const params = useLocalSearchParams<{city?: string; from?: string; mode?: string; presetId?: string; deviceId?: string; step?: string}>();
   const initialCity = normalizeCityIdParam(params.city ?? appState.selectedCity);
   const isCreateMode = params.mode === 'new';
+  const requestedDeviceId = typeof params.deviceId === 'string' ? params.deviceId : null;
   const [editorCity, setEditorCity] = useState<CityId>(initialCity);
   const city = editorCity;
   const fallbackRoute = '/dashboard';
@@ -559,6 +568,7 @@ export default function DisplayEditorScreen() {
   const liveSupported = isLiveCitySupported(city);
   const {deviceId, deviceIds, setDeviceId} = useAuth();
   const selectedDevice = useSelectedDevice();
+  const requestedDeviceAvailable = requestedDeviceId ? deviceIds.includes(requestedDeviceId) : false;
   const hasLinkedDevice = deviceIds.length > 0;
   const [layoutSlots, setLayoutSlots] = useState<number>(DEFAULT_LAYOUT_SLOTS);
   const [displayPresetsByLine, setDisplayPresetsByLine] = useState<Record<string, number>>({});
@@ -583,7 +593,7 @@ export default function DisplayEditorScreen() {
   const [routesLoadingByStation, setRoutesLoadingByStation] = useState<Record<string, boolean>>({});
   const [arrivals, setArrivals] = useState<Arrival[]>([]);
   const [liveStatusText, setLiveStatusText] = useState('');
-  const [editorStep, setEditorStep] = useState<EditorStep>(isCreateMode ? 'city' : 'done');
+  const [editorStep, setEditorStep] = useState<EditorStep>(resolveInitialEditorStep(params.step, isCreateMode));
   // Tracks the style the user is hovering/previewing in Step 3 (format) before confirming
   const [liveStylePreview, setLiveStylePreview] = useState<number | null>(null);
   const [linesByMode, setLinesByMode] = useState<Partial<Record<ModeId, Route[]>>>({});
@@ -606,6 +616,11 @@ export default function DisplayEditorScreen() {
       delete: {type: LayoutAnimation.Types.easeInEaseOut, property: LayoutAnimation.Properties.opacity},
     });
   };
+
+  useEffect(() => {
+    if (!requestedDeviceId || !requestedDeviceAvailable || requestedDeviceId === deviceId) return;
+    setDeviceId(requestedDeviceId);
+  }, [deviceId, requestedDeviceAvailable, requestedDeviceId, setDeviceId]);
 
   const handleCitySelect = (nextCity: CityId) => {
     if (nextCity !== city) {
@@ -642,6 +657,16 @@ export default function DisplayEditorScreen() {
       hideSub.remove();
     };
   }, []);
+
+  if (requestedDeviceId && requestedDeviceAvailable && deviceId !== requestedDeviceId) {
+    return (
+      <SafeAreaView style={styles.container} edges={['top', 'left', 'right', 'bottom']}>
+        <View style={styles.centeredLoadingState}>
+          <Text style={styles.loadingText}>Loading display…</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   useEffect(() => {
     const cityChanged = previousCityRef.current !== city;

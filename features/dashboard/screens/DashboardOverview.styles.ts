@@ -197,6 +197,41 @@ export const styles = StyleSheet.create({
     gap: layout.screenGap,
   },
   noDeviceCard: {borderColor: colors.warning, borderStyle: 'dashed'},
+  offlineCard: {borderColor: colors.accent},
+  offlineHeaderRow: {flexDirection: 'row', alignItems: 'center', gap: spacing.md},
+  offlineHeaderCopy: {flex: 1, gap: spacing.xxs},
+  addDisplayCard: {
+    backgroundColor: colors.card,
+    borderRadius: radii.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: layout.cardPaddingLg,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+  },
+  addDisplayCardCopy: {
+    flex: 1,
+    gap: spacing.xxs,
+  },
+  addDisplayTitle: {
+    color: colors.text,
+    fontSize: typography.bodyLg,
+    fontWeight: '800',
+  },
+  addDisplayBody: {
+    color: colors.textMuted,
+    fontSize: typography.body,
+    lineHeight: 20,
+  },
+  addDisplayAction: {
+    width: layout.chromeSize,
+    height: layout.chromeSize,
+    borderRadius: layout.chromeSize / 2,
+    backgroundColor: colors.accent,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
 
   // ─── No-Device Card Elements ──────────────────────────────────────────────
   deviceHeaderRow: {
