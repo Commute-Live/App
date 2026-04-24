@@ -30,9 +30,9 @@ import {getStartPairingRoute} from '../../../lib/deviceSetup';
 import {queryKeys} from '../../../lib/queryKeys';
 import type {
   ModeId,
-  TransitRouteGroup as RouteGroup,
-  TransitRoutePickerItem as RoutePickerItem,
-  TransitRouteRecord as Route,
+  TransitRouteGroup as BaseRouteGroup,
+  TransitRoutePickerItem as BaseRoutePickerItem,
+  TransitRouteRecord as BaseRoute,
   UiDirection as Direction,
 } from '../../../lib/transit/frontendTypes';
 import {
@@ -69,7 +69,10 @@ import {
   ensureLineCount,
   formatRoutePickerLabel,
   getAvailableModes,
+  getDefaultSourceCityForMode,
   getModeLabel,
+  getResolvedRouteSource,
+  getRouteRawId,
   isExpressRouteBadge,
   isLiveCitySupported,
   isNycBusBadge,
@@ -85,11 +88,9 @@ import {
   normalizeMode,
   normalizePrimaryContent,
   normalizeSavedStationId,
-  resolveSavedRouteId,
   normalizeSecondaryContent,
   prepareRouteEntriesForPicker,
-  resolveBackendProvider,
-  resolveBackendProviderMode,
+  resolveSavedRouteId,
   resolveDisplayContent,
   resolveSelectedStationForLine,
   routeLookupKey,
@@ -98,11 +99,21 @@ import {
 } from './DashboardEditor.helpers';
 import {styles} from './DisplayEditor.styles';
 
-type Station = {id: string; name: string; area: string; lines: TransitStationLine[]};
+type Station = {id: string; rawId?: string; sourceCity?: CityId; name: string; area: string; lines: TransitStationLine[]};
+type Route = BaseRoute & {
+  rawId?: string;
+  sourceCity?: CityId;
+  sourceMode?: ModeId;
+  backendProvider?: string;
+  providerMode?: string;
+};
+type RoutePickerItem = Omit<BaseRoutePickerItem, 'routes'> & {routes: Route[]};
+type RouteGroup = Omit<BaseRouteGroup, 'routes'> & {routes: RoutePickerItem[]};
 type Arrival = {lineId: string; minutes: number | null; status: 'GOOD' | 'DELAYS'; destination: string | null};
 type LinePick = {
   id: string;
   mode: ModeId;
+  sourceCity?: CityId;
   stationId: string;
   savedStopName?: string;
   routeId: string;
@@ -929,14 +940,22 @@ export default function DisplayEditorScreen() {
         }
         if (!sourceDisplay || cancelled) return;
 
+        const savedConfigCity = normalizeCityIdParam(
+          typeof sourceDisplay?.config?.city === 'string' ? sourceDisplay.config.city : undefined,
+        );
+        if (!cancelled && savedConfigCity !== city) {
+          setEditorCity(savedConfigCity);
+        }
+
         const savedLines: Array<any> = Array.isArray(sourceDisplay?.config?.lines) ? sourceDisplay.config.lines : [];
         const savedDisplayType = Number(sourceDisplay?.config?.displayType);
         const fallbackDisplayPreset = Number.isFinite(savedDisplayType)
           ? getDisplayPresetFromPersistedType(Math.trunc(savedDisplayType))
           : DEFAULT_DISPLAY_PRESET;
-        const citySavedLines = savedLines.filter((saved: any) => cityModeFromSavedLine(saved)?.city === city);
+        const effectiveCity = savedConfigCity ?? city;
+        const citySavedLines = savedLines.filter((saved: any) => cityModeFromSavedLine(saved)?.city === effectiveCity || savedConfigCity === effectiveCity);
         const nextLayoutSlots = Math.max(1, Math.min(MAX_LAYOUT_SLOTS, citySavedLines.length || 1));
-        let nextLines = ensureLineCount([], city, nextLayoutSlots, {}, {});
+        let nextLines = ensureLineCount([], effectiveCity, nextLayoutSlots, {}, {});
 
         setPresetName(typeof sourceDisplay.name === 'string' && sourceDisplay.name.trim().length > 0 ? sourceDisplay.name : 'Preset 1');
         setDisplayMetadata({
@@ -960,7 +979,7 @@ export default function DisplayEditorScreen() {
             const mode: ModeId = mapping?.mode ?? 'train';
             const normalizedSavedStop = typeof saved.stop === 'string' ? saved.stop.trim().toUpperCase() : '';
             const dir: Direction = deserializeUiDirection(
-              city,
+              effectiveCity,
               mode,
               typeof saved.direction === 'string' ? saved.direction : undefined,
               normalizedSavedStop,
@@ -968,6 +987,7 @@ export default function DisplayEditorScreen() {
             return {
               id: `line-${i + 1}`,
               mode,
+              sourceCity: mapping?.city ?? effectiveCity,
               stationId: normalizeSavedStationId(saved.provider, normalizedSavedStop),
               savedStopName: typeof saved.stopName === 'string' ? saved.stopName.trim() : '',
               routeId: resolveSavedRouteId(saved),
@@ -996,7 +1016,7 @@ export default function DisplayEditorScreen() {
               ),
             };
           });
-          nextLines = ensureLineCount(restoredLines, city, nextLayoutSlots, {}, {});
+          nextLines = ensureLineCount(restoredLines, effectiveCity, nextLayoutSlots, {}, {});
         }
 
         if (!cancelled) {
@@ -1073,13 +1093,14 @@ export default function DisplayEditorScreen() {
     const pollLiveArrivals = async () => {
       const updates = await Promise.allSettled(
         activeLiveSelections.map(async line => {
+          const directionCity = line.sourceCity ?? city;
           const liveArrival = await queryClient.fetchQuery({
             queryKey: queryKeys.transitArrivalsForSelection(
               city,
               line.mode,
               line.stationId,
               line.routeId,
-              serializeUiDirection(city, line.mode, line.direction),
+              serializeUiDirection(directionCity, line.mode, line.direction),
             ),
             queryFn: () => loadArrivalForSelection(city, line),
           });
@@ -1187,9 +1208,10 @@ export default function DisplayEditorScreen() {
         const route =
           (routesByStation[routeLookupKey(normalizedMode, line.stationId)] ?? []).find(item => item.id === line.routeId) ??
           (linesByMode[normalizedMode] ?? []).find(item => item.id === line.routeId);
-        const direction = serializeUiDirection(city, line.mode, line.direction).trim();
-        const provider = resolveBackendProvider(city, line.mode);
-        const providerMode = resolveBackendProviderMode(city, line.mode);
+        const routeSource = getResolvedRouteSource(route, city, normalizedMode);
+        const direction = serializeUiDirection(routeSource.city, routeSource.mode, line.direction).trim();
+        const provider = routeSource.backendProvider;
+        const providerMode = routeSource.providerMode;
         const selectedPreset = displayPresetsByLine[line.id] ?? inferDisplayPreset(line);
         const presetBehavior = getPresetBehavior(selectedPreset);
         const primaryContent = line.label.trim().length > 0 ? 'custom' : presetBehavior.primaryContent;
@@ -1197,10 +1219,11 @@ export default function DisplayEditorScreen() {
           presetBehavior.supportsBottomCustom && line.secondaryLabel.trim().length > 0
             ? 'custom'
             : presetBehavior.secondaryContent;
+        const rawRouteId = getRouteRawId(line.routeId);
         const persistedRouteId =
-          city === 'new-jersey' && normalizedMode === 'train'
-            ? route?.shortName?.trim() || line.routeId
-            : line.routeId;
+          routeSource.city === 'new-jersey' && routeSource.mode === 'train'
+            ? route?.shortName?.trim() || rawRouteId
+            : rawRouteId;
         const selectedPattern = getSelectedPatternForLine(route, line);
 
         return {
@@ -1210,7 +1233,7 @@ export default function DisplayEditorScreen() {
           providerMode,
           line: persistedRouteId,
           shortName: route?.shortName ?? undefined,
-          stop: line.stationId,
+          stop: station?.rawId ?? line.stationId,
           stopName: station?.name ?? undefined,
           headsign0: route?.headsign0 ?? undefined,
           headsign1: route?.headsign1 ?? undefined,
@@ -1236,6 +1259,7 @@ export default function DisplayEditorScreen() {
       scheduleEnd: null,
       scheduleDays: [],
       config: {
+        city,
         brightness: displayMetadata.brightness,
         displayType: getPersistedDisplayType(displayPresetsByLine['line-1'] ?? DEFAULT_DISPLAY_PRESET),
         scrolling: displayMetadata.scrolling,
@@ -1687,18 +1711,22 @@ export default function DisplayEditorScreen() {
         const previewSubLineColor =
           displayPreset === 4 || displayPreset === 5 || displayPreset === 6 ? colors.highlight : undefined;
 
+        const routeSource = getResolvedRouteSource(route, line.sourceCity ?? city, safeMode);
+        const displayCity = routeSource.city;
+
         const badgeShape: Display3DSlot['badgeShape'] =
-          city === 'new-york' && safeMode === 'train'
+          displayCity === 'new-york' && safeMode === 'train'
             ? 'circle'
-            : city === 'chicago' && safeMode === 'train'
+            : displayCity === 'chicago' && safeMode === 'train'
             ? 'train'
             : 'pill';
 
 
         const resolvedRouteId = line.routeId ?? route?.id ?? '?';
+        const rawResolvedRouteId = getRouteRawId(resolvedRouteId);
         let providerColor: {color: string; textColor: string} | null = null;
         try {
-          providerColor = resolveProviderLineColor(resolveBackendProvider(city, safeMode), resolvedRouteId);
+          providerColor = resolveProviderLineColor(routeSource.backendProvider, rawResolvedRouteId);
         } catch {
           // unsupported city/mode — no override
         }
@@ -1707,14 +1735,14 @@ export default function DisplayEditorScreen() {
           color: route?.color ?? providerColor?.color ?? colors.border,
           textColor: route?.textColor || providerColor?.textColor || DEFAULT_TEXT_COLOR,
           routeLabel: getLocalRouteBadgeLabel(
-            city,
+            displayCity,
             safeMode,
-            resolvedRouteId,
+            rawResolvedRouteId,
             route?.label ?? line.routeId ?? '?',
             route?.shortName,
           ),
           badgeShape,
-          imageSource: city === 'chicago' && safeMode === 'train' && line.routeId
+          imageSource: displayCity === 'chicago' && safeMode === 'train' && line.routeId
             ? getCtaLineImage(line.routeId, route?.label ?? line.routeId)
             : city === 'chicago' && safeMode === 'bus'
               ? require('../../../assets/images/cta/bus.png')
@@ -1975,12 +2003,21 @@ export default function DisplayEditorScreen() {
           <Animated.View style={[stepAnimatedStyle, styles.linePickerFullScreen]}>
             <ServicePickerStep
               city={city}
-              selectedMode={normalizeMode(city, activeWizardLine.mode)}
+              selectedServiceId={`${activeWizardLine.sourceCity ?? getDefaultSourceCityForMode(city, normalizeMode(city, activeWizardLine.mode))}-${normalizeMode(city, activeWizardLine.mode)}`}
               hasLinkedDevice={hasLinkedDevice}
               liveSupported={liveSupported}
-              onSelectMode={mode => {
-                if (normalizeMode(city, activeWizardLine.mode) !== mode) {
-                  updateLine(activeWizardLine.id, {mode, stationId: '', savedStopName: '', routeId: ''});
+              onSelectService={service => {
+                const activeMode = normalizeMode(city, activeWizardLine.mode);
+                const activeSourceCity = activeWizardLine.sourceCity ?? getDefaultSourceCityForMode(city, activeMode);
+                if (activeMode !== service.mode || activeSourceCity !== service.city) {
+                  updateLine(activeWizardLine.id, {
+                    mode: service.mode,
+                    sourceCity: service.city,
+                    stationId: '',
+                    savedStopName: '',
+                    routeId: '',
+                    patternId: '',
+                  });
                 }
                 setEditorStep('lines');
               }}
@@ -1993,8 +2030,8 @@ export default function DisplayEditorScreen() {
         {editorStep === 'stops' && selectedLine ? (
           <Animated.View style={[stepAnimatedStyle, styles.stopPickerFullScreen]}>
             <StopPickerStep
-              city={city}
-              selectedMode={normalizeMode(city, selectedLine.mode)}
+              city={selectedLine.sourceCity ?? city}
+              selectedMode={normalizeMode(selectedLine.sourceCity ?? city, selectedLine.mode)}
               selectedRoute={selectedRouteForEditor}
               stations={selectedStationsForRoute}
               loading={selectedStationsLoading}
@@ -2019,8 +2056,9 @@ export default function DisplayEditorScreen() {
         {editorStep === 'lines' && activeWizardLine ? (
           <Animated.View style={[stepAnimatedStyle, styles.linePickerFullScreen]}>
             <LinePickerStep
-              city={city}
-              selectedMode={normalizeMode(city, activeWizardLine.mode)}
+              city={activeWizardLine.sourceCity ?? city}
+              selectedMode={normalizeMode(activeWizardLine.sourceCity ?? city, activeWizardLine.mode)}
+              selectedSourceCity={activeWizardLine.sourceCity ?? getDefaultSourceCityForMode(city, normalizeMode(city, activeWizardLine.mode))}
               linesByMode={linesByMode}
               linesLoadingByMode={linesLoadingByMode}
               selectedRouteId={activeWizardLine.routeId}
@@ -2033,12 +2071,13 @@ export default function DisplayEditorScreen() {
                 const selectedPattern =
                   selectedRoute?.patterns?.find(pattern => pattern.id === patternId)
                   ?? getDefaultPatternForRoute(selectedRoute);
+                const sourceCity = activeWizardLine.sourceCity ?? getDefaultSourceCityForMode(city, mode);
                 updateLine(activeWizardLine.id, {
                   routeId,
                   stationId: '',
                   savedStopName: '',
                   patternId: selectedPattern?.id ?? '',
-                  direction: selectedPattern?.uiKey ?? getDefaultUiDirection(city, mode, selectedRoute),
+                  direction: selectedPattern?.uiKey ?? getDefaultUiDirection(sourceCity, mode, selectedRoute),
                 });
                 setEditorStep('stops');
               }}
@@ -2581,20 +2620,20 @@ function CityPickerStep({
 
 function ServicePickerStep({
   city,
-  selectedMode,
+  selectedServiceId,
   hasLinkedDevice,
   liveSupported,
-  onSelectMode,
+  onSelectService,
   onAddDevice,
 }: {
   city: CityId;
-  selectedMode: ModeId;
+  selectedServiceId: string;
   hasLinkedDevice: boolean;
   liveSupported: boolean;
-  onSelectMode: (mode: ModeId) => void;
+  onSelectService: (service: ServiceOption) => void;
   onAddDevice: () => void;
 }) {
-  const modeOptions = getAvailableModes(city);
+  const serviceOptions = getServiceOptions(city);
 
   return (
     <View style={[styles.stepContainer, styles.linePickerStepFull]}>
@@ -2620,24 +2659,24 @@ function ServicePickerStep({
       </View>
 
       <View style={styles.servicePickerList}>
-        {modeOptions.map(mode => {
-          const active = selectedMode === mode;
-          const accentColor = CITY_MODE_COLORS[city]?.[mode] ?? colors.accent;
+        {serviceOptions.map(service => {
+          const active = selectedServiceId === service.id;
+          const accentColor = CITY_MODE_COLORS[service.city]?.[service.mode] ?? CITY_MODE_COLORS[city]?.[service.mode] ?? colors.accent;
 
           return (
             <Pressable
-              key={mode}
+              key={service.id}
               style={[styles.servicePickerCard, active && styles.servicePickerCardActive]}
-              onPress={() => onSelectMode(mode)}>
+              onPress={() => onSelectService(service)}>
               <View style={[styles.servicePickerAccent, {backgroundColor: accentColor}]} />
               <View style={styles.servicePickerBody}>
                 <View style={styles.servicePickerIdentity}>
                   <View style={styles.servicePickerCopy}>
                     <Text style={[styles.servicePickerTitle, active && styles.servicePickerTitleActive]}>
-                      {getModeLabel(city, mode)}
+                      {service.title}
                     </Text>
                     <Text style={styles.servicePickerDescription}>
-                      {getServiceDescription(city, mode)}
+                      {service.description}
                     </Text>
                   </View>
                 </View>
@@ -3186,6 +3225,52 @@ const CITY_MODE_COLORS: Partial<Record<CityId, Partial<Record<ModeId, string>>>>
     train: '#0039A6',
     bus: '#0039A6',
   },
+  'new-york-new-jersey': {
+    train: '#C4651A',
+    bus: '#0039A6',
+    lirr: '#808183',
+    mnr: '#6F7D93',
+  },
+  'new-jersey-philadelphia': {
+    train: '#005DAA',
+    bus: '#17844B',
+    trolley: '#6D3FA9',
+  },
+};
+
+type ServiceOption = {
+  id: string;
+  city: CityId;
+  mode: ModeId;
+  title: string;
+  description: string;
+};
+
+const getServiceOptions = (city: CityId): ServiceOption[] => {
+  if (city === 'new-york-new-jersey') {
+    return [
+      {id: 'new-york-train', city: 'new-york', mode: 'train', title: 'NY Subway', description: getServiceDescription('new-york', 'train')},
+      {id: 'new-york-bus', city: 'new-york', mode: 'bus', title: getModeLabel('new-york', 'bus'), description: getServiceDescription('new-york', 'bus')},
+      {id: 'new-york-lirr', city: 'new-york', mode: 'lirr', title: getModeLabel('new-york', 'lirr'), description: getServiceDescription('new-york', 'lirr')},
+      {id: 'new-york-mnr', city: 'new-york', mode: 'mnr', title: getModeLabel('new-york', 'mnr'), description: getServiceDescription('new-york', 'mnr')},
+      {id: 'new-jersey-train', city: 'new-jersey', mode: 'train', title: 'NJ Transit Rail', description: getServiceDescription('new-jersey', 'train')},
+    ];
+  }
+  if (city === 'new-jersey-philadelphia') {
+    return [
+      {id: 'new-jersey-train', city: 'new-jersey', mode: 'train', title: 'NJ Transit Rail', description: getServiceDescription('new-jersey', 'train')},
+      {id: 'philadelphia-train', city: 'philadelphia', mode: 'train', title: getModeLabel('philadelphia', 'train'), description: getServiceDescription('philadelphia', 'train')},
+      {id: 'philadelphia-bus', city: 'philadelphia', mode: 'bus', title: getModeLabel('philadelphia', 'bus'), description: getServiceDescription('philadelphia', 'bus')},
+      {id: 'philadelphia-trolley', city: 'philadelphia', mode: 'trolley', title: getModeLabel('philadelphia', 'trolley'), description: getServiceDescription('philadelphia', 'trolley')},
+    ];
+  }
+  return getAvailableModes(city).map(mode => ({
+    id: `${city}-${mode}`,
+    city,
+    mode,
+    title: getModeLabel(city, mode),
+    description: getServiceDescription(city, mode),
+  }));
 };
 
 const getServiceDescription = (city: CityId, mode: ModeId) => {
@@ -3308,6 +3393,7 @@ const getBostonRouteCardSubtitle = (mode: ModeId, route: RoutePickerItem) => {
 function LinePickerStep({
   city,
   selectedMode,
+  selectedSourceCity,
   linesByMode,
   linesLoadingByMode,
   selectedRouteId,
@@ -3319,6 +3405,7 @@ function LinePickerStep({
 }: {
   city: CityId;
   selectedMode: ModeId;
+  selectedSourceCity: CityId;
   linesByMode: Partial<Record<ModeId, Route[]>>;
   linesLoadingByMode: Partial<Record<ModeId, boolean>>;
   selectedRouteId: string;
@@ -3328,7 +3415,11 @@ function LinePickerStep({
   onSelectLine: (routeId: string, patternId?: string) => void;
   onAddDevice: () => void;
 }) {
-  const allRoutes = useMemo(() => linesByMode[selectedMode] ?? [], [linesByMode, selectedMode]);
+  const allRoutes = useMemo(
+    () =>
+      (linesByMode[selectedMode] ?? []).filter(route => !route.sourceCity || route.sourceCity === selectedSourceCity),
+    [linesByMode, selectedMode, selectedSourceCity],
+  );
   const isLoading = !!linesLoadingByMode[selectedMode];
   const [lineSearch, setLineSearch] = useState('');
   const [expandedPatternRouteId, setExpandedPatternRouteId] = useState<string | null>(
@@ -3339,19 +3430,20 @@ function LinePickerStep({
   );
   const pulseAnims = useRef<Record<string, Animated.Value>>({}).current;
 
-  const isBusGrouped = selectedMode === 'bus' && (city === 'new-york' || city === 'boston');
-  const isNycSubwayGrid = city === 'new-york' && selectedMode === 'train';
+  const displayCity = selectedSourceCity ?? city;
+  const isBusGrouped = selectedMode === 'bus' && (displayCity === 'new-york' || displayCity === 'boston');
+  const isNycSubwayGrid = displayCity === 'new-york' && selectedMode === 'train';
   const isBostonRouteCardMode =
-    city === 'boston' && (selectedMode === 'train' || selectedMode === 'commuter-rail');
-  const isChicagoBusCardMode = city === 'chicago' && selectedMode === 'bus';
-  const isChicagoTrainListMode = city === 'chicago' && selectedMode === 'train';
+    displayCity === 'boston' && (selectedMode === 'train' || selectedMode === 'commuter-rail');
+  const isChicagoBusCardMode = displayCity === 'chicago' && selectedMode === 'bus';
+  const isChicagoTrainListMode = displayCity === 'chicago' && selectedMode === 'train';
   const isWidePillMode =
-    (city === 'new-jersey' && selectedMode === 'train');
+    (displayCity === 'new-jersey' && selectedMode === 'train');
   const isBranchListMode =
     selectedMode === 'lirr' ||
     selectedMode === 'mnr' ||
-    (city === 'philadelphia' && selectedMode === 'train') ||
-    (city === 'new-jersey' && selectedMode === 'train');
+    (displayCity === 'philadelphia' && selectedMode === 'train') ||
+    (displayCity === 'new-jersey' && selectedMode === 'train');
 
   const toggleGroup = (key: string) => {
     setCollapsedGroups(prev => {
@@ -3371,17 +3463,17 @@ function LinePickerStep({
       : allRoutes.filter(r =>
       r.label.toLowerCase().includes(term) || r.id.toLowerCase().includes(term),
       );
-    return prepareRouteEntriesForPicker(city, selectedMode, filtered);
-  }, [allRoutes, city, lineSearch, selectedMode]);
+    return prepareRouteEntriesForPicker(displayCity, selectedMode, filtered);
+  }, [allRoutes, displayCity, lineSearch, selectedMode]);
   const isSearchingLines = lineSearch.trim().length > 0;
 
-  const routeGroups = useMemo(() => buildRouteGroups(city, selectedMode, routes), [city, routes, selectedMode]);
+  const routeGroups = useMemo(() => buildRouteGroups(displayCity, selectedMode, routes), [displayCity, routes, selectedMode]);
 
   // Reset search and collapse groups when mode changes
   useEffect(() => {
     setLineSearch('');
-    setCollapsedGroups(new Set(getDefaultCollapsedLineGroupKeys(city, selectedMode)));
-  }, [city, selectedMode]);
+    setCollapsedGroups(new Set(getDefaultCollapsedLineGroupKeys(displayCity, selectedMode)));
+  }, [displayCity, selectedMode]);
 
   useEffect(() => {
     if (!isChicagoTrainListMode) {
@@ -3628,7 +3720,8 @@ function LinePickerStep({
                   <View style={styles.bostonRouteCardList}>
                     {group.routes.map(route => {
                       const isSelected = route.routes.some(item => item.id === selectedRouteId);
-                      const routeBadgeLabel = getLocalRouteBadgeLabel(city, selectedMode, route.id, route.label, route.shortName);
+                      const routeSourceCity = (route.routes[0] as Route | undefined)?.sourceCity ?? displayCity;
+                      const routeBadgeLabel = getLocalRouteBadgeLabel(routeSourceCity, selectedMode, getRouteRawId(route.id), route.label, route.shortName);
                       const title = getBostonRouteCardTitle(selectedMode, route);
                       const subtitle = getBostonRouteCardSubtitle(selectedMode, route);
                       const anim = getPulseAnim(route.id);
@@ -3685,7 +3778,8 @@ function LinePickerStep({
                   <View style={styles.chicagoBusList}>
                     {group.routes.map((route, idx) => {
                       const isSelected = route.routes.some(item => item.id === selectedRouteId);
-                      const routeBadgeLabel = getLocalRouteBadgeLabel(city, selectedMode, route.id, route.label, route.shortName);
+                      const routeSourceCity = (route.routes[0] as Route | undefined)?.sourceCity ?? displayCity;
+                      const routeBadgeLabel = getLocalRouteBadgeLabel(routeSourceCity, selectedMode, getRouteRawId(route.id), route.label, route.shortName);
                       const anim = getPulseAnim(route.id);
                       const accentColor = route.color ?? colors.textTertiary;
                       return (
@@ -3734,7 +3828,8 @@ function LinePickerStep({
                       const isChicagoTrainBadge = city === 'chicago' && selectedMode === 'train';
                       const isBostonWideBadge = city === 'boston' && selectedMode === 'train';
                       const isCommuterRailBadge = false;
-                      const routeBadgeLabel = getLocalRouteBadgeLabel(city, selectedMode, route.id, route.label, route.shortName);
+                      const routeSourceCity = (route.routes[0] as Route | undefined)?.sourceCity ?? displayCity;
+                      const routeBadgeLabel = getLocalRouteBadgeLabel(routeSourceCity, selectedMode, getRouteRawId(route.id), route.label, route.shortName);
                       const isExpress = !isBusBadge && !isChicagoBusBadge && isExpressRouteBadge(city, selectedMode, route);
                       const useCompactBadgeText = (isBusBadge || isChicagoBusBadge) && routeBadgeLabel.length >= 5;
                       const shouldAutoFitBadgeText = isBusBadge || isChicagoBusBadge || isChicagoTrainBadge || isBostonWideBadge || isCommuterRailBadge || isExpress;

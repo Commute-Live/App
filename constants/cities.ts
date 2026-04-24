@@ -1,4 +1,11 @@
-export type CityId = 'new-york' | 'philadelphia' | 'boston' | 'chicago' | 'new-jersey';
+export type CityId =
+  | 'new-york'
+  | 'philadelphia'
+  | 'boston'
+  | 'chicago'
+  | 'new-jersey'
+  | 'new-york-new-jersey'
+  | 'new-jersey-philadelphia';
 
 export type CityOption = {
   id: CityId;
@@ -49,6 +56,22 @@ export const CITY_OPTIONS: CityOption[] = [
     agencyCode: 'NJT',
     agencyName: 'NJ Transit',
     description: 'NJ Transit rail across all corridors',
+  },
+  {
+    id: 'new-york-new-jersey',
+    label: 'New York + NJ',
+    shortLabel: 'NY + NJ',
+    agencyCode: 'MTA + NJT',
+    agencyName: 'MTA + NJ Transit',
+    description: 'Combined subway, commuter rail, and NJ Transit rail selection',
+  },
+  {
+    id: 'new-jersey-philadelphia',
+    label: 'NJ + Philly',
+    shortLabel: 'NJ + PHL',
+    agencyCode: 'NJT + SEPTA',
+    agencyName: 'NJ Transit + SEPTA',
+    description: 'Combined NJ Transit and SEPTA Regional Rail selection',
   },
 ];
 
@@ -105,10 +128,32 @@ export const CITY_BRANDS: Record<
     accent: '#8F5A31',
     accentSoft: '#E6D3C1',
   },
+  'new-york-new-jersey': {
+    badgeBg: '#1E335F',
+    badgeBorder: '#2E4D8A',
+    badgeText: '#F7F2EB',
+    accent: '#B86A32',
+    accentSoft: '#E8D7C7',
+  },
+  'new-jersey-philadelphia': {
+    badgeBg: '#4B2E24',
+    badgeBorder: '#6A4334',
+    badgeText: '#F7F2EB',
+    accent: '#C16A3B',
+    accentSoft: '#ECD8CB',
+  },
 };
 
 export function isCityId(value: string | undefined | null): value is CityId {
-  return value === 'new-york' || value === 'philadelphia' || value === 'boston' || value === 'chicago' || value === 'new-jersey';
+  return (
+    value === 'new-york'
+    || value === 'philadelphia'
+    || value === 'boston'
+    || value === 'chicago'
+    || value === 'new-jersey'
+    || value === 'new-york-new-jersey'
+    || value === 'new-jersey-philadelphia'
+  );
 }
 
 export function normalizeCityId(value: string | undefined | null, fallback: CityId = 'new-york'): CityId {

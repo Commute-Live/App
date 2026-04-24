@@ -29,7 +29,7 @@ import {useTabRouteIsActive} from '../../../components/TabScreen';
 import {useSelectedDevice} from '../../../hooks/useSelectedDevice';
 import {useUserDevices} from '../../../hooks/useUserDevices';
 import DashboardPreviewSection from '../components/DashboardPreviewSection';
-import {CITY_BRANDS, CITY_LABELS} from '../../../constants/cities';
+import {CITY_BRANDS, CITY_LABELS, normalizeCityId} from '../../../constants/cities';
 import {useAppState} from '../../../state/appState';
 import {useAuth} from '../../../state/authProvider';
 import {
@@ -506,7 +506,13 @@ export default function DisplayManagementSection({
   const visibleDisplays = sortedDisplays;
   const safeIndex = visibleDisplays.length > 0 ? Math.min(carouselIndex, visibleDisplays.length - 1) : 0;
   const currentDisplay = visibleDisplays[safeIndex] ?? null;
-  const currentDisplayCity = providerToCity(currentDisplay?.config.lines?.[0]?.provider ?? null) ?? selectedCity;
+  const savedConfigCity =
+    typeof (currentDisplay?.config as {city?: string} | undefined)?.city === 'string'
+      ? (currentDisplay?.config as {city?: string}).city
+      : undefined;
+  const currentDisplayCity = normalizeCityId(
+    savedConfigCity ?? providerToCity(currentDisplay?.config.lines?.[0]?.provider ?? null) ?? selectedCity,
+  );
   const currentBrightness = currentDisplay
     ? brightnessOverrides[currentDisplay.presetId] ?? currentDisplay.config.brightness ?? 60
     : 60;

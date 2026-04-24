@@ -18,18 +18,36 @@ import {
 } from '../../../lib/transit/registry';
 import {formatLocalRoutePickerLabel, getDefaultUiDirection, getLocalDirectionOptions, getLocalDirectionRequestId, getLocalModeLabel, inferMbtaMode} from '../../../lib/transitUi';
 import {colors} from '../../../theme';
-import type {DisplayContent, DisplayFormat, TransitArrival, TransitStationLine, TransitUiMode} from '../../../types/transit';
+import type {DisplayContent, DisplayFormat, TransitArrival, TransitCity, TransitStationLine, TransitUiMode} from '../../../types/transit';
 
 const CTA_BUS_APP_COLOR = '#C97A46';
 const CTA_BUS_APP_TEXT_COLOR = '#FFFFFF';
 
-type Station = {id: string; name: string; area: string; lines: TransitStationLine[]};
+type SourceCityId = CityId;
+type CompositeCityId = Extract<CityId, 'new-york-new-jersey' | 'new-jersey-philadelphia'>;
+type CompositeSource = {city: SourceCityId; mode: ModeId};
+type Station = {
+  id: string;
+  rawId?: string;
+  name: string;
+  area: string;
+  lines: TransitStationLine[];
+  sourceCity?: SourceCityId;
+  sourceMode?: ModeId;
+};
 type Direction = UiDirection;
-type Route = TransitRouteRecord;
+type Route = TransitRouteRecord & {
+  rawId?: string;
+  sourceCity?: SourceCityId;
+  sourceMode?: ModeId;
+  backendProvider?: string;
+  providerMode?: string;
+};
 type Arrival = {lineId: string; minutes: number | null; status: 'GOOD' | 'DELAYS'; destination: string | null};
 type LinePick = {
   id: string;
   mode: ModeId;
+  sourceCity?: CityId;
   stationId: string;
   savedStopName?: string;
   routeId: string;
@@ -56,6 +74,27 @@ const MIN_NEXT_STOPS = 1;
 const MAX_NEXT_STOPS = 5;
 const TIME_OPTIONS = ['00:00', '05:00', '06:00', '07:00', '08:00', '09:00', '10:00', '17:00', '18:00', '20:00', '22:00', '23:00'];
 
+const COMPOSITE_ID_SEPARATOR = '|';
+const COMPOSITE_CITY_SOURCES: Record<CompositeCityId, Partial<Record<ModeId, CompositeSource[]>>> = {
+  'new-york-new-jersey': {
+    train: [
+      {city: 'new-york', mode: 'train'},
+      {city: 'new-jersey', mode: 'train'},
+    ],
+    bus: [{city: 'new-york', mode: 'bus'}],
+    lirr: [{city: 'new-york', mode: 'lirr'}],
+    mnr: [{city: 'new-york', mode: 'mnr'}],
+  },
+  'new-jersey-philadelphia': {
+    train: [
+      {city: 'new-jersey', mode: 'train'},
+      {city: 'philadelphia', mode: 'train'},
+    ],
+    bus: [{city: 'philadelphia', mode: 'bus'}],
+    trolley: [{city: 'philadelphia', mode: 'trolley'}],
+  },
+};
+
 const PROVIDER_MODE_TO_CITY_MODE: Record<string, {city: CityId; mode: ModeId}> = {
   'mta/subway': {city: 'new-york', mode: 'train'},
   'mta/bus': {city: 'new-york', mode: 'bus'},
@@ -81,6 +120,63 @@ const resolveBostonModeFromSavedStop = (
   stopId: string | undefined | null,
   lineId?: string | undefined | null,
 ): ModeId => inferMbtaMode(stopId, lineId);
+
+function isCompositeCity(city: CityId): city is CompositeCityId {
+  return city === 'new-york-new-jersey' || city === 'new-jersey-philadelphia';
+}
+
+function getCompositeSources(city: CityId, mode: ModeId): CompositeSource[] {
+  if (!isCompositeCity(city)) return [];
+  return COMPOSITE_CITY_SOURCES[city][mode] ?? [];
+}
+
+function encodeCompositeId(sourceCity: SourceCityId, sourceMode: ModeId, rawId: string) {
+  return [
+    encodeURIComponent(sourceCity),
+    encodeURIComponent(sourceMode),
+    encodeURIComponent(rawId),
+  ].join(COMPOSITE_ID_SEPARATOR);
+}
+
+function decodeCompositeId(value: string): {sourceCity: SourceCityId; sourceMode: ModeId; rawId: string} | null {
+  const parts = value.split(COMPOSITE_ID_SEPARATOR);
+  if (parts.length !== 3) return null;
+  const sourceCity = decodeURIComponent(parts[0]) as SourceCityId;
+  const sourceMode = decodeURIComponent(parts[1]) as ModeId;
+  const rawId = decodeURIComponent(parts[2]);
+  if (!rawId) return null;
+  return {sourceCity, sourceMode, rawId};
+}
+
+function getRouteSource(route: Pick<Route, 'sourceCity' | 'sourceMode' | 'backendProvider' | 'providerMode'> | undefined, city: CityId, mode: ModeId) {
+  if (route?.sourceCity && route?.sourceMode && route?.backendProvider && route?.providerMode) {
+    return {
+      city: route.sourceCity,
+      mode: route.sourceMode,
+      backendProvider: route.backendProvider,
+      providerMode: route.providerMode,
+    };
+  }
+
+  return {
+    city: city as SourceCityId,
+    mode,
+    backendProvider: resolveBackendProvider(city, mode),
+    providerMode: resolveBackendProviderMode(city, mode),
+  };
+}
+
+export function getResolvedRouteSource(route: Pick<Route, 'sourceCity' | 'sourceMode' | 'backendProvider' | 'providerMode'> | undefined, city: CityId, mode: ModeId) {
+  return getRouteSource(route, city, mode);
+}
+
+export function getRouteRawId(routeId: string) {
+  return decodeCompositeId(routeId)?.rawId ?? routeId;
+}
+
+export function getDefaultSourceCityForMode(city: CityId, mode: ModeId): CityId {
+  return getCompositeSources(city, mode)[0]?.city ?? city;
+}
 
 export function resolveBackendProvider(c: CityId, mode: ModeId): string {
   if (!isSupportedTransitCity(c)) {
@@ -142,14 +238,21 @@ export function normalizeCityIdParam(value: string | undefined): CityId {
 }
 
 export function isLiveCitySupported(city: CityId) {
-  return SUPPORTED_TRANSIT_CITIES.includes(city);
+  return isCompositeCity(city) || SUPPORTED_TRANSIT_CITIES.includes(city);
 }
 
 export function getAvailableModes(city: CityId): ModeId[] {
+  if (isCompositeCity(city)) {
+    return Object.keys(COMPOSITE_CITY_SOURCES[city]) as ModeId[];
+  }
   return getCityModeOrder(city) as ModeId[];
 }
 
 export function getModeLabel(city: CityId, mode: ModeId) {
+  if (isCompositeCity(city)) {
+    if (city === 'new-york-new-jersey' && mode === 'train') return 'Subway + NJ Rail';
+    if (city === 'new-jersey-philadelphia' && mode === 'train') return 'Regional Rail + NJ Rail';
+  }
   return getLocalModeLabel(city, mode);
 }
 
@@ -199,6 +302,7 @@ export function areSameLinePicks(left: LinePick[], right: LinePick[]) {
     return (
       line.id === other.id
       && line.mode === other.mode
+      && (line.sourceCity ?? '') === (other.sourceCity ?? '')
       && line.stationId === other.stationId
       && (line.savedStopName ?? '') === (other.savedStopName ?? '')
       && line.routeId === other.routeId
@@ -325,21 +429,71 @@ export async function loadStopsForLine(
   direction?: string,
   pattern?: string,
 ): Promise<Station[]> {
-  const response = await getTransitStopsForLine(city, toTransitUiMode(mode), lineId, {direction, pattern});
+  const decodedLine = decodeCompositeId(lineId);
+  if (isCompositeCity(city) && decodedLine) {
+    const response = await getTransitStopsForLine(
+      decodedLine.sourceCity as TransitCity,
+      toTransitUiMode(decodedLine.sourceMode),
+      decodedLine.rawId,
+      {direction, pattern},
+    );
+    return response.stations.map(station => ({
+      id: encodeCompositeId(decodedLine.sourceCity, decodedLine.sourceMode, station.id),
+      rawId: station.id,
+      name: station.name,
+      area: station.area ?? buildAreaFromName(station.name),
+      sourceCity: decodedLine.sourceCity,
+      sourceMode: decodedLine.sourceMode,
+      lines: station.lines.map(line => ({
+        ...line,
+        id: encodeCompositeId(decodedLine.sourceCity, decodedLine.sourceMode, line.id),
+      })),
+    }));
+  }
+
+  const response = await getTransitStopsForLine(city as TransitCity, toTransitUiMode(mode), lineId, {direction, pattern});
   return response.stations.map(station => ({
     id: station.id,
+    rawId: station.id,
     name: station.name,
     area: station.area ?? buildAreaFromName(station.name),
+    sourceCity: city as SourceCityId,
+    sourceMode: mode,
     lines: station.lines,
   }));
 }
 
 export async function loadStationsForCityMode(city: CityId, mode: ModeId): Promise<Station[]> {
-  const response = await getTransitStations(city, toTransitUiMode(mode));
+  const compositeSources = getCompositeSources(city, mode);
+  if (compositeSources.length > 0) {
+    const stationGroups = await Promise.all(
+      compositeSources.map(async source => {
+        const response = await getTransitStations(source.city as TransitCity, toTransitUiMode(source.mode));
+        return response.stations.map(station => ({
+          id: encodeCompositeId(source.city, source.mode, station.id),
+          rawId: station.id,
+          name: station.name,
+          area: station.area ?? buildAreaFromName(station.name),
+          sourceCity: source.city,
+          sourceMode: source.mode,
+          lines: station.lines.map(line => ({
+            ...line,
+            id: encodeCompositeId(source.city, source.mode, line.id),
+          })),
+        }));
+      }),
+    );
+    return sortStationsForPicker(stationGroups.flat());
+  }
+
+  const response = await getTransitStations(city as TransitCity, toTransitUiMode(mode));
   return sortStationsForPicker(response.stations.map(station => ({
     id: station.id,
+    rawId: station.id,
     name: station.name,
     area: station.area ?? buildAreaFromName(station.name),
+    sourceCity: city as SourceCityId,
+    sourceMode: mode,
     lines: station.lines,
   })));
 }
@@ -360,48 +514,73 @@ function resolveMappedRouteAppearance(city: CityId, mode: ModeId, lineId: string
   return null;
 }
 
-function resolveRouteColor(city: CityId, mode: ModeId, lineId: string, label: string | null, apiColor: string | null): string {
-  const cityModule = getTransitCityModule(city);
-  const providerId = isSupportedTransitCity(city) ? resolveBackendProviderId(city, mode) : null;
+function resolveRouteColor(
+  city: CityId,
+  mode: ModeId,
+  lineId: string,
+  label: string | null,
+  apiColor: string | null,
+  providerIdOverride?: string | null,
+  displayCityOverride?: CityId,
+  displayModeOverride?: ModeId,
+): string {
+  const displayCity = displayCityOverride ?? city;
+  const displayMode = displayModeOverride ?? mode;
+  const cityModule = getTransitCityModule(displayCity);
+  const providerId = providerIdOverride ?? (isSupportedTransitCity(displayCity) ? resolveBackendProviderId(displayCity, displayMode) : null);
   const providerAppearance = providerId
     ? resolveProviderLineColor(providerId, lineId) ?? (label ? resolveProviderLineColor(providerId, label) : null)
     : null;
-  if (city === 'philadelphia' && mode === 'train' && providerAppearance) return providerAppearance.color;
+  if (displayCity === 'philadelphia' && displayMode === 'train' && providerAppearance) return providerAppearance.color;
 
-  const appearance = cityModule?.resolveRouteAppearance?.(mode, lineId, label);
+  const appearance = cityModule?.resolveRouteAppearance?.(displayMode, lineId, label);
   if (appearance) return appearance.color;
 
-  if (city === 'chicago' && mode === 'bus') return CTA_BUS_APP_COLOR;
-  const mapped = resolveMappedRouteAppearance(city, mode, lineId, label);
+  if (displayCity === 'chicago' && displayMode === 'bus') return CTA_BUS_APP_COLOR;
+  const mapped = resolveMappedRouteAppearance(displayCity, displayMode, lineId, label);
   if (mapped) return mapped.color;
-  if (city === 'chicago' && apiColor) return apiColor;
+  if (displayCity === 'chicago' && apiColor) return apiColor;
   if (providerAppearance) return providerAppearance.color;
   if (apiColor) return apiColor;
   return lineColorFor(lineId);
 }
 
-function resolveRouteTextColor(city: CityId, mode: ModeId, lineId: string, label: string | null, apiTextColor: string | null): string {
-  const cityModule = getTransitCityModule(city);
-  const providerId = isSupportedTransitCity(city) ? resolveBackendProviderId(city, mode) : null;
+function resolveRouteTextColor(
+  city: CityId,
+  mode: ModeId,
+  lineId: string,
+  label: string | null,
+  apiTextColor: string | null,
+  providerIdOverride?: string | null,
+  displayCityOverride?: CityId,
+  displayModeOverride?: ModeId,
+): string {
+  const displayCity = displayCityOverride ?? city;
+  const displayMode = displayModeOverride ?? mode;
+  const cityModule = getTransitCityModule(displayCity);
+  const providerId = providerIdOverride ?? (isSupportedTransitCity(displayCity) ? resolveBackendProviderId(displayCity, displayMode) : null);
   const providerAppearance = providerId
     ? resolveProviderLineColor(providerId, lineId) ?? (label ? resolveProviderLineColor(providerId, label) : null)
     : null;
-  if (city === 'philadelphia' && mode === 'train' && providerAppearance) return providerAppearance.textColor;
+  if (displayCity === 'philadelphia' && displayMode === 'train' && providerAppearance) return providerAppearance.textColor;
 
-  const appearance = cityModule?.resolveRouteAppearance?.(mode, lineId, label);
+  const appearance = cityModule?.resolveRouteAppearance?.(displayMode, lineId, label);
   if (appearance) return appearance.textColor;
 
-  if (city === 'chicago' && mode === 'bus') return CTA_BUS_APP_TEXT_COLOR;
-  const mapped = resolveMappedRouteAppearance(city, mode, lineId, label);
+  if (displayCity === 'chicago' && displayMode === 'bus') return CTA_BUS_APP_TEXT_COLOR;
+  const mapped = resolveMappedRouteAppearance(displayCity, displayMode, lineId, label);
   if (mapped) return mapped.textColor;
-  if (city === 'chicago' && apiTextColor) return apiTextColor;
+  if (displayCity === 'chicago' && apiTextColor) return apiTextColor;
   if (providerAppearance) return providerAppearance.textColor;
   if (apiTextColor) return apiTextColor;
   return colors.text;
 }
 
 export function formatRoutePickerLabel(city: CityId, mode: ModeId, route: Route) {
-  return formatLocalRoutePickerLabel(city, mode, route.id, route.label);
+  const displayCity = route.sourceCity ?? city;
+  const displayMode = route.sourceMode ?? mode;
+  const displayId = route.rawId ?? route.id;
+  return formatLocalRoutePickerLabel(displayCity, displayMode, displayId, route.label);
 }
 
 export function isNycBusBadge(city: CityId, mode: ModeId) {
@@ -409,37 +588,107 @@ export function isNycBusBadge(city: CityId, mode: ModeId) {
 }
 
 export async function loadRoutesForStation(city: CityId, mode: ModeId, stopId: string): Promise<StationRouteResult> {
-  const response = await getTransitLines(city, toTransitUiMode(mode), stopId);
+  const decodedStop = decodeCompositeId(stopId);
+  if (isCompositeCity(city) && decodedStop) {
+    const response = await getTransitLines(decodedStop.sourceCity as TransitCity, toTransitUiMode(decodedStop.sourceMode), decodedStop.rawId);
+    const backendProvider = resolveBackendProvider(decodedStop.sourceCity, decodedStop.sourceMode);
+    const providerMode = resolveBackendProviderMode(decodedStop.sourceCity, decodedStop.sourceMode);
+    return {
+      stopId,
+      routes: response.lines.map(line => ({
+        id: encodeCompositeId(decodedStop.sourceCity, decodedStop.sourceMode, line.id),
+        rawId: line.id,
+        shortName: line.shortName,
+        label: line.label || line.id,
+        sortOrder: line.sortOrder,
+        color: resolveRouteColor(city, mode, line.id, line.label, line.color, backendProvider, decodedStop.sourceCity, decodedStop.sourceMode),
+        textColor: resolveRouteTextColor(city, mode, line.id, line.label, line.textColor, backendProvider, decodedStop.sourceCity, decodedStop.sourceMode),
+        headsign0: line.headsign0,
+        headsign1: line.headsign1,
+        directions: line.directions,
+        patterns: line.patterns,
+        sourceCity: decodedStop.sourceCity,
+        sourceMode: decodedStop.sourceMode,
+        backendProvider,
+        providerMode,
+      })),
+    };
+  }
+
+  const response = await getTransitLines(city as TransitCity, toTransitUiMode(mode), stopId);
+  const backendProvider = resolveBackendProvider(city, mode);
+  const providerMode = resolveBackendProviderMode(city, mode);
   return {
     stopId: response.stopId,
     routes: response.lines.map(line => ({
-    id: line.id,
-    shortName: line.shortName,
-    label: line.label || line.id,
-    sortOrder: line.sortOrder,
-    color: resolveRouteColor(city, mode, line.id, line.label, line.color),
-    textColor: resolveRouteTextColor(city, mode, line.id, line.label, line.textColor),
-    headsign0: line.headsign0,
-    headsign1: line.headsign1,
-    directions: line.directions,
-    patterns: line.patterns,
+      id: line.id,
+      rawId: line.id,
+      shortName: line.shortName,
+      label: line.label || line.id,
+      sortOrder: line.sortOrder,
+      color: resolveRouteColor(city, mode, line.id, line.label, line.color, backendProvider),
+      textColor: resolveRouteTextColor(city, mode, line.id, line.label, line.textColor, backendProvider),
+      headsign0: line.headsign0,
+      headsign1: line.headsign1,
+      directions: line.directions,
+      patterns: line.patterns,
+      sourceCity: city as SourceCityId,
+      sourceMode: mode,
+      backendProvider,
+      providerMode,
     })),
   };
 }
 
 export async function loadGlobalLinesForCityMode(city: CityId, mode: ModeId): Promise<Route[]> {
-  const response = await getGlobalTransitLines(city, toTransitUiMode(mode));
+  const compositeSources = getCompositeSources(city, mode);
+  if (compositeSources.length > 0) {
+    const groups = await Promise.all(
+      compositeSources.map(async source => {
+        const response = await getGlobalTransitLines(source.city as TransitCity, toTransitUiMode(source.mode));
+        const backendProvider = resolveBackendProvider(source.city, source.mode);
+        const providerMode = resolveBackendProviderMode(source.city, source.mode);
+        return response.lines.map(line => ({
+          id: encodeCompositeId(source.city, source.mode, line.id),
+          rawId: line.id,
+          shortName: line.shortName,
+          label: line.label || line.shortName || line.id,
+          sortOrder: line.sortOrder,
+          color: resolveRouteColor(city, mode, line.id, line.label, line.color, backendProvider, source.city, source.mode),
+          textColor: resolveRouteTextColor(city, mode, line.id, line.label, line.textColor, backendProvider, source.city, source.mode),
+          headsign0: line.headsign0,
+          headsign1: line.headsign1,
+          directions: line.directions,
+          patterns: line.patterns,
+          sourceCity: source.city,
+          sourceMode: source.mode,
+          backendProvider,
+          providerMode,
+        }));
+      }),
+    );
+    return groups.flat();
+  }
+
+  const response = await getGlobalTransitLines(city as TransitCity, toTransitUiMode(mode));
+  const backendProvider = resolveBackendProvider(city, mode);
+  const providerMode = resolveBackendProviderMode(city, mode);
   return response.lines.map(line => ({
     id: line.id,
+    rawId: line.id,
     shortName: line.shortName,
     label: line.label || line.shortName || line.id,
     sortOrder: line.sortOrder,
-    color: resolveRouteColor(city, mode, line.id, line.label, line.color),
-    textColor: resolveRouteTextColor(city, mode, line.id, line.label, line.textColor),
+    color: resolveRouteColor(city, mode, line.id, line.label, line.color, backendProvider),
+    textColor: resolveRouteTextColor(city, mode, line.id, line.label, line.textColor, backendProvider),
     headsign0: line.headsign0,
     headsign1: line.headsign1,
     directions: line.directions,
     patterns: line.patterns,
+    sourceCity: city as SourceCityId,
+    sourceMode: mode,
+    backendProvider,
+    providerMode,
   }));
 }
 
@@ -558,16 +807,22 @@ function getArrivalDirectionParam(city: CityId, line: LinePick): string | undefi
 
 export async function loadArrivalForSelection(city: CityId, line: LinePick): Promise<Omit<Arrival, 'lineId'> | null> {
   if (!line.stationId.trim() || !line.routeId.trim()) return null;
+  const decodedStation = decodeCompositeId(line.stationId);
+  const decodedRoute = decodeCompositeId(line.routeId);
+  const requestCity = decodedStation?.sourceCity ?? city;
+  const requestMode = decodedRoute?.sourceMode ?? decodedStation?.sourceMode ?? line.mode;
+  const requestStopId = decodedStation?.rawId ?? line.stationId;
+  const requestRouteId = decodedRoute?.rawId ?? line.routeId;
   const response = await getTransitArrivals(
-    city,
-    toTransitUiMode(line.mode),
-    line.stationId,
-    [line.routeId],
-    {direction: getArrivalDirectionParam(city, line)},
+    requestCity as TransitCity,
+    toTransitUiMode(requestMode),
+    requestStopId,
+    [requestRouteId],
+    {direction: getArrivalDirectionParam(requestCity, {...line, mode: requestMode})},
   );
   if (response.arrivals.length === 0) return null;
 
-  const matched = response.arrivals.filter(arrival => arrival.lineId === line.routeId);
+  const matched = response.arrivals.filter(arrival => arrival.lineId === requestRouteId);
   const candidates = matched.length > 0 ? matched : response.arrivals;
   const sorted = [...candidates].sort((a, b) => {
     const left = typeof a.minutes === 'number' ? a.minutes : Number.MAX_SAFE_INTEGER;
@@ -612,10 +867,11 @@ function newLine(
     {
       id,
       mode: safeMode,
+      sourceCity: getDefaultSourceCityForMode(city, safeMode),
       stationId: firstStation?.id ?? '',
       savedStopName: firstStation?.name ?? '',
       routeId: firstRoute?.id ?? '',
-      direction: firstPattern?.uiKey ?? getDefaultUiDirection(city, safeMode, firstRoute),
+      direction: firstPattern?.uiKey ?? getDefaultUiDirection(getDefaultSourceCityForMode(city, safeMode), safeMode, firstRoute),
       patternId: firstPattern?.id ?? '',
       scrolling: false,
       label: '',
@@ -638,6 +894,7 @@ export function normalizeLine(
   routesByStation: RoutesByStation,
 ): LinePick {
   const safeMode = normalizeMode(city, line.mode);
+  const directionCity = line.sourceCity ?? getDefaultSourceCityForMode(city, safeMode);
   const stations = stationsByMode[safeMode] ?? [];
   const station = stations.find(item => item.id === line.stationId);
   const resolvedStationId = station?.id ?? line.stationId;
@@ -655,13 +912,14 @@ export function normalizeLine(
   const resolvedPattern = patternOptions.length > 0
     ? patternOptions.find(pattern => pattern.id === line.patternId) ?? patternOptions[0]
     : undefined;
-  const directionOptions = getLocalDirectionOptions(city, safeMode, resolvedRoute ?? line.routeId);
+  const directionOptions = getLocalDirectionOptions(directionCity, safeMode, resolvedRoute ?? line.routeId);
   const resolvedDirection = resolvedPattern?.uiKey ?? (directionOptions.includes(line.direction) ? line.direction : (directionOptions[0] ?? line.direction));
   const displayFormat = normalizeDisplayFormat(line.displayFormat);
 
   return {
     ...line,
     mode: safeMode,
+    sourceCity: directionCity,
     stationId: resolvedStationId,
     savedStopName: station?.name ?? normalizeCustomLabel(line.savedStopName),
     routeId: resolvedRouteId,
