@@ -14,6 +14,10 @@ type Props = {
   mini?: boolean;
   emptyMessage?: string;
   showGlow?: boolean;
+  autoRotatePages?: boolean;
+  pageRotationIntervalMs?: number;
+  pageRotationStartMs?: number | null;
+  pageRotationBaseIndex?: number | null;
 };
 
 export default function DashboardPreviewSection({
@@ -27,6 +31,10 @@ export default function DashboardPreviewSection({
   mini,
   emptyMessage,
   showGlow = true,
+  autoRotatePages,
+  pageRotationIntervalMs,
+  pageRotationStartMs,
+  pageRotationBaseIndex,
 }: Props) {
   return (
     <View style={styles.previewSection}>
@@ -41,6 +49,10 @@ export default function DashboardPreviewSection({
         mini={mini}
         emptyMessage={emptyMessage}
         showGlow={showGlow}
+        autoRotatePages={autoRotatePages}
+        pageRotationIntervalMs={pageRotationIntervalMs}
+        pageRotationStartMs={pageRotationStartMs}
+        pageRotationBaseIndex={pageRotationBaseIndex}
       />
     </View>
   );

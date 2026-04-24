@@ -127,7 +127,7 @@ export default function DashboardOverviewScreen() {
       return online;
     },
     enabled: isScreenFocused && hasLinkedDevice && !!selectedDevice.id && status === 'authenticated',
-    refetchInterval: 30_000,
+    refetchInterval: query => (query.state.data === true ? 30_000 : 10_000),
     retry: false,
     refetchOnWindowFocus: true,
   });

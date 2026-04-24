@@ -54,6 +54,22 @@ const MIN_BRIGHTNESS = 10;
 const MAX_BRIGHTNESS = 100;
 const BRIGHTNESS_COMMIT_DELAY_MS = 1000;
 const REORDER_ROW_HEIGHT = 76;
+const PREVIEW_PAGE_ROTATION_MS = 15000;
+
+type LastCommandEvent = {
+  ts?: string | null;
+  payload?: unknown;
+  state?: {
+    receivedAt?: string | null;
+    payload?: {
+      transitPageIndex?: number;
+      transitPageCount?: number;
+      transitRotationEveryMs?: number;
+      transitLastRotationAtUptimeMs?: number;
+      uptimeMs?: number;
+    } | null;
+  } | null;
+} | null;
 
 type ManagedDisplayTarget = {
   id: string;
@@ -247,14 +263,17 @@ export default function DisplayManagementSection({
 
   const lastCommandQuery = useQuery({
     queryKey: queryKeys.lastCommand(deviceId || 'none'),
-    queryFn: async () => {
+    queryFn: async (): Promise<LastCommandEvent> => {
       if (!deviceId) return null;
       const response = await apiFetch(`/device/${deviceId}/last-command`);
       const data = await response.json().catch(() => null);
       if (!response.ok) return null;
       const event = data?.event;
-      if (!event) return null;
-      return event.payload ?? null;
+      return {
+        ts: typeof event?.ts === 'string' ? event.ts : null,
+        payload: event?.payload ?? null,
+        state: data?.state ?? null,
+      };
     },
     enabled: isScreenFocused && !!deviceId && status === 'authenticated',
     refetchInterval: 5000,
@@ -262,9 +281,35 @@ export default function DisplayManagementSection({
     refetchOnWindowFocus: false,
   });
   const liveArrivalLookup = useMemo(
-    () => getLiveArrivalLookup(lastCommandQuery.data ?? null),
-    [lastCommandQuery.data],
+    () => getLiveArrivalLookup(lastCommandQuery.data?.payload ?? null),
+    [lastCommandQuery.data?.payload],
   );
+  const livePreviewRotationStartMs = useMemo(() => {
+    const state = lastCommandQuery.data?.state;
+    const receivedAtMs =
+      typeof state?.receivedAt === 'string' ? Date.parse(state.receivedAt) : Number.NaN;
+    const uptimeMs = state?.payload?.uptimeMs;
+    const lastRotationAtUptimeMs = state?.payload?.transitLastRotationAtUptimeMs;
+    if (
+      Number.isFinite(receivedAtMs) &&
+      typeof uptimeMs === 'number' &&
+      Number.isFinite(uptimeMs) &&
+      typeof lastRotationAtUptimeMs === 'number' &&
+      Number.isFinite(lastRotationAtUptimeMs)
+    ) {
+      return receivedAtMs - Math.max(0, uptimeMs - lastRotationAtUptimeMs);
+    }
+
+    const ts = lastCommandQuery.data?.ts;
+    if (typeof ts !== 'string') return null;
+    const parsed = Date.parse(ts);
+    return Number.isFinite(parsed) ? parsed : null;
+  }, [lastCommandQuery.data?.state, lastCommandQuery.data?.ts]);
+  const livePreviewRotationBaseIndex = useMemo(() => {
+    const pageIndex = lastCommandQuery.data?.state?.payload?.transitPageIndex;
+    if (typeof pageIndex !== "number" || !Number.isFinite(pageIndex) || pageIndex < 0) return 0;
+    return Math.floor(pageIndex);
+  }, [lastCommandQuery.data?.state?.payload?.transitPageIndex]);
 
   const stopPairs = useMemo(() => {
     const pairs: {key: string; provider: string; providerMode?: string; stop: string}[] = [];
@@ -439,6 +484,7 @@ export default function DisplayManagementSection({
     () => sortDisplaysForCarousel(displays, effectiveActiveDisplayId),
     [displays, effectiveActiveDisplayId],
   );
+
   const selectedTargetIds = useMemo(() => {
     const storedSelection = selectedTargetIdsByDevice[accountSelectionKey];
     if (storedSelection && storedSelection.length > 0) {
@@ -533,15 +579,23 @@ export default function DisplayManagementSection({
   }, [isScreenFocused]);
 
   const renderDisplayPreview = useCallback(
-    (display: DevicePreset, city: typeof currentDisplayCity) => (
+    (display: DevicePreset, city: typeof currentDisplayCity) => {
+      const isLiveActivePreview = display.presetId === effectiveActiveDisplayId;
+      const livePreview = isLiveActivePreview ? liveArrivalLookup : null;
+      const previewSlotCount = isLiveActivePreview
+        ? Math.max(display.config.lines?.length ?? 0, livePreview?.orderedEntries.length ?? 0, 2)
+        : 2;
+      const previewSlots = toPreviewSlots(
+        display,
+        CITY_BRANDS[city].accent,
+        stopNames,
+        livePreview,
+        {showDirectionFallback: false, maxSlots: previewSlotCount},
+      );
+
+      return (
       <DashboardPreviewSection
-        slots={toPreviewSlots(
-          display,
-          CITY_BRANDS[city].accent,
-          stopNames,
-          display.presetId === effectiveActiveDisplayId ? liveArrivalLookup : null,
-          {showDirectionFallback: false},
-        )}
+        slots={previewSlots}
         displayType={display.config.displayType ?? Number(display.config.lines?.[0]?.displayType) ?? 1}
         onSelectSlot={() =>
           router.push({
@@ -554,9 +608,14 @@ export default function DisplayManagementSection({
         showHint={false}
         brightness={100}
         showGlow={false}
+        autoRotatePages={isLiveActivePreview}
+        pageRotationIntervalMs={PREVIEW_PAGE_ROTATION_MS}
+        pageRotationStartMs={isLiveActivePreview ? livePreviewRotationStartMs : null}
+        pageRotationBaseIndex={isLiveActivePreview ? livePreviewRotationBaseIndex : null}
       />
-    ),
-    [effectiveActiveDisplayId, liveArrivalLookup, router, stopNames],
+      );
+    },
+    [effectiveActiveDisplayId, liveArrivalLookup, livePreviewRotationBaseIndex, livePreviewRotationStartMs, router, stopNames],
   );
 
   useLayoutEffect(() => {

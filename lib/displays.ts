@@ -51,9 +51,21 @@ type LiveArrivalEntry = {
   status?: string;
 };
 
+type LivePreviewEntry = {
+  provider: string | null;
+  routeLabel: string | null;
+  stopName: string | null;
+  badgeShape?: PreviewSlot['badgeShape'];
+  badgeColor?: string | null;
+  scrolling: boolean;
+  labels: string[];
+  status?: string;
+};
+
 export type LiveArrivalLookup = {
   byLineKey: Record<string, LiveArrivalEntry>;
   byIndex: LiveArrivalEntry[];
+  orderedEntries: LivePreviewEntry[];
 };
 
 export type PreviewSlotOptions = {
@@ -400,12 +412,16 @@ const ENTRY_KEY_PATHS = {
     ['route'],
     ['routeId'],
     ['tripId'],
+    ['badge', 'text'],
+    ['badge', 'label'],
     ['line', 'id'],
     ['route', 'id'],
   ],
   stop: [
     ['stop'],
     ['stopId'],
+    ['label'],
+    ['title'],
     ['station'],
     ['stationId'],
     ['line', 'stop'],
@@ -445,6 +461,39 @@ const STATUS_PATHS = [
   ['route', 'status'],
 ] as const;
 
+const PREVIEW_ROUTE_LABEL_PATHS = [
+  ['badge', 'text'],
+  ['badge', 'label'],
+  ['line'],
+  ['lineId'],
+  ['route'],
+  ['routeId'],
+] as const;
+
+const PREVIEW_STOP_LABEL_PATHS = [
+  ['label'],
+  ['title'],
+  ['stopName'],
+  ['stationName'],
+  ['headsign'],
+] as const;
+
+const PREVIEW_BADGE_COLOR_PATHS = [
+  ['badge', 'color'],
+  ['color'],
+] as const;
+
+const PREVIEW_BADGE_SHAPE_PATHS = [
+  ['badge', 'shape'],
+  ['shape'],
+] as const;
+
+const PREVIEW_SCROLLING_PATHS = [
+  ['scrolling'],
+  ['marquee'],
+  ['scroll'],
+] as const;
+
 const CANDIDATE_ARRAY_PATHS = [
   ['lines'],
   ['arrivals'],
@@ -466,6 +515,14 @@ const readEntryField = (record: RecordValue, paths: ReadonlyArray<readonly strin
     return value;
   }
   return undefined;
+};
+
+const readBooleanField = (record: RecordValue, paths: ReadonlyArray<readonly string[]>) => {
+  for (const path of paths) {
+    const value = readPath(record, [...path]);
+    if (typeof value === 'boolean') return value;
+  }
+  return false;
 };
 
 const extractTimesFromEntry = (entry: unknown): string[] => {
@@ -509,6 +566,50 @@ const extractEntryLineKey = (entry: unknown): string | null => {
   ].join('|');
 };
 
+const extractPreviewBadgeShape = (entry: unknown): PreviewSlot['badgeShape'] | undefined => {
+  const record = asRecord(entry);
+  if (!record) return undefined;
+  const value = trimOptionalString(readEntryField(record, PREVIEW_BADGE_SHAPE_PATHS));
+  if (!value) return undefined;
+  const normalized = value.toLowerCase();
+  if (
+    normalized === 'circle' ||
+    normalized === 'pill' ||
+    normalized === 'rail' ||
+    normalized === 'bar' ||
+    normalized === 'train'
+  ) {
+    return normalized;
+  }
+  return undefined;
+};
+
+const extractLivePreviewEntry = (entry: unknown): LivePreviewEntry | null => {
+  const record = asRecord(entry);
+  if (!record) return null;
+
+  const provider = trimOptionalString(readEntryField(record, ENTRY_KEY_PATHS.provider));
+  const routeLabel = trimOptionalString(readEntryField(record, PREVIEW_ROUTE_LABEL_PATHS));
+  const stopName = trimOptionalString(readEntryField(record, PREVIEW_STOP_LABEL_PATHS));
+  const badgeColor = trimOptionalString(readEntryField(record, PREVIEW_BADGE_COLOR_PATHS));
+  const labels = extractTimesFromEntry(entry);
+  const status = extractStatusFromEntry(entry) ?? undefined;
+  const scrolling = readBooleanField(record, PREVIEW_SCROLLING_PATHS);
+
+  if (!provider && !routeLabel && !stopName && labels.length === 0) return null;
+
+  return {
+    provider,
+    routeLabel,
+    stopName,
+    badgeShape: extractPreviewBadgeShape(entry),
+    badgeColor,
+    scrolling,
+    labels,
+    status,
+  };
+};
+
 const extractStatusFromEntry = (entry: unknown) => {
   const record = asRecord(entry);
   if (!record) return null;
@@ -531,6 +632,7 @@ const isDelayedStatus = (status: string | undefined) => {
 export const getLiveArrivalLookup = (payload: unknown): LiveArrivalLookup => {
   const byLineKey: Record<string, LiveArrivalEntry> = {};
   const byIndex: LiveArrivalEntry[] = [];
+  const orderedEntries: LivePreviewEntry[] = [];
 
   let source: unknown = payload;
   if (typeof source === 'string') {
@@ -551,7 +653,7 @@ export const getLiveArrivalLookup = (payload: unknown): LiveArrivalLookup => {
       // ignore malformed nested payload string
     }
   }
-  if (!root) return {byLineKey, byIndex};
+  if (!root) return {byLineKey, byIndex, orderedEntries};
 
   for (const path of CANDIDATE_ARRAY_PATHS) {
     const entries = readPath(root, [...path]);
@@ -559,11 +661,12 @@ export const getLiveArrivalLookup = (payload: unknown): LiveArrivalLookup => {
 
     entries.forEach((entry, index) => {
       const labels = extractTimesFromEntry(entry);
-      if (labels.length === 0) return;
       const status = extractStatusFromEntry(entry) ?? undefined;
       const liveEntry: LiveArrivalEntry = {labels, status};
+      const previewEntry = extractLivePreviewEntry(entry);
 
       if (!byIndex[index]) byIndex[index] = liveEntry;
+      if (previewEntry && !orderedEntries[index]) orderedEntries[index] = previewEntry;
 
       const lineKey = extractEntryLineKey(entry);
       if (lineKey) {
@@ -574,7 +677,7 @@ export const getLiveArrivalLookup = (payload: unknown): LiveArrivalLookup => {
     });
   }
 
-  return {byLineKey, byIndex};
+  return {byLineKey, byIndex, orderedEntries: orderedEntries.filter(Boolean)};
 };
 
 export const toDisplayScheduleText = (display: DevicePreset) => {
@@ -594,6 +697,55 @@ export const toPreviewSlots = (
   const maxSlots = Number.isFinite(options.maxSlots)
     ? Math.max(1, Math.trunc(options.maxSlots ?? 0))
     : 2;
+  if (liveArrivals?.orderedEntries.length) {
+    const resolvedDisplayType = Number.isFinite(Number(display.config.displayType))
+      ? Math.max(1, Math.min(5, Math.trunc(Number(display.config.displayType))))
+      : 1;
+    return liveArrivals.orderedEntries.slice(0, maxSlots).map((entry, index) => {
+      const routeLabel = entry.routeLabel ?? '';
+      const provider = entry.provider ?? '';
+      const lineId = routeLabel.toUpperCase();
+      const city = providerToCity(provider);
+      const lineColors = city ? (CITY_LINE_COLORS[city] ?? {}) : {};
+      const providerColor =
+        provider === 'mta-bus'
+          ? {color: '#0039A6', textColor: '#FFFFFF'}
+          : resolveProviderLineColor(provider, lineId)
+            ?? lineColors[lineId]
+            ?? hashLineColor(lineId || provider || String(index));
+      const badgeShape =
+        entry.badgeShape ??
+        (provider === 'mta-subway' ? 'circle' : provider === 'cta-l' ? 'train' : 'pill');
+      const liveTime = entry.labels[0];
+      const liveTimeColor =
+        typeof liveTime === 'string' && liveTime.length > 0
+          ? isDelayedStatus(entry.status)
+            ? PREVIEW_TIME_COLOR_DELAYED
+            : isDueTimeLabel(liveTime)
+              ? PREVIEW_TIME_COLOR_DUE
+              : PREVIEW_TIME_COLOR_ONTIME
+          : undefined;
+
+      return {
+        id: `${display.presetId}-live-${index}`,
+        color: entry.badgeColor || providerColor.color,
+        textColor: badgeShape === 'circle' ? '#FFFFFF' : providerColor.textColor,
+        routeLabel,
+        badgeShape,
+        selected: false,
+        stopName: entry.stopName ?? '',
+        scrollLabel: entry.scrolling,
+        subLine:
+          resolvedDisplayType === 4 || resolvedDisplayType === 5
+            ? entry.labels.slice(1, DEFAULT_NEXT_STOPS).join(', ')
+            : undefined,
+        subLineColor: resolvedDisplayType === 4 || resolvedDisplayType === 5 ? '#E5C15A' : undefined,
+        times: liveTime || (showDirectionFallback ? '--' : '--'),
+        timesColor: liveTimeColor,
+      };
+    });
+  }
+
   return (display.config.lines ?? []).slice(0, maxSlots).map((line, index) => {
     const city = providerToCity(line.provider ?? null);
     const mode = inferUiModeFromProvider(line.provider, line.stop, line.line, line.providerMode);

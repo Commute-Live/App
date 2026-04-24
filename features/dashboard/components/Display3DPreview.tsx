@@ -1,4 +1,4 @@
-import React, {useEffect, useRef, useState} from 'react';
+import React, {useEffect, useLayoutEffect, useMemo, useRef, useState} from 'react';
 import {Animated, Image, Pressable, StyleSheet, Text, View, type GestureResponderEvent} from 'react-native';
 import type {StyleProp, TextStyle} from 'react-native';
 import * as _Haptics from 'expo-haptics';
@@ -37,6 +37,10 @@ type Props = {
   mini?: boolean;
   emptyMessage?: string;
   showGlow?: boolean;
+  autoRotatePages?: boolean;
+  pageRotationIntervalMs?: number;
+  pageRotationStartMs?: number | null;
+  pageRotationBaseIndex?: number | null;
 };
 
 function MarqueeText({
@@ -178,16 +182,96 @@ export default function Display3DPreview({
   mini = false,
   emptyMessage,
   showGlow = true,
+  autoRotatePages = false,
+  pageRotationIntervalMs = 15000,
+  pageRotationStartMs = null,
+  pageRotationBaseIndex = null,
 }: Props) {
-  const useTwoRowSingleLineLayout = slots.length === 1;
-  const compact = slots.length > 1 || useTwoRowSingleLineLayout || displayType >= 3;
+  const pageGroups = useMemo(() => {
+    if (!autoRotatePages || slots.length <= 2) return [slots];
+    const groups: Display3DSlot[][] = [];
+    for (let index = 0; index < slots.length; index += 2) {
+      groups.push(slots.slice(index, index + 2));
+    }
+    return groups;
+  }, [autoRotatePages, slots]);
+  const [pageIndex, setPageIndex] = useState(0);
+  const [rotationNowMs, setRotationNowMs] = useState(() => Date.now());
+  const syncedStartMs = Number.isFinite(pageRotationStartMs ?? NaN) ? (pageRotationStartMs as number) : null;
+  const syncedBaseIndex =
+    typeof pageRotationBaseIndex === 'number' && Number.isFinite(pageRotationBaseIndex)
+      ? Math.max(0, Math.floor(pageRotationBaseIndex))
+      : 0;
+  const syncedPageIndex =
+    autoRotatePages && pageGroups.length > 1 && syncedStartMs != null
+      ? (
+          syncedBaseIndex +
+          Math.floor(Math.max(0, rotationNowMs - syncedStartMs) / pageRotationIntervalMs)
+        ) % pageGroups.length
+      : null;
+  const safePageIndex =
+    syncedPageIndex != null
+      ? syncedPageIndex
+      : pageGroups.length > 0
+        ? Math.min(pageIndex, pageGroups.length - 1)
+        : 0;
+  const visibleSlots = pageGroups[safePageIndex] ?? slots;
+  const useTwoRowSingleLineLayout = visibleSlots.length === 1;
+  const compact = visibleSlots.length > 1 || useTwoRowSingleLineLayout || displayType >= 3;
   const safeBrightness = Math.max(0, Math.min(100, brightness));
   const brightnessOverlayOpacity = ((100 - safeBrightness) / 100) * 0.65;
   const [draggingId, setDraggingId] = useState<string | null>(null);
 
-  const scrollingSlots = slots.filter(s => s.scrollLabel);
+  const scrollingSlots = visibleSlots.filter(s => s.scrollLabel);
   const hasMultipleScrolling = scrollingSlots.length > 1;
   const scrollClock = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    if (pageIndex < pageGroups.length) return;
+    setPageIndex(0);
+  }, [pageGroups.length, pageIndex]);
+
+  useLayoutEffect(() => {
+    if (!autoRotatePages || pageGroups.length <= 1) return;
+    if (syncedStartMs == null) return;
+    setRotationNowMs(Date.now());
+  }, [autoRotatePages, pageGroups.length, syncedStartMs]);
+
+  useEffect(() => {
+    if (!autoRotatePages || pageGroups.length <= 1) return;
+
+    let interval: ReturnType<typeof setInterval> | null = null;
+    let timeout: ReturnType<typeof setTimeout> | null = null;
+
+    if (syncedStartMs == null) {
+      interval = setInterval(() => {
+        setPageIndex(currentIndex => (currentIndex + 1) % pageGroups.length);
+      }, pageRotationIntervalMs);
+      return () => {
+        if (interval) clearInterval(interval);
+      };
+    }
+
+    const syncPageIndex = () => {
+      const nowMs = Date.now();
+      setRotationNowMs(nowMs);
+    };
+
+    syncPageIndex();
+
+    const elapsed = Math.max(0, Date.now() - syncedStartMs);
+    const msUntilNextBoundary = pageRotationIntervalMs - (elapsed % pageRotationIntervalMs || pageRotationIntervalMs);
+
+    timeout = setTimeout(() => {
+      syncPageIndex();
+      interval = setInterval(syncPageIndex, pageRotationIntervalMs);
+    }, msUntilNextBoundary);
+
+    return () => {
+      if (timeout) clearTimeout(timeout);
+      if (interval) clearInterval(interval);
+    };
+  }, [autoRotatePages, pageGroups, pageGroups.length, pageRotationIntervalMs, syncedBaseIndex, syncedStartMs]);
 
   useEffect(() => {
     if (!hasMultipleScrolling) return;
@@ -218,6 +302,7 @@ export default function Display3DPreview({
       scrollClock.stopAnimation();
     };
   }, [hasMultipleScrolling, scrollClock]);
+
   const [dragOffsetY, setDragOffsetY] = useState(0);
   const dragStartYRef = useRef<Record<string, number>>({});
   const dragOriginYRef = useRef(0);
@@ -242,7 +327,7 @@ export default function Display3DPreview({
     if (draggingId !== id) return;
     const delta = pageY - dragOriginYRef.current;
     setDragOffsetY(delta);
-    if (slots.length < 2) return;
+    if (visibleSlots.length < 2) return;
 
     const now = Date.now();
     const crossedSwapThreshold = Math.abs(delta) > 36;
@@ -287,7 +372,7 @@ export default function Display3DPreview({
             </View>
           ) : (
             <>
-              {slots.map(slot => (
+              {visibleSlots.map(slot => (
                 <Pressable
                   key={slot.id}
                   style={[
