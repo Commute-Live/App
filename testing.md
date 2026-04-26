@@ -1,8 +1,20 @@
-Local dev/BT testing:
 
-npm run prebuild:dev 
-npm run ios:dev
+  Local dev / BT testing
 
-Before next TestFlight push:
-npm run prebuild:prod
-Then Xcode → Product → Archive → Distribute as usual.
+  1. npm run prebuild:dev
+  2. npm run ios:dev
+
+  Verify app name: CommuteLive Dev
+
+  If app is old, just (CommuteLive):
+  1. npm run prebuild:dev
+  2. cd ios && pod install
+  3. cd ..
+  4. npm run ios:dev
+
+  Before TestFlight
+
+  1. npm run prebuild:prod
+  2. Open Xcode
+  3. Product -> Archive
+  4. Distribute as usual
