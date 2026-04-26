@@ -52,6 +52,7 @@ export default {
     },
     plugins: [
       './plugins/withDisableUserScriptSandboxing',
+      './plugins/withBlockDevArchive',
       'expo-router',
       'expo-font',
       [
