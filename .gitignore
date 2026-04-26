@@ -56,6 +56,11 @@ coverage/
 *.tmp
 *.temp
 *.pem
+*.bak
+
+# Build logs
+xcodebuild.log
+*.xcresult
 
 # Generated native folders (CNG / Prebuild)
 /android
