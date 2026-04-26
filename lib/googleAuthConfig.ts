@@ -1,6 +1,8 @@
 import Constants from 'expo-constants';
 
 const bundleId =
+  Constants.platform?.ios?.bundleIdentifier ??
+  Constants.platform?.android?.package ??
   Constants.expoConfig?.ios?.bundleIdentifier ??
   Constants.expoConfig?.android?.package ??
   '';

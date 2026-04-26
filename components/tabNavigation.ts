@@ -1,10 +1,11 @@
 import type {Href} from 'expo-router';
 import type {BottomNavItem} from './BottomNav';
 
-export type TabRoute = '/dashboard' | '/settings';
+export type TabRoute = '/dashboard' | '/schedule' | '/settings';
 
 export const TAB_NAV_ITEMS: BottomNavItem[] = [
   {key: 'home', label: 'Home', icon: 'home-outline', route: '/dashboard'},
+  {key: 'schedule', label: 'Schedule', icon: 'calendar-outline', route: '/schedule'},
   {key: 'settings', label: 'Settings', icon: 'settings-outline', route: '/settings'},
 ];
 

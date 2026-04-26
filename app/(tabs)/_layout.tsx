@@ -9,17 +9,25 @@ import {
 } from '../../components/tabNavigation';
 import {BottomNav} from '../../components/BottomNav';
 import DashboardOverviewScreen from '../../features/dashboard/screens/DashboardOverviewScreen';
+import ScheduleScreen from '../../features/schedule/screens/ScheduleScreen';
 import SettingsScreen from '../../features/settings/screens/SettingsScreen';
 import {colors} from '../../theme';
 
 const TAB_COMPONENTS: Record<TabRoute, React.ComponentType> = {
   '/dashboard': DashboardOverviewScreen,
+  '/schedule': ScheduleScreen,
   '/settings': SettingsScreen,
+};
+
+const ROUTE_BY_INDEX: Record<number, TabRoute> = {
+  0: '/dashboard',
+  1: '/schedule',
+  2: '/settings',
 };
 
 export default function TabsLayout() {
   const pathname = usePathname();
-  const activeRoute = getTabIndex(pathname) === 1 ? '/settings' : '/dashboard';
+  const activeRoute = ROUTE_BY_INDEX[Math.max(getTabIndex(pathname), 0)] ?? '/dashboard';
   const ScreenComponent = TAB_COMPONENTS[activeRoute];
   const setSwipeEnabled = useCallback((_route: TabRoute, _enabled: boolean) => {}, []);
 
